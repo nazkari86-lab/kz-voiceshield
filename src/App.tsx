@@ -7,7 +7,9 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Clock3,
+  Database,
   FileDown,
+  FileText,
   Languages,
   LockKeyhole,
   MessageCircleWarning,
@@ -15,9 +17,11 @@ import {
   MicOff,
   PhoneCall,
   Radar,
+  Save,
   ShieldAlert,
   ShieldCheck,
   Smartphone,
+  Trash2,
   Upload,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -25,7 +29,8 @@ import type { ChangeEvent, CSSProperties } from 'react'
 import './App.css'
 
 type Severity = 'critical' | 'high' | 'medium' | 'low'
-type View = 'review' | 'timeline' | 'threats' | 'simulator' | 'playbook'
+type View = 'review' | 'timeline' | 'threats' | 'simulator' | 'cases' | 'dataset' | 'playbook'
+type CaseLabel = 'unreviewed' | 'true_positive' | 'false_positive' | 'needs_review'
 
 type ThreatRule = {
   id: string
@@ -54,6 +59,17 @@ type Analysis = {
   caseId: string
   verdict: string
   nextAction: string
+}
+
+type SavedCase = {
+  id: string
+  createdAt: string
+  updatedAt: string
+  fileName: string
+  transcript: string
+  label: CaseLabel
+  analystNote: string
+  analysis: Analysis
 }
 
 type SpeechRecognitionResultShape = {
@@ -102,6 +118,8 @@ const samples = {
   safe:
     'Сәлеметсіз бе. Это оператор клиники. Мы напоминаем о записи на завтра в 10:30. Если время неудобно, можете перезаписаться через официальный номер на сайте. Никому не сообщайте SMS-коды.',
 }
+
+const storageKey = 'kz-voiceshield-cases-v2'
 
 const sampleMeta = [
   ['bank', 'Bank takeover'],
@@ -307,6 +325,16 @@ const createCaseId = (text: string) => {
   return `KZVS-${hash.toString(16).padStart(8, '0').toUpperCase().slice(0, 8)}`
 }
 
+const downloadFile = (fileName: string, body: string, type = 'text/plain;charset=utf-8') => {
+  const blob = new Blob([body], { type })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 const detectSafeContext = (text: string) => safeContext.some((term) => pattern(term).test(normalizeText(text)))
 const hasExplicitAction = (text: string) => explicitActionTerms.some((term) => pattern(term).test(normalizeText(text)))
 const matchTerms = (text: string, terms: string[]) => {
@@ -394,6 +422,58 @@ const buildReport = (text: string, analysis: Analysis) => [
   text || '[empty]',
 ].join('\n')
 
+const serializeCase = (item: SavedCase) => ({
+  id: item.id,
+  createdAt: item.createdAt,
+  updatedAt: item.updatedAt,
+  fileName: item.fileName,
+  label: item.label,
+  analystNote: item.analystNote,
+  score: item.analysis.score,
+  risk: item.analysis.risk,
+  confidence: item.analysis.confidence,
+  verdict: item.analysis.verdict,
+  evidence: item.analysis.evidence.map((evidence) => ({
+    id: evidence.id,
+    title: evidence.title,
+    severity: evidence.severity,
+    tactic: evidence.tactic,
+    stage: evidence.stage,
+    matches: evidence.matches,
+    score: evidence.score,
+  })),
+  transcript: item.transcript,
+})
+
+const exportJsonl = (cases: SavedCase[]) => cases.map((item) => JSON.stringify(serializeCase(item))).join('\n')
+
+const exportCsv = (cases: SavedCase[]) => {
+  const rows = [
+    ['id', 'createdAt', 'label', 'risk', 'score', 'confidence', 'verdict', 'evidenceCount', 'transcript'],
+    ...cases.map((item) => [
+      item.id,
+      item.createdAt,
+      item.label,
+      item.analysis.risk,
+      String(item.analysis.score),
+      String(item.analysis.confidence),
+      item.analysis.verdict,
+      String(item.analysis.evidence.length),
+      item.transcript,
+    ]),
+  ]
+  return rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(',')).join('\n')
+}
+
+const labelText = (label: CaseLabel) =>
+  label === 'true_positive'
+    ? 'True positive'
+    : label === 'false_positive'
+      ? 'False positive'
+      : label === 'needs_review'
+        ? 'Needs review'
+        : 'Unreviewed'
+
 function RiskBadge({ risk }: { risk: Severity }) {
   const label = risk === 'critical' ? 'Critical' : risk === 'high' ? 'High risk' : risk === 'medium' ? 'Review' : 'Low risk'
   const Icon = risk === 'critical' || risk === 'high' ? ShieldAlert : risk === 'medium' ? AlertTriangle : ShieldCheck
@@ -410,6 +490,8 @@ const tabs: Array<[View, string]> = [
   ['timeline', 'Timeline'],
   ['threats', 'Threat Lab'],
   ['simulator', 'Simulator'],
+  ['cases', 'Cases'],
+  ['dataset', 'Dataset'],
   ['playbook', 'Playbook'],
 ]
 
@@ -417,6 +499,9 @@ function App() {
   const [activeView, setActiveView] = useState<View>('review')
   const [transcript, setTranscript] = useState(samples.bank)
   const [fileName, setFileName] = useState('sample-bank-call.txt')
+  const [cases, setCases] = useState<SavedCase[]>([])
+  const [caseLabel, setCaseLabel] = useState<CaseLabel>('unreviewed')
+  const [analystNote, setAnalystNote] = useState('')
   const [liveLanguage, setLiveLanguage] = useState('ru-RU')
   const [isListening, setIsListening] = useState(false)
   const [liveStatus, setLiveStatus] = useState('Live mode is ready')
@@ -426,24 +511,98 @@ function App() {
   const isSpeechSupported = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
   const progressStyle = { '--score': `${analysis.score}%` } as CSSProperties
 
-  useEffect(() => () => recognitionRef.current?.stop(), [])
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(storageKey)
+      if (stored) setCases(JSON.parse(stored) as SavedCase[])
+    } catch {
+      setCases([])
+    }
+    return () => recognitionRef.current?.stop()
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem(storageKey, JSON.stringify(cases))
+  }, [cases])
 
   const exportReport = () => {
-    const blob = new Blob([buildReport(transcript, analysis)], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `kz-voiceshield-${analysis.caseId}.txt`
-    link.click()
-    URL.revokeObjectURL(url)
+    downloadFile(`kz-voiceshield-${analysis.caseId}.txt`, buildReport(transcript, analysis))
   }
 
   const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
     setFileName(file.name)
-    if (file.type.startsWith('text/') || file.name.endsWith('.txt')) file.text().then(setTranscript)
+    if (file.type.startsWith('audio/')) {
+      setTranscript(`Audio file queued for transcription: ${file.name}. Add a transcript here or use live browser recognition.`)
+      return
+    }
+    if (file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.jsonl') || file.name.endsWith('.csv')) {
+      file.text().then((body) => {
+        if (file.name.endsWith('.jsonl')) {
+          const imported = body
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line, index) => {
+              const parsed = JSON.parse(line) as { transcript?: string; label?: CaseLabel; fileName?: string; analystNote?: string }
+              const importedTranscript = parsed.transcript ?? line
+              const importedAnalysis = analyzeTranscript(importedTranscript)
+              return {
+                id: `${importedAnalysis.caseId}-${Date.now()}-${index}`,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                fileName: parsed.fileName ?? file.name,
+                transcript: importedTranscript,
+                label: parsed.label ?? 'unreviewed',
+                analystNote: parsed.analystNote ?? '',
+                analysis: importedAnalysis,
+              } satisfies SavedCase
+            })
+          setCases((current) => [...imported, ...current])
+          setActiveView('dataset')
+          return
+        }
+        setTranscript(body)
+      })
+    }
   }
+
+  const saveCurrentCase = () => {
+    const now = new Date().toISOString()
+    const next: SavedCase = {
+      id: analysis.caseId,
+      createdAt: now,
+      updatedAt: now,
+      fileName,
+      transcript,
+      label: caseLabel,
+      analystNote,
+      analysis,
+    }
+    setCases((current) => [next, ...current.filter((item) => item.id !== next.id)])
+    setActiveView('cases')
+  }
+
+  const loadCase = (item: SavedCase) => {
+    setTranscript(item.transcript)
+    setFileName(item.fileName)
+    setCaseLabel(item.label)
+    setAnalystNote(item.analystNote)
+    setActiveView('review')
+  }
+
+  const updateCaseLabel = (id: string, label: CaseLabel) => {
+    setCases((current) => current.map((item) => (item.id === id ? { ...item, label, updatedAt: new Date().toISOString() } : item)))
+  }
+
+  const deleteCase = (id: string) => setCases((current) => current.filter((item) => item.id !== id))
+
+  const clearCases = () => setCases([])
+
+  const exportDatasetJsonl = () => downloadFile('kz-voiceshield-dataset.jsonl', exportJsonl(cases), 'application/x-ndjson;charset=utf-8')
+
+  const exportDatasetCsv = () => downloadFile('kz-voiceshield-dataset.csv', exportCsv(cases), 'text/csv;charset=utf-8')
 
   const stopLiveTranscription = () => {
     recognitionRef.current?.stop()
@@ -505,6 +664,7 @@ function App() {
         </div>
         <div className="topbar-actions">
           <span className="language-chip"><Languages size={15} />KZ/RU</span>
+          <button className="ghost-button" type="button" onClick={saveCurrentCase}><Save size={16} />Save case</button>
           <button className="ghost-button" type="button" onClick={exportReport}><FileDown size={16} />Export report</button>
         </div>
       </header>
@@ -544,6 +704,15 @@ function App() {
             </div>
           </div>
           <textarea spellCheck={false} value={transcript} onChange={(event) => setTranscript(event.target.value)} />
+          <div className="review-controls">
+            <select value={caseLabel} onChange={(event) => setCaseLabel(event.target.value as CaseLabel)}>
+              <option value="unreviewed">Unreviewed</option>
+              <option value="true_positive">True positive</option>
+              <option value="false_positive">False positive</option>
+              <option value="needs_review">Needs review</option>
+            </select>
+            <input value={analystNote} onChange={(event) => setAnalystNote(event.target.value)} placeholder="Analyst note" />
+          </div>
           <div className="sample-row">
             {sampleMeta.map(([key, label]) => (
               <button key={key} type="button" onClick={() => { setTranscript(samples[key]); setFileName(`${key}.txt`) }}>{label}</button>
@@ -611,6 +780,57 @@ function App() {
                   </button>
                 )
               })}
+            </div>
+          )}
+
+          {activeView === 'cases' && (
+            <div className="case-library">
+              <div className="library-actions">
+                <strong>{cases.length} saved cases</strong>
+                <button className="primary-button" type="button" onClick={saveCurrentCase}><Save size={15} />Save current</button>
+              </div>
+              {cases.length === 0 ? (
+                <div className="empty-state"><Database size={22} /><strong>No saved cases yet</strong><span>Save reviewed calls to build a local investigation library.</span></div>
+              ) : (
+                cases.map((item) => (
+                  <article className={`saved-case ${item.analysis.risk}`} key={item.id}>
+                    <button className="case-open" type="button" onClick={() => loadCase(item)}>
+                      <strong>{item.id}</strong>
+                      <span>{item.analysis.score}/100 · {item.analysis.verdict} · {labelText(item.label)}</span>
+                      <p>{item.transcript.slice(0, 180)}{item.transcript.length > 180 ? '...' : ''}</p>
+                    </button>
+                    <div className="case-tools">
+                      <select value={item.label} onChange={(event) => updateCaseLabel(item.id, event.target.value as CaseLabel)}>
+                        <option value="unreviewed">Unreviewed</option>
+                        <option value="true_positive">True positive</option>
+                        <option value="false_positive">False positive</option>
+                        <option value="needs_review">Needs review</option>
+                      </select>
+                      <button className="icon-button" type="button" onClick={() => deleteCase(item.id)} aria-label="Delete case"><Trash2 size={16} /></button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          )}
+
+          {activeView === 'dataset' && (
+            <div className="dataset-panel">
+              <div className="dataset-actions">
+                <button className="ghost-button" disabled={cases.length === 0} type="button" onClick={exportDatasetJsonl}><FileText size={16} />Export JSONL</button>
+                <button className="ghost-button" disabled={cases.length === 0} type="button" onClick={exportDatasetCsv}><FileDown size={16} />Export CSV</button>
+                <button className="danger-button" disabled={cases.length === 0} type="button" onClick={clearCases}><Trash2 size={15} />Clear</button>
+              </div>
+              <div className="dataset-stats">
+                <div><strong>{cases.length}</strong><span>cases</span></div>
+                <div><strong>{cases.filter((item) => item.label === 'true_positive').length}</strong><span>true positive</span></div>
+                <div><strong>{cases.filter((item) => item.label === 'false_positive').length}</strong><span>false positive</span></div>
+                <div><strong>{cases.filter((item) => item.label === 'needs_review').length}</strong><span>needs review</span></div>
+              </div>
+              <div className="dataset-schema">
+                <strong>Training fields</strong>
+                <p>Each export includes transcript, score, risk, confidence, verdict, evidence IDs, matched terms, analyst label and notes. Use JSONL for future model training and CSV for spreadsheet audit.</p>
+              </div>
             </div>
           )}
 

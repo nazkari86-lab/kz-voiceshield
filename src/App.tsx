@@ -2,6 +2,8 @@ import {
   AlertTriangle,
   AudioLines,
   Banknote,
+  BadgeCheck,
+  Ban,
   CheckCircle2,
   ClipboardCheck,
   Clock3,
@@ -15,7 +17,9 @@ import {
   ShieldAlert,
   ShieldCheck,
   Siren,
+  Smartphone,
   Upload,
+  WalletCards,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, CSSProperties } from 'react'
@@ -35,6 +39,8 @@ type SignalRule = {
 type Evidence = SignalRule & {
   matches: string[]
 }
+
+type SampleKey = 'bank' | 'relative' | 'investment' | 'delivery' | 'safe'
 
 type SpeechRecognitionResultShape = {
   isFinal: boolean
@@ -75,10 +81,20 @@ declare global {
   }
 }
 
-const SAMPLE_TRANSCRIPTS = {
+const SAMPLE_TRANSCRIPTS: Record<SampleKey, string> = {
   bank: `Здравствуйте, это служба безопасности банка. На вашей карте подозрительная операция. Срочно продиктуйте SMS-код, чтобы мы отменили перевод. Не кладите трубку и никому не говорите. Переведите деньги на безопасный счет, мы поможем вернуть доступ.`,
   relative: `Апа, это я. У меня проблема, я попал в аварию. Срочно нужны деньги, переведи на Kaspi сейчас. Потом объясню, только не звони другим, времени нет. Мой номер временно не работает, напиши в WhatsApp.`,
+  investment: `Сәлеметсіз бе, біз инвестициялық платформа өкіліміз. Бүгін ғана депозит салсаңыз, табыс 30 пайыз болады. Қазір Kaspi арқылы ақша аударыңыз, кейін менеджер сізге Telegram ботқа сілтеме жібереді. Ұсыныс құпия, ешкімге айтпаңыз.`,
+  delivery: `Здравствуйте, курьерская служба. Ваша посылка задержана, нужно оплатить таможенный сбор по ссылке. Назовите ИИН и код из SMS для подтверждения доставки. Если не сделаете сейчас, посылку вернут отправителю.`,
   safe: `Сәлеметсіз бе. Это оператор клиники. Мы напоминаем о записи на завтра в 10:30. Если время неудобно, можете перезаписаться через официальный номер на сайте.`,
+}
+
+const SAMPLE_META: Record<SampleKey, { label: string; fileName: string }> = {
+  bank: { label: 'Bank scam', fileName: 'sample-bank-call.txt' },
+  relative: { label: 'Family scam', fileName: 'sample-relative-call.txt' },
+  investment: { label: 'Investment scam', fileName: 'sample-investment-call.txt' },
+  delivery: { label: 'Delivery scam', fileName: 'sample-delivery-call.txt' },
+  safe: { label: 'Safe call', fileName: 'sample-safe-call.txt' },
 }
 
 const RULES: SignalRule[] = [
@@ -97,6 +113,10 @@ const RULES: SignalRule[] = [
       'kaspi bank',
       'сотрудник банка',
       'қаржы мониторингі',
+      'ұлттық қауіпсіздік',
+      'салық комитеті',
+      'курьерская служба',
+      'таможенный сбор',
     ],
     advice: 'Hang up and call the official bank or agency number yourself.',
   },
@@ -116,6 +136,9 @@ const RULES: SignalRule[] = [
       'кодты айтыңыз',
       'жсн',
       'иин',
+      'код подтверждения',
+      'логин',
+      'verification code',
     ],
     advice: 'Never share SMS codes, PINs, CVV, passwords or one-time login links.',
   },
@@ -134,6 +157,9 @@ const RULES: SignalRule[] = [
       'кредит',
       'ақша аудар',
       'қауіпсіз шот',
+      'депозит',
+      'оплатить',
+      'таможенный сбор',
     ],
     advice: 'Do not transfer funds during a call. Verify through a trusted channel.',
   },
@@ -158,7 +184,7 @@ const RULES: SignalRule[] = [
     title: 'Unofficial channel or off-platform request',
     severity: 'low',
     weight: 8,
-    terms: ['whatsapp', 'telegram', 'личный номер', 'ссылка', 'бот', 'приложение скачайте', 'қосымша жүктеңіз'],
+    terms: ['whatsapp', 'telegram', 'личный номер', 'ссылка', 'бот', 'приложение скачайте', 'қосымша жүктеңіз', 'link'],
     advice: 'Use official websites, verified apps and published phone numbers only.',
   },
   {
@@ -176,6 +202,14 @@ const RULES: SignalRule[] = [
     weight: 17,
     terms: ['апа', 'мама', 'папа', 'сын', 'дочь', 'авария', 'больница', 'мой номер временно не работает'],
     advice: 'Call the relative back using a saved number before sending money.',
+  },
+  {
+    id: 'investment-return',
+    title: 'Unrealistic investment or prize promise',
+    severity: 'medium',
+    weight: 16,
+    terms: ['инвестиция', 'табыс', 'доход', '30 пайыз', 'гарантия', 'выигрыш', 'приз', 'платформа', 'менеджер'],
+    advice: 'Verify investment licenses and never send deposits during an unsolicited call.',
   },
 ]
 
@@ -195,8 +229,9 @@ const analyzeTranscript = (text: string) => {
   const score = Math.min(98, Math.max(text.trim().length > 0 ? 12 : 0, rawScore))
   const risk: Severity = score >= 70 ? 'high' : score >= 38 ? 'medium' : 'low'
   const matchedTerms = evidence.reduce((total, item) => total + item.matches.length, 0)
+  const confidence = Math.min(96, Math.max(text.trim().length > 0 ? 35 : 0, matchedTerms * 7 + evidence.length * 8))
 
-  return { evidence, matchedTerms, risk, score }
+  return { confidence, evidence, matchedTerms, risk, score }
 }
 
 const getRecommendedAction = (risk: Severity) => {
@@ -206,16 +241,25 @@ const getRecommendedAction = (risk: Severity) => {
 }
 
 const buildReport = (transcript: string, analysis: ReturnType<typeof analyzeTranscript>) => {
+  const caseId = createCaseId(transcript)
   const evidenceLines = analysis.evidence
     .map((item) => `- ${item.title}: ${item.matches.join(', ')} | ${item.advice}`)
     .join('\n')
 
   return [
     'KZ VoiceShield Case Report',
+    `Case ID: ${caseId}`,
     `Generated: ${new Date().toLocaleString()}`,
     `Risk: ${analysis.risk.toUpperCase()} (${analysis.score}/100)`,
+    `Confidence: ${analysis.confidence}/100`,
     `Matched signals: ${analysis.matchedTerms}`,
     `Recommended action: ${getRecommendedAction(analysis.risk)}`,
+    '',
+    'Immediate checklist:',
+    '- End the call before taking any financial action',
+    '- Call the bank, relative, courier or agency through an official saved number',
+    '- Do not share SMS codes, PIN, CVV, IIN, screen access or remote-control permissions',
+    '- Preserve this transcript/report if money was requested',
     '',
     'Evidence:',
     evidenceLines || '- No matched scam patterns',
@@ -223,6 +267,14 @@ const buildReport = (transcript: string, analysis: ReturnType<typeof analyzeTran
     'Transcript:',
     transcript || '[empty]',
   ].join('\n')
+}
+
+const createCaseId = (text: string) => {
+  let hash = 0
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 31 + text.charCodeAt(index)) >>> 0
+  }
+  return `KZVS-${hash.toString(16).padStart(8, '0').toUpperCase().slice(0, 8)}`
 }
 
 function RiskBadge({ risk }: { risk: Severity }) {
@@ -245,6 +297,7 @@ function App() {
   const [liveStatus, setLiveStatus] = useState('Live mode is ready')
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const analysis = useMemo(() => analyzeTranscript(transcript), [transcript])
+  const caseId = useMemo(() => createCaseId(transcript), [transcript])
   const isSpeechSupported =
     typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
 
@@ -268,6 +321,7 @@ function App() {
   const progressStyle = { '--score': `${analysis.score}%` } as CSSProperties
   const recommendedAction = getRecommendedAction(analysis.risk)
   const caseReadiness = analysis.risk === 'high' ? 'Ready for alert' : analysis.risk === 'medium' ? 'Needs review' : 'Monitor only'
+  const sampleKeys = Object.keys(SAMPLE_TRANSCRIPTS) as SampleKey[]
 
   const exportReport = () => {
     const report = buildReport(transcript, analysis)
@@ -341,6 +395,11 @@ function App() {
     recognition.start()
   }
 
+  const loadSample = (sample: SampleKey) => {
+    setTranscript(SAMPLE_TRANSCRIPTS[sample])
+    setFileName(SAMPLE_META[sample].fileName)
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar" aria-label="Product header">
@@ -350,7 +409,7 @@ function App() {
           </div>
           <div>
             <h1>KZ VoiceShield</h1>
-            <p>AI anti-scam call review for Kazakh/Russian conversations</p>
+            <p>Anti-scam call review for Kazakh/Russian conversations</p>
           </div>
         </div>
         <div className="topbar-actions">
@@ -370,7 +429,7 @@ function App() {
           <div className="panel-heading">
             <div>
               <h2>Audio or transcript</h2>
-              <p>Paste a call transcript or upload a text/audio file for review.</p>
+              <p>Paste a call transcript or upload a text file for local review.</p>
             </div>
             <FileAudio size={20} />
           </div>
@@ -378,7 +437,7 @@ function App() {
           <label className="upload-box">
             <input accept=".txt,.mp3,.wav,.m4a,audio/*,text/plain" onChange={handleFile} type="file" />
             <Upload size={20} />
-            <span>Upload call file</span>
+            <span>Upload transcript</span>
             <small>{fileName}</small>
           </label>
 
@@ -424,15 +483,11 @@ function App() {
           />
 
           <div className="sample-row" aria-label="Sample transcripts">
-            <button type="button" onClick={() => { setTranscript(SAMPLE_TRANSCRIPTS.bank); setFileName('sample-bank-call.txt') }}>
-              Bank scam
-            </button>
-            <button type="button" onClick={() => { setTranscript(SAMPLE_TRANSCRIPTS.relative); setFileName('sample-relative-call.txt') }}>
-              Family scam
-            </button>
-            <button type="button" onClick={() => { setTranscript(SAMPLE_TRANSCRIPTS.safe); setFileName('sample-safe-call.txt') }}>
-              Safe call
-            </button>
+            {sampleKeys.map((sample) => (
+              <button key={sample} type="button" onClick={() => loadSample(sample)}>
+                {SAMPLE_META[sample].label}
+              </button>
+            ))}
           </div>
         </aside>
 
@@ -440,7 +495,7 @@ function App() {
           <div className="panel-heading">
             <div>
               <h2>Analyze call</h2>
-              <p>Rule-based MVP score for pressure, impersonation and money requests.</p>
+              <p>Risk score for pressure, impersonation, money requests and isolation.</p>
             </div>
             <PhoneCall size={20} />
           </div>
@@ -448,7 +503,7 @@ function App() {
           <div className={`score-card ${analysis.risk}`}>
             <div className="score-topline">
               <RiskBadge risk={analysis.risk} />
-              <span>{analysis.matchedTerms} matched signals</span>
+              <span>{caseId}</span>
             </div>
             <div className="score-number">{analysis.score}</div>
             <div className="score-meter" style={progressStyle}>
@@ -470,14 +525,29 @@ function App() {
               <span>critical signals</span>
             </div>
             <div>
-              <AudioLines size={18} />
-              <strong>{Math.max(1, Math.ceil(transcript.length / 820))}m</strong>
-              <span>estimated length</span>
+              <BadgeCheck size={18} />
+              <strong>{analysis.confidence}</strong>
+              <span>confidence</span>
             </div>
             <div>
               <Banknote size={18} />
               <strong>{analysis.evidence.some((item) => item.id === 'money-transfer') ? 'Yes' : 'No'}</strong>
               <span>money request</span>
+            </div>
+            <div>
+              <AudioLines size={18} />
+              <strong>{Math.max(1, Math.ceil(transcript.length / 820))}m</strong>
+              <span>estimated length</span>
+            </div>
+            <div>
+              <Smartphone size={18} />
+              <strong>{analysis.evidence.some((item) => item.id === 'unofficial-channel') ? 'Yes' : 'No'}</strong>
+              <span>off-platform ask</span>
+            </div>
+            <div>
+              <WalletCards size={18} />
+              <strong>{analysis.matchedTerms}</strong>
+              <span>matched terms</span>
             </div>
           </div>
 
@@ -499,6 +569,15 @@ function App() {
               <ClipboardCheck size={16} />
               <span>Case report</span>
             </div>
+          </div>
+
+          <div className="checklist-box">
+            <h3>Response checklist</h3>
+            <ul>
+              <li><Ban size={14} /> End the call before sending money or codes.</li>
+              <li><PhoneCall size={14} /> Call back through a saved official number.</li>
+              <li><ClipboardCheck size={14} /> Save the transcript and report for review.</li>
+            </ul>
           </div>
         </section>
 

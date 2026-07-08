@@ -263,7 +263,7 @@ textarea:focus {
 .sample-row {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 12px;
 }
 
@@ -365,7 +365,7 @@ textarea:focus {
 .metric-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 14px 0;
 }
 
@@ -432,6 +432,44 @@ textarea:focus {
 }
 
 .pipeline-box svg {
+  color: #0e99b6;
+  flex: 0 0 auto;
+}
+
+.checklist-box {
+  background: #f8fafc;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.checklist-box h3 {
+  color: #182230;
+  font-size: 15px;
+  line-height: 1.2;
+  margin: 0 0 10px;
+}
+
+.checklist-box ul {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.checklist-box li {
+  align-items: center;
+  color: #344054;
+  display: flex;
+  font-size: 12px;
+  font-weight: 650;
+  gap: 8px;
+  line-height: 1.35;
+}
+
+.checklist-box svg {
   color: #0e99b6;
   flex: 0 0 auto;
 }

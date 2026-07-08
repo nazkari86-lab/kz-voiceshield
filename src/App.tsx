@@ -33,11 +33,13 @@ type SignalRule = {
   severity: Severity
   weight: number
   terms: string[]
+  minTerms?: number
   advice: string
 }
 
 type Evidence = SignalRule & {
   matches: string[]
+  score: number
 }
 
 type SampleKey = 'bank' | 'relative' | 'investment' | 'delivery' | 'safe'
@@ -97,6 +99,17 @@ const SAMPLE_META: Record<SampleKey, { label: string; fileName: string }> = {
   safe: { label: 'Safe call', fileName: 'sample-safe-call.txt' },
 }
 
+const SAFE_CONTEXT_TERMS = [
+  'официальный номер',
+  'официальный сайт',
+  'не сообщайте',
+  'не называйте код',
+  'никому не сообщайте',
+  'напоминаем о записи',
+  'можете перезаписаться',
+  'құпия кодты айтпаңыз',
+]
+
 const RULES: SignalRule[] = [
   {
     id: 'bank-impersonation',
@@ -105,7 +118,6 @@ const RULES: SignalRule[] = [
     weight: 26,
     terms: [
       'служба безопасности',
-      'банк',
       'полиция',
       'прокуратура',
       'ұлттық банк',
@@ -118,6 +130,7 @@ const RULES: SignalRule[] = [
       'курьерская служба',
       'таможенный сбор',
     ],
+    minTerms: 1,
     advice: 'Hang up and call the official bank or agency number yourself.',
   },
   {
@@ -129,6 +142,10 @@ const RULES: SignalRule[] = [
       'sms-код',
       'смс код',
       'код из sms',
+      'продиктуйте',
+      'назовите',
+      'сообщите',
+      'айтыңыз',
       'pin',
       'пароль',
       'cvv',
@@ -140,6 +157,7 @@ const RULES: SignalRule[] = [
       'логин',
       'verification code',
     ],
+    minTerms: 2,
     advice: 'Never share SMS codes, PINs, CVV, passwords or one-time login links.',
   },
   {
@@ -149,11 +167,10 @@ const RULES: SignalRule[] = [
     weight: 28,
     terms: [
       'переведи',
+      'переведите',
       'перевести деньги',
       'безопасный счет',
       'kaspi',
-      'карта',
-      'счет',
       'кредит',
       'ақша аудар',
       'қауіпсіз шот',
@@ -161,6 +178,7 @@ const RULES: SignalRule[] = [
       'оплатить',
       'таможенный сбор',
     ],
+    minTerms: 1,
     advice: 'Do not transfer funds during a call. Verify through a trusted channel.',
   },
   {
@@ -169,6 +187,7 @@ const RULES: SignalRule[] = [
     severity: 'medium',
     weight: 18,
     terms: ['срочно', 'немедленно', 'времени нет', 'қазір', 'тез', 'авария', 'проблема', 'шұғыл', 'блокировка'],
+    minTerms: 1,
     advice: 'Slow down. Scammers use time pressure to block verification.',
   },
   {
@@ -177,6 +196,7 @@ const RULES: SignalRule[] = [
     severity: 'medium',
     weight: 14,
     terms: ['никому не говорите', 'не звони', 'не кладите трубку', 'оставайтесь на линии', 'құпия', 'ешкімге айтпа'],
+    minTerms: 1,
     advice: 'End the call and ask a trusted person to verify the situation.',
   },
   {
@@ -185,6 +205,7 @@ const RULES: SignalRule[] = [
     severity: 'low',
     weight: 8,
     terms: ['whatsapp', 'telegram', 'личный номер', 'ссылка', 'бот', 'приложение скачайте', 'қосымша жүктеңіз', 'link'],
+    minTerms: 1,
     advice: 'Use official websites, verified apps and published phone numbers only.',
   },
   {
@@ -193,6 +214,7 @@ const RULES: SignalRule[] = [
     severity: 'high',
     weight: 24,
     terms: ['anydesk', 'teamviewer', 'экран', 'удаленный доступ', 'демонстрация экрана', 'screen share'],
+    minTerms: 1,
     advice: 'Do not install remote access apps or share your screen during financial calls.',
   },
   {
@@ -201,6 +223,7 @@ const RULES: SignalRule[] = [
     severity: 'medium',
     weight: 17,
     terms: ['апа', 'мама', 'папа', 'сын', 'дочь', 'авария', 'больница', 'мой номер временно не работает'],
+    minTerms: 2,
     advice: 'Call the relative back using a saved number before sending money.',
   },
   {
@@ -209,29 +232,80 @@ const RULES: SignalRule[] = [
     severity: 'medium',
     weight: 16,
     terms: ['инвестиция', 'табыс', 'доход', '30 пайыз', 'гарантия', 'выигрыш', 'приз', 'платформа', 'менеджер'],
+    minTerms: 2,
     advice: 'Verify investment licenses and never send deposits during an unsolicited call.',
   },
 ]
 
-const countMatches = (text: string, terms: string[]) => {
-  const normalized = text.toLowerCase()
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-  return terms.filter((term) => normalized.includes(term.toLowerCase()))
+const normalizeText = (text: string) =>
+  text
+    .toLowerCase()
+    .replaceAll('ё', 'е')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const termPattern = (term: string) => {
+  const normalized = normalizeText(term)
+  const escaped = escapeRegExp(normalized).replace(/\s+/g, '\\s+')
+  return new RegExp(`(^|\\s)${escaped}(?=\\s|$)`, 'u')
+}
+
+const countMatches = (text: string, terms: string[]) => {
+  const normalized = normalizeText(text)
+  if (!normalized) return []
+
+  return terms.filter((term) => termPattern(term).test(normalized))
+}
+
+const hasSafeContext = (text: string) => {
+  const normalized = normalizeText(text)
+  return SAFE_CONTEXT_TERMS.some((term) => termPattern(term).test(normalized))
 }
 
 const analyzeTranscript = (text: string) => {
-  const evidence: Evidence[] = RULES.map((rule) => ({
+  const normalized = normalizeText(text)
+  const wordCount = normalized ? normalized.split(' ').length : 0
+  const safeContext = hasSafeContext(text)
+  const initialEvidence: Evidence[] = RULES.map((rule) => ({
     ...rule,
     matches: countMatches(text, rule.terms),
-  })).filter((rule) => rule.matches.length > 0)
+    score: 0,
+  }))
+    .filter((rule) => rule.matches.length >= (rule.minTerms ?? 1))
+    .map((rule) => {
+      const severityMultiplier = rule.severity === 'high' ? 1.25 : rule.severity === 'medium' ? 1 : 0.7
+      const matchScore = rule.weight + Math.max(0, rule.matches.length - 1) * 4
+      return { ...rule, score: Math.round(matchScore * severityMultiplier) }
+    })
+  const hasActionableThreat = initialEvidence.some((item) =>
+    ['secret-code', 'money-transfer', 'urgency', 'isolation', 'remote-access'].includes(item.id),
+  )
+  const evidence = safeContext && !hasActionableThreat ? initialEvidence.filter((item) => item.id !== 'bank-impersonation') : initialEvidence
 
-  const rawScore = evidence.reduce((score, rule) => score + rule.weight + rule.matches.length * 3, 0)
-  const score = Math.min(98, Math.max(text.trim().length > 0 ? 12 : 0, rawScore))
-  const risk: Severity = score >= 70 ? 'high' : score >= 38 ? 'medium' : 'low'
   const matchedTerms = evidence.reduce((total, item) => total + item.matches.length, 0)
-  const confidence = Math.min(96, Math.max(text.trim().length > 0 ? 35 : 0, matchedTerms * 7 + evidence.length * 8))
+  const highEvidence = evidence.filter((item) => item.severity === 'high').length
+  const comboBonus =
+    evidence.some((item) => item.id === 'money-transfer') && evidence.some((item) => item.id === 'secret-code')
+      ? 18
+      : evidence.some((item) => item.id === 'money-transfer') && evidence.some((item) => item.id === 'urgency')
+        ? 12
+        : 0
+  const shortTextPenalty = wordCount < 3 ? 0.35 : wordCount < 6 ? 0.65 : 1
+  const safeContextPenalty = safeContext && highEvidence === 0 ? 0.45 : 1
+  const rawScore = Math.round(
+    (evidence.reduce((score, rule) => score + rule.score, 0) + comboBonus) * shortTextPenalty * safeContextPenalty,
+  )
+  const score = evidence.length === 0 ? 0 : Math.min(98, rawScore)
+  const risk: Severity = score >= 70 ? 'high' : score >= 38 ? 'medium' : 'low'
+  const confidence =
+    evidence.length === 0
+      ? 0
+      : Math.min(96, Math.round((matchedTerms * 8 + evidence.length * 10 + Math.min(wordCount, 40)) * shortTextPenalty))
 
-  return { confidence, evidence, matchedTerms, risk, score }
+  return { confidence, evidence, matchedTerms, risk, score, wordCount }
 }
 
 const getRecommendedAction = (risk: Severity) => {

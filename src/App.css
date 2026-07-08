@@ -3,18 +3,34 @@
   padding: 22px;
 }
 
+.topbar,
+.view-tabs,
+.workspace {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 1480px;
+}
+
 .topbar {
   align-items: center;
   display: flex;
   gap: 20px;
   justify-content: space-between;
-  margin: 0 auto 18px;
-  max-width: 1420px;
+  margin-bottom: 14px;
+}
+
+.brand,
+.topbar-actions,
+.language-chip,
+.ghost-button,
+.primary-button,
+.danger-button,
+.check-row {
+  align-items: center;
+  display: flex;
 }
 
 .brand {
-  align-items: center;
-  display: flex;
   gap: 13px;
   min-width: 0;
 }
@@ -34,7 +50,7 @@
 .brand h1 {
   color: #101828;
   font-size: 22px;
-  font-weight: 720;
+  font-weight: 760;
   line-height: 1.1;
   margin: 0;
 }
@@ -43,7 +59,12 @@
 .panel-heading p,
 .score-card p,
 .action-box p,
-.evidence-item p {
+.evidence-item p,
+.case-summary p,
+.source-box span,
+.timeline-item p,
+.threat-card p,
+.playbook p {
   color: #667085;
   font-size: 13px;
   line-height: 1.45;
@@ -51,37 +72,44 @@
 }
 
 .topbar-actions {
-  align-items: center;
-  display: flex;
   gap: 10px;
 }
 
 .language-chip,
-.ghost-button {
-  align-items: center;
+.ghost-button,
+.view-tabs button {
   background: #ffffff;
   border: 1px solid #d8dee8;
   border-radius: 8px;
   color: #344054;
-  display: inline-flex;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 700;
   gap: 8px;
   min-height: 38px;
   padding: 0 12px;
 }
 
-.ghost-button {
+button {
   cursor: pointer;
+}
+
+.view-tabs {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.view-tabs button.active {
+  background: #0e99b6;
+  border-color: #0e99b6;
+  color: #ffffff;
 }
 
 .primary-button,
 .danger-button {
-  align-items: center;
   border: 1px solid transparent;
   border-radius: 7px;
-  cursor: pointer;
-  display: inline-flex;
   font-size: 12px;
   font-weight: 760;
   gap: 6px;
@@ -107,17 +135,10 @@
   cursor: not-allowed;
 }
 
-.ghost-button:hover,
-.sample-row button:hover {
-  border-color: #98a2b3;
-}
-
 .workspace {
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(310px, 0.9fr) minmax(380px, 1.15fr) minmax(310px, 0.95fr);
-  margin: 0 auto;
-  max-width: 1420px;
+  grid-template-columns: minmax(300px, 0.86fr) minmax(430px, 1.24fr) minmax(320px, 0.95fr);
 }
 
 .panel {
@@ -140,7 +161,7 @@
 .panel-heading h2 {
   color: #182230;
   font-size: 17px;
-  font-weight: 720;
+  font-weight: 760;
   line-height: 1.2;
   margin: 0 0 4px;
 }
@@ -174,7 +195,7 @@
 
 .upload-box span {
   font-size: 14px;
-  font-weight: 720;
+  font-weight: 760;
 }
 
 .upload-box small {
@@ -209,16 +230,19 @@
   min-width: 0;
 }
 
-.live-copy strong {
+.live-copy strong,
+.threat-card strong,
+.scenario-button strong,
+.timeline-item strong,
+.playbook strong {
   color: #182230;
   font-size: 13px;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .live-copy span {
   color: #667085;
   font-size: 12px;
-  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -248,7 +272,7 @@ textarea {
   box-sizing: border-box;
   color: #182230;
   font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  min-height: 360px;
+  min-height: 390px;
   outline: none;
   padding: 14px;
   resize: vertical;
@@ -260,22 +284,28 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(14, 153, 182, 0.12);
 }
 
-.sample-row {
+.sample-row,
+.metric-grid,
+.simulator-grid,
+.threat-grid {
   display: grid;
-  gap: 8px;
+  gap: 10px;
+}
+
+.sample-row {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 12px;
 }
 
-.sample-row button {
+.sample-row button,
+.scenario-button {
   background: #ffffff;
   border: 1px solid #d8dee8;
   border-radius: 7px;
   color: #344054;
-  cursor: pointer;
   font-size: 12px;
   font-weight: 700;
-  min-height: 34px;
+  min-height: 36px;
   padding: 0 8px;
 }
 
@@ -285,17 +315,26 @@ textarea:focus {
   padding: 18px;
 }
 
-.score-card.high {
+.score-card.critical,
+.case-summary.critical {
+  background: #fff1f3;
+  border-color: #ff9aa8;
+}
+
+.score-card.high,
+.case-summary.high {
   background: #fff7f5;
   border-color: #f4b8ad;
 }
 
-.score-card.medium {
+.score-card.medium,
+.case-summary.medium {
   background: #fffbeb;
   border-color: #f3d177;
 }
 
-.score-card.low {
+.score-card.low,
+.case-summary.low {
   background: #f1fdf6;
   border-color: #9edbb4;
 }
@@ -320,6 +359,11 @@ textarea:focus {
   font-weight: 760;
   gap: 7px;
   padding: 6px 10px;
+}
+
+.risk-badge.critical {
+  background: #b42318;
+  color: #ffffff;
 }
 
 .risk-badge.high {
@@ -355,7 +399,7 @@ textarea:focus {
 }
 
 .score-meter span {
-  background: linear-gradient(90deg, #16a34a, #f79009 50%, #f04438);
+  background: linear-gradient(90deg, #16a34a, #f79009 45%, #f04438 72%, #b42318);
   border-radius: inherit;
   display: block;
   height: 100%;
@@ -363,23 +407,31 @@ textarea:focus {
 }
 
 .metric-grid {
-  display: grid;
-  gap: 10px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 14px 0;
 }
 
-.metric-grid div {
+.metric-grid div,
+.action-box,
+.source-box,
+.timeline-item,
+.threat-card,
+.playbook article {
   background: #f8fafc;
   border: 1px solid #e4e7ec;
   border-radius: 8px;
+}
+
+.metric-grid div {
   display: grid;
   gap: 5px;
-  min-height: 102px;
+  min-height: 98px;
   padding: 13px;
 }
 
-.metric-grid svg {
+.metric-grid svg,
+.source-box svg,
+.playbook svg {
   color: #0e99b6;
 }
 
@@ -389,94 +441,101 @@ textarea:focus {
   line-height: 1;
 }
 
-.metric-grid span {
+.metric-grid span,
+.case-summary span,
+.scenario-button span,
+.threat-card span {
   color: #667085;
   font-size: 12px;
   font-weight: 650;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 .action-box {
   background: #eef8fb;
-  border: 1px solid #bee4ec;
-  border-radius: 8px;
+  border-color: #bee4ec;
   padding: 15px;
 }
 
 .action-box h3 {
   color: #182230;
   font-size: 15px;
-  line-height: 1.2;
   margin: 0 0 6px;
 }
 
-.pipeline-box {
+.timeline-list,
+.evidence-list,
+.playbook {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(3, 1fr);
-  margin-top: 14px;
+  gap: 10px;
 }
 
-.pipeline-box div {
+.timeline-item {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  padding: 12px;
+}
+
+.timeline-item > span {
   align-items: center;
   background: #ffffff;
   border: 1px solid #d8dee8;
   border-radius: 8px;
   color: #344054;
-  display: flex;
+  display: grid;
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 800;
+  height: 34px;
+  place-items: center;
+}
+
+.threat-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.threat-card,
+.playbook article {
+  display: grid;
   gap: 7px;
-  min-height: 42px;
-  padding: 0 10px;
+  padding: 13px;
 }
 
-.pipeline-box svg {
-  color: #0e99b6;
-  flex: 0 0 auto;
+.threat-card.critical {
+  border-left: 4px solid #b42318;
 }
 
-.checklist-box {
-  background: #f8fafc;
-  border: 1px solid #e4e7ec;
-  border-radius: 8px;
-  margin-top: 14px;
-  padding: 14px;
+.threat-card.high,
+.scenario-button.high,
+.scenario-button.critical {
+  border-left: 4px solid #f04438;
 }
 
-.checklist-box h3 {
-  color: #182230;
-  font-size: 15px;
-  line-height: 1.2;
-  margin: 0 0 10px;
+.threat-card.medium,
+.scenario-button.medium {
+  border-left: 4px solid #f79009;
 }
 
-.checklist-box ul {
+.threat-card.low,
+.scenario-button.low {
+  border-left: 4px solid #16a34a;
+}
+
+.simulator-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.scenario-button {
   display: grid;
-  gap: 8px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  gap: 7px;
+  justify-items: start;
+  min-height: 82px;
+  padding: 13px;
+  text-align: left;
 }
 
-.checklist-box li {
-  align-items: center;
-  color: #344054;
-  display: flex;
-  font-size: 12px;
-  font-weight: 650;
-  gap: 8px;
-  line-height: 1.35;
-}
-
-.checklist-box svg {
-  color: #0e99b6;
-  flex: 0 0 auto;
-}
-
-.evidence-list {
-  display: grid;
-  gap: 10px;
+.playbook article {
+  grid-template-columns: 24px minmax(0, 1fr);
 }
 
 .evidence-item {
@@ -486,6 +545,10 @@ textarea:focus {
   display: grid;
   gap: 11px;
   padding: 13px;
+}
+
+.evidence-item.critical {
+  border-left-color: #b42318;
 }
 
 .evidence-item.high {
@@ -541,12 +604,9 @@ textarea:focus {
   color: #16a34a;
 }
 
-.empty-state strong {
+.empty-state strong,
+.case-summary strong {
   color: #101828;
-}
-
-.empty-state span {
-  font-size: 13px;
 }
 
 .case-summary {
@@ -558,41 +618,15 @@ textarea:focus {
   padding: 14px;
 }
 
-.case-summary.high {
-  background: #fff7f5;
-  border-color: #f4b8ad;
+.source-box {
+  align-items: flex-start;
+  display: flex;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 12px;
 }
 
-.case-summary.medium {
-  background: #fffbeb;
-  border-color: #f3d177;
-}
-
-.case-summary.low {
-  background: #f1fdf6;
-  border-color: #9edbb4;
-}
-
-.case-summary strong {
-  color: #101828;
-  font-size: 15px;
-  line-height: 1.2;
-}
-
-.case-summary span,
-.case-summary p {
-  color: #667085;
-  font-size: 12px;
-  line-height: 1.4;
-  margin: 0;
-}
-
-.case-summary .ghost-button {
-  justify-content: center;
-  margin-top: 3px;
-}
-
-@media (max-width: 1120px) {
+@media (max-width: 1180px) {
   .workspace {
     grid-template-columns: 1fr;
   }
@@ -615,18 +649,16 @@ textarea:focus {
   .topbar-actions,
   .live-box,
   .sample-row,
-  .pipeline-box,
-  .metric-grid {
+  .metric-grid,
+  .simulator-grid,
+  .threat-grid,
+  .view-tabs {
     grid-template-columns: 1fr;
   }
 
-  .topbar-actions {
-    display: grid;
-  }
-
+  .topbar-actions,
   .live-controls {
     display: grid;
-    grid-template-columns: 1fr;
   }
 
   .language-chip,

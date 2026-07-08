@@ -1,24 +1,40 @@
 # KZ VoiceShield
 
-KZ VoiceShield is a browser-based anti-scam call review MVP for Kazakh and Russian conversations.
+KZ VoiceShield is a browser-based anti-scam call review workspace for Kazakh and Russian conversations.
 
-It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, and export a case report. The current version runs fully in the browser and uses transparent rule-based detection, which makes it suitable for demos, early user testing, and dataset design before adding server-side speech or ML models.
+It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, and export a case report. The current version runs fully in the browser and uses transparent rule-based detection, which makes it suitable for demos, early user testing, and dataset design before adding server-side speech or ML models.
 
 ## Core Workflow
 
 1. Paste a transcript, upload a `.txt` file, or use browser live speech recognition.
 2. Review the scam risk score, confidence, case ID, and matched signals.
 3. Check evidence by category: impersonation, SMS/PIN request, money transfer, urgency, isolation, unofficial channel, remote access, family emergency, or investment scam.
-4. Export a plain-text case report for manual review or escalation.
+4. Review the timeline, threat lab, simulator, and operator playbook.
+5. Export a plain-text case report for manual review or escalation.
 
 ## Features
 
-- Kazakh/Russian scam phrase detection.
+- Kazakh/Russian scam phrase detection with weighted threat rules.
 - Live browser speech-to-text when supported by the browser.
-- Sample scenarios for bank, family emergency, investment, delivery, and safe calls.
+- Sample scenarios for bank takeover, AI voice family emergency, investment/crypto, delivery/customs, messenger takeover, victim-called setup, and safe calls.
 - Explainable scoring with matched terms and category-level advice.
 - Case ID, confidence score, immediate response checklist, and downloadable report.
+- Multi-view workspace: Case Review, Timeline, Threat Lab, Simulator, Playbook.
+- Safe-context handling so ordinary text and defensive warnings stay at zero risk.
 - Local-first MVP with no backend and no transcript upload to a server.
+
+## Threat Coverage
+
+- Bank/security-service impersonation.
+- Police, regulator, prosecutor, or government pressure.
+- SMS/OTP/PIN/CVV/IIN extraction.
+- Safe-account, loan, cash-out, and urgent transfer scripts.
+- Remote access and screen-sharing requests.
+- WhatsApp/Telegram account takeover.
+- AI voice or family emergency scams.
+- Delivery/customs smishing and payment links.
+- Investment, crypto, guaranteed-profit, romance, job, and marketplace scams.
+- Reverse-vishing setup calls where the victim calls a fake number from a notice.
 
 ## Run Locally
 

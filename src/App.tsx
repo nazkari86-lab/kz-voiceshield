@@ -1,66 +1,69 @@
 import {
   AlertTriangle,
-  AudioLines,
-  Banknote,
   BadgeCheck,
-  Ban,
+  Banknote,
+  BookOpenCheck,
+  BrainCircuit,
   CheckCircle2,
   ClipboardCheck,
   Clock3,
-  FileAudio,
   FileDown,
   Languages,
   LockKeyhole,
+  MessageCircleWarning,
   Mic,
   MicOff,
   PhoneCall,
+  Radar,
   ShieldAlert,
   ShieldCheck,
-  Siren,
   Smartphone,
   Upload,
-  WalletCards,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, CSSProperties } from 'react'
 import './App.css'
 
-type Severity = 'high' | 'medium' | 'low'
+type Severity = 'critical' | 'high' | 'medium' | 'low'
+type View = 'review' | 'timeline' | 'threats' | 'simulator' | 'playbook'
 
-type SignalRule = {
+type ThreatRule = {
   id: string
   title: string
+  tactic: string
+  stage: string
   severity: Severity
   weight: number
+  minHits?: number
   terms: string[]
-  minTerms?: number
   advice: string
 }
 
-type Evidence = SignalRule & {
+type Evidence = ThreatRule & {
   matches: string[]
   score: number
 }
 
-type SampleKey = 'bank' | 'relative' | 'investment' | 'delivery' | 'safe'
+type Analysis = {
+  score: number
+  confidence: number
+  risk: Severity
+  evidence: Evidence[]
+  matchedTerms: number
+  wordCount: number
+  caseId: string
+  verdict: string
+  nextAction: string
+}
 
 type SpeechRecognitionResultShape = {
   isFinal: boolean
-  [index: number]: {
-    transcript: string
-  }
+  [index: number]: { transcript: string }
 }
 
 type SpeechRecognitionEventShape = {
   resultIndex: number
-  results: {
-    length: number
-    [index: number]: SpeechRecognitionResultShape
-  }
-}
-
-type SpeechRecognitionErrorEventShape = {
-  error: string
+  results: { length: number; [index: number]: SpeechRecognitionResultShape }
 }
 
 type SpeechRecognitionInstance = {
@@ -68,7 +71,7 @@ type SpeechRecognitionInstance = {
   interimResults: boolean
   lang: string
   onend: (() => void) | null
-  onerror: ((event: SpeechRecognitionErrorEventShape) => void) | null
+  onerror: ((event: { error: string }) => void) | null
   onresult: ((event: SpeechRecognitionEventShape) => void) | null
   start: () => void
   stop: () => void
@@ -83,23 +86,34 @@ declare global {
   }
 }
 
-const SAMPLE_TRANSCRIPTS: Record<SampleKey, string> = {
-  bank: `Здравствуйте, это служба безопасности банка. На вашей карте подозрительная операция. Срочно продиктуйте SMS-код, чтобы мы отменили перевод. Не кладите трубку и никому не говорите. Переведите деньги на безопасный счет, мы поможем вернуть доступ.`,
-  relative: `Апа, это я. У меня проблема, я попал в аварию. Срочно нужны деньги, переведи на Kaspi сейчас. Потом объясню, только не звони другим, времени нет. Мой номер временно не работает, напиши в WhatsApp.`,
-  investment: `Сәлеметсіз бе, біз инвестициялық платформа өкіліміз. Бүгін ғана депозит салсаңыз, табыс 30 пайыз болады. Қазір Kaspi арқылы ақша аударыңыз, кейін менеджер сізге Telegram ботқа сілтеме жібереді. Ұсыныс құпия, ешкімге айтпаңыз.`,
-  delivery: `Здравствуйте, курьерская служба. Ваша посылка задержана, нужно оплатить таможенный сбор по ссылке. Назовите ИИН и код из SMS для подтверждения доставки. Если не сделаете сейчас, посылку вернут отправителю.`,
-  safe: `Сәлеметсіз бе. Это оператор клиники. Мы напоминаем о записи на завтра в 10:30. Если время неудобно, можете перезаписаться через официальный номер на сайте.`,
+const samples = {
+  bank:
+    'Здравствуйте, это служба безопасности банка. На вашей карте подозрительная операция. Срочно продиктуйте SMS-код, чтобы мы отменили перевод. Не кладите трубку и никому не говорите. Переведите деньги на безопасный счет.',
+  aiFamily:
+    'Апа, это я. Голос плохо слышно, я попал в аварию. Срочно нужны деньги, переведи на Kaspi сейчас. Мой номер временно не работает, никому не звони, потом объясню.',
+  courier:
+    'Курьерская служба. Ваша посылка задержана. Нужно оплатить таможенный сбор по ссылке и назвать ИИН, код из SMS для подтверждения доставки. Сделайте сейчас, иначе посылку вернут.',
+  investment:
+    'Біз инвестициялық платформа өкіліміз. Бүгін ғана депозит салсаңыз, табыс 30 пайыз болады. Қазір Kaspi арқылы ақша аударыңыз, менеджер Telegram ботқа сілтеме жібереді. Ұсыныс құпия.',
+  whatsapp:
+    'Я из поддержки WhatsApp. Ваш аккаунт будет заблокирован. Отправьте код подтверждения, который пришел в SMS, и перейдите по ссылке для восстановления доступа.',
+  victimCall:
+    'Вы оставляли заявку на замену домофона. Для подтверждения заявки назовите код из SMS и ИИН. Если не подтвердите сейчас, доступ в подъезд будет заблокирован.',
+  safe:
+    'Сәлеметсіз бе. Это оператор клиники. Мы напоминаем о записи на завтра в 10:30. Если время неудобно, можете перезаписаться через официальный номер на сайте. Никому не сообщайте SMS-коды.',
 }
 
-const SAMPLE_META: Record<SampleKey, { label: string; fileName: string }> = {
-  bank: { label: 'Bank scam', fileName: 'sample-bank-call.txt' },
-  relative: { label: 'Family scam', fileName: 'sample-relative-call.txt' },
-  investment: { label: 'Investment scam', fileName: 'sample-investment-call.txt' },
-  delivery: { label: 'Delivery scam', fileName: 'sample-delivery-call.txt' },
-  safe: { label: 'Safe call', fileName: 'sample-safe-call.txt' },
-}
+const sampleMeta = [
+  ['bank', 'Bank takeover'],
+  ['aiFamily', 'AI voice family'],
+  ['courier', 'Delivery/customs'],
+  ['investment', 'Investment/crypto'],
+  ['whatsapp', 'Messenger takeover'],
+  ['victimCall', 'Victim-called setup'],
+  ['safe', 'Safe call'],
+] as const
 
-const SAFE_CONTEXT_TERMS = [
+const safeContext = [
   'официальный номер',
   'официальный сайт',
   'не сообщайте',
@@ -110,135 +124,174 @@ const SAFE_CONTEXT_TERMS = [
   'құпия кодты айтпаңыз',
 ]
 
-const RULES: SignalRule[] = [
+const explicitActionTerms = [
+  'продиктуйте',
+  'назовите',
+  'сообщите',
+  'отправьте',
+  'переведите',
+  'переведи',
+  'установите',
+  'скачайте',
+  'перейдите по ссылке',
+  'оплатить',
+  'ақша аудар',
+  'айтыңыз',
+]
+
+const threatRules: ThreatRule[] = [
   {
-    id: 'bank-impersonation',
-    title: 'Bank or authority impersonation',
-    severity: 'high',
-    weight: 26,
-    terms: [
-      'служба безопасности',
-      'полиция',
-      'прокуратура',
-      'ұлттық банк',
-      'халық банк',
-      'kaspi bank',
-      'сотрудник банка',
-      'қаржы мониторингі',
-      'ұлттық қауіпсіздік',
-      'салық комитеті',
-      'курьерская служба',
-      'таможенный сбор',
-    ],
-    minTerms: 1,
-    advice: 'Hang up and call the official bank or agency number yourself.',
-  },
-  {
-    id: 'secret-code',
-    title: 'Requests for SMS, PIN or password',
-    severity: 'high',
+    id: 'bank-security',
+    title: 'Bank security impersonation',
+    tactic: 'Authority impersonation',
+    stage: 'Hook',
+    severity: 'critical',
     weight: 30,
-    terms: [
-      'sms-код',
-      'смс код',
-      'код из sms',
-      'продиктуйте',
-      'назовите',
-      'сообщите',
-      'айтыңыз',
-      'pin',
-      'пароль',
-      'cvv',
-      'одноразовый код',
-      'кодты айтыңыз',
-      'жсн',
-      'иин',
-      'код подтверждения',
-      'логин',
-      'verification code',
-    ],
-    minTerms: 2,
-    advice: 'Never share SMS codes, PINs, CVV, passwords or one-time login links.',
+    terms: ['служба безопасности банка', 'сотрудник банка', 'подозрительная операция', 'карта заблокирована', 'kaspi bank', 'халық банк'],
+    advice: 'End the call and call the bank through the official app or card number.',
   },
   {
-    id: 'money-transfer',
-    title: 'Pressure to transfer money',
+    id: 'law-enforcement',
+    title: 'Police, regulator or prosecutor pressure',
+    tactic: 'Institutional intimidation',
+    stage: 'Control',
     severity: 'high',
-    weight: 28,
-    terms: [
-      'переведи',
-      'переведите',
-      'перевести деньги',
-      'безопасный счет',
-      'kaspi',
-      'кредит',
-      'ақша аудар',
-      'қауіпсіз шот',
-      'депозит',
-      'оплатить',
-      'таможенный сбор',
-    ],
-    minTerms: 1,
-    advice: 'Do not transfer funds during a call. Verify through a trusted channel.',
+    weight: 24,
+    terms: ['полиция', 'прокуратура', 'финмониторинг', 'ұлттық банк', 'қаржы мониторингі', 'уголовное дело', 'тергеу'],
+    advice: 'Do not discuss money or accounts by phone. Verify through official published numbers.',
   },
   {
-    id: 'urgency',
-    title: 'Urgency and emotional pressure',
-    severity: 'medium',
-    weight: 18,
-    terms: ['срочно', 'немедленно', 'времени нет', 'қазір', 'тез', 'авария', 'проблема', 'шұғыл', 'блокировка'],
-    minTerms: 1,
-    advice: 'Slow down. Scammers use time pressure to block verification.',
+    id: 'otp-code',
+    title: 'SMS, OTP, PIN or account code request',
+    tactic: 'Credential theft',
+    stage: 'Extraction',
+    severity: 'critical',
+    weight: 34,
+    minHits: 2,
+    terms: ['sms код', 'sms-код', 'код из sms', 'код подтверждения', 'одноразовый код', 'pin', 'пароль', 'cvv', 'продиктуйте', 'назовите', 'сообщите', 'айтыңыз', 'жсн', 'иин'],
+    advice: 'Never share codes, PIN, CVV, IIN or passwords during a call.',
   },
   {
-    id: 'isolation',
-    title: 'Attempts to isolate the victim',
-    severity: 'medium',
-    weight: 14,
-    terms: ['никому не говорите', 'не звони', 'не кладите трубку', 'оставайтесь на линии', 'құпия', 'ешкімге айтпа'],
-    minTerms: 1,
-    advice: 'End the call and ask a trusted person to verify the situation.',
-  },
-  {
-    id: 'unofficial-channel',
-    title: 'Unofficial channel or off-platform request',
-    severity: 'low',
-    weight: 8,
-    terms: ['whatsapp', 'telegram', 'личный номер', 'ссылка', 'бот', 'приложение скачайте', 'қосымша жүктеңіз', 'link'],
-    minTerms: 1,
-    advice: 'Use official websites, verified apps and published phone numbers only.',
+    id: 'safe-account',
+    title: 'Safe account or urgent transfer script',
+    tactic: 'Money movement',
+    stage: 'Cash-out',
+    severity: 'critical',
+    weight: 34,
+    terms: ['безопасный счет', 'қауіпсіз шот', 'переведите деньги', 'переведи', 'ақша аудар', 'снять наличные', 'оформить кредит', 'кредит на ваше имя'],
+    advice: 'Do not move money during a call. Freeze the action and verify offline.',
   },
   {
     id: 'remote-access',
-    title: 'Remote access or app installation',
+    title: 'Remote access, screen sharing or device control',
+    tactic: 'Device compromise',
+    stage: 'Takeover',
+    severity: 'critical',
+    weight: 32,
+    terms: ['anydesk', 'teamviewer', 'удаленный доступ', 'демонстрация экрана', 'screen share', 'экран', 'қосымша жүктеңіз', 'приложение скачайте'],
+    advice: 'Do not install apps or share your screen during financial calls.',
+  },
+  {
+    id: 'messenger-takeover',
+    title: 'WhatsApp or Telegram account takeover',
+    tactic: 'Account takeover',
+    stage: 'Extraction',
+    severity: 'high',
+    weight: 25,
+    terms: ['whatsapp', 'telegram', 'аккаунт будет заблокирован', 'восстановления доступа', 'код подтверждения', 'бот', 'личный номер'],
+    advice: 'Do not share messenger verification codes. Check the app security settings directly.',
+  },
+  {
+    id: 'ai-family',
+    title: 'AI voice or family emergency pressure',
+    tactic: 'Emotional manipulation',
+    stage: 'Hook',
+    severity: 'high',
+    weight: 25,
+    minHits: 2,
+    terms: ['апа', 'мама', 'папа', 'сын', 'дочь', 'авария', 'больница', 'голос плохо слышно', 'мой номер временно не работает', 'не звони'],
+    advice: 'Call the relative back using a saved number and ask a private verification question.',
+  },
+  {
+    id: 'delivery-customs',
+    title: 'Courier, delivery or customs fee link',
+    tactic: 'Phishing payment',
+    stage: 'Cash-out',
     severity: 'high',
     weight: 24,
-    terms: ['anydesk', 'teamviewer', 'экран', 'удаленный доступ', 'демонстрация экрана', 'screen share'],
-    minTerms: 1,
-    advice: 'Do not install remote access apps or share your screen during financial calls.',
+    terms: ['курьерская служба', 'посылка задержана', 'таможенный сбор', 'оплатить по ссылке', 'доставка', 'вернут отправителю'],
+    advice: 'Use the official courier app/site; do not pay through a call link.',
   },
   {
-    id: 'deepfake-family',
-    title: 'Family emergency script',
+    id: 'investment-crypto',
+    title: 'Investment, crypto or guaranteed-profit offer',
+    tactic: 'Long-con fraud',
+    stage: 'Grooming',
+    severity: 'high',
+    weight: 24,
+    minHits: 2,
+    terms: ['инвестиция', 'крипто', 'доход', 'табыс', '30 пайыз', 'гарантия', 'депозит', 'платформа', 'менеджер', 'вывести прибыль'],
+    advice: 'Verify licenses, do not deposit from an unsolicited call, and check withdrawal terms.',
+  },
+  {
+    id: 'romance-work',
+    title: 'Romance, job or marketplace payment setup',
+    tactic: 'Trust-building fraud',
+    stage: 'Grooming',
+    severity: 'medium',
+    weight: 18,
+    minHits: 2,
+    terms: ['знакомства', 'подарок', 'работа удаленно', 'предоплата', 'olx', 'krisha', 'маркетплейс', 'бронь', 'залог'],
+    advice: 'Avoid prepayments and verify identities through platform-protected channels.',
+  },
+  {
+    id: 'victim-called',
+    title: 'Victim-called setup from fake notice or service',
+    tactic: 'Reverse vishing',
+    stage: 'Hook',
+    severity: 'high',
+    weight: 23,
+    minHits: 2,
+    terms: [
+      'вы сами позвонили',
+      'сами позвонили',
+      'официальный номер',
+      'операция безопасна',
+      'для отмены кредита',
+      'отмены кредита',
+      'домофон',
+      'счетчик',
+      'заявка',
+      'подтверждения заявки',
+      'доступ будет заблокирован',
+      'замена сим карты',
+      'оператор связи',
+    ],
+    advice: 'Do not trust numbers from notices/messages; find the provider number independently.',
+  },
+  {
+    id: 'urgency-isolation',
+    title: 'Urgency, secrecy or isolation',
+    tactic: 'Behavior control',
+    stage: 'Control',
+    severity: 'medium',
+    weight: 18,
+    terms: ['срочно', 'немедленно', 'времени нет', 'қазір', 'тез', 'никому не говорите', 'не кладите трубку', 'оставайтесь на линии', 'құпия', 'ешкімге айтпа'],
+    advice: 'Pause. Scammers use speed and isolation to prevent verification.',
+  },
+  {
+    id: 'phishing-link',
+    title: 'Suspicious link, QR or off-platform payment',
+    tactic: 'Phishing',
+    stage: 'Extraction',
     severity: 'medium',
     weight: 17,
-    terms: ['апа', 'мама', 'папа', 'сын', 'дочь', 'авария', 'больница', 'мой номер временно не работает'],
-    minTerms: 2,
-    advice: 'Call the relative back using a saved number before sending money.',
-  },
-  {
-    id: 'investment-return',
-    title: 'Unrealistic investment or prize promise',
-    severity: 'medium',
-    weight: 16,
-    terms: ['инвестиция', 'табыс', 'доход', '30 пайыз', 'гарантия', 'выигрыш', 'приз', 'платформа', 'менеджер'],
-    minTerms: 2,
-    advice: 'Verify investment licenses and never send deposits during an unsolicited call.',
+    terms: ['ссылка', 'link', 'qr', 'бот', 'перейдите', 'личный кабинет', 'форма оплаты', 'неофициальный сайт'],
+    advice: 'Open services manually through official apps or typed domains.',
   },
 ]
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
 const normalizeText = (text: string) =>
   text
     .toLowerCase()
@@ -247,114 +300,103 @@ const normalizeText = (text: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-const termPattern = (term: string) => {
-  const normalized = normalizeText(term)
-  const escaped = escapeRegExp(normalized).replace(/\s+/g, '\\s+')
-  return new RegExp(`(^|\\s)${escaped}(?=\\s|$)`, 'u')
-}
-
-const countMatches = (text: string, terms: string[]) => {
-  const normalized = normalizeText(text)
-  if (!normalized) return []
-
-  return terms.filter((term) => termPattern(term).test(normalized))
-}
-
-const hasSafeContext = (text: string) => {
-  const normalized = normalizeText(text)
-  return SAFE_CONTEXT_TERMS.some((term) => termPattern(term).test(normalized))
-}
-
-const analyzeTranscript = (text: string) => {
-  const normalized = normalizeText(text)
-  const wordCount = normalized ? normalized.split(' ').length : 0
-  const safeContext = hasSafeContext(text)
-  const initialEvidence: Evidence[] = RULES.map((rule) => ({
-    ...rule,
-    matches: countMatches(text, rule.terms),
-    score: 0,
-  }))
-    .filter((rule) => rule.matches.length >= (rule.minTerms ?? 1))
-    .map((rule) => {
-      const severityMultiplier = rule.severity === 'high' ? 1.25 : rule.severity === 'medium' ? 1 : 0.7
-      const matchScore = rule.weight + Math.max(0, rule.matches.length - 1) * 4
-      return { ...rule, score: Math.round(matchScore * severityMultiplier) }
-    })
-  const hasActionableThreat = initialEvidence.some((item) =>
-    ['secret-code', 'money-transfer', 'urgency', 'isolation', 'remote-access'].includes(item.id),
-  )
-  const evidence = safeContext && !hasActionableThreat ? initialEvidence.filter((item) => item.id !== 'bank-impersonation') : initialEvidence
-
-  const matchedTerms = evidence.reduce((total, item) => total + item.matches.length, 0)
-  const highEvidence = evidence.filter((item) => item.severity === 'high').length
-  const comboBonus =
-    evidence.some((item) => item.id === 'money-transfer') && evidence.some((item) => item.id === 'secret-code')
-      ? 18
-      : evidence.some((item) => item.id === 'money-transfer') && evidence.some((item) => item.id === 'urgency')
-        ? 12
-        : 0
-  const shortTextPenalty = wordCount < 3 ? 0.35 : wordCount < 6 ? 0.65 : 1
-  const safeContextPenalty = safeContext && highEvidence === 0 ? 0.45 : 1
-  const rawScore = Math.round(
-    (evidence.reduce((score, rule) => score + rule.score, 0) + comboBonus) * shortTextPenalty * safeContextPenalty,
-  )
-  const score = evidence.length === 0 ? 0 : Math.min(98, rawScore)
-  const risk: Severity = score >= 70 ? 'high' : score >= 38 ? 'medium' : 'low'
-  const confidence =
-    evidence.length === 0
-      ? 0
-      : Math.min(96, Math.round((matchedTerms * 8 + evidence.length * 10 + Math.min(wordCount, 40)) * shortTextPenalty))
-
-  return { confidence, evidence, matchedTerms, risk, score, wordCount }
-}
-
-const getRecommendedAction = (risk: Severity) => {
-  if (risk === 'high') return 'Block interaction and verify through official numbers'
-  if (risk === 'medium') return 'Pause the call and confirm through a trusted channel'
-  return 'Continue only through verified official channels'
-}
-
-const buildReport = (transcript: string, analysis: ReturnType<typeof analyzeTranscript>) => {
-  const caseId = createCaseId(transcript)
-  const evidenceLines = analysis.evidence
-    .map((item) => `- ${item.title}: ${item.matches.join(', ')} | ${item.advice}`)
-    .join('\n')
-
-  return [
-    'KZ VoiceShield Case Report',
-    `Case ID: ${caseId}`,
-    `Generated: ${new Date().toLocaleString()}`,
-    `Risk: ${analysis.risk.toUpperCase()} (${analysis.score}/100)`,
-    `Confidence: ${analysis.confidence}/100`,
-    `Matched signals: ${analysis.matchedTerms}`,
-    `Recommended action: ${getRecommendedAction(analysis.risk)}`,
-    '',
-    'Immediate checklist:',
-    '- End the call before taking any financial action',
-    '- Call the bank, relative, courier or agency through an official saved number',
-    '- Do not share SMS codes, PIN, CVV, IIN, screen access or remote-control permissions',
-    '- Preserve this transcript/report if money was requested',
-    '',
-    'Evidence:',
-    evidenceLines || '- No matched scam patterns',
-    '',
-    'Transcript:',
-    transcript || '[empty]',
-  ].join('\n')
-}
-
+const pattern = (term: string) => new RegExp(`(^|\\s)${escapeRegExp(normalizeText(term)).replace(/\s+/g, '\\s+')}(?=\\s|$)`, 'u')
 const createCaseId = (text: string) => {
   let hash = 0
-  for (let index = 0; index < text.length; index += 1) {
-    hash = (hash * 31 + text.charCodeAt(index)) >>> 0
-  }
+  for (let index = 0; index < text.length; index += 1) hash = (hash * 31 + text.charCodeAt(index)) >>> 0
   return `KZVS-${hash.toString(16).padStart(8, '0').toUpperCase().slice(0, 8)}`
 }
 
-function RiskBadge({ risk }: { risk: Severity }) {
-  const label = risk === 'high' ? 'High risk' : risk === 'medium' ? 'Review needed' : 'Low risk'
-  const Icon = risk === 'high' ? ShieldAlert : risk === 'medium' ? AlertTriangle : ShieldCheck
+const detectSafeContext = (text: string) => safeContext.some((term) => pattern(term).test(normalizeText(text)))
+const hasExplicitAction = (text: string) => explicitActionTerms.some((term) => pattern(term).test(normalizeText(text)))
+const matchTerms = (text: string, terms: string[]) => {
+  const normalized = normalizeText(text)
+  if (!normalized) return []
+  return terms.filter((term) => pattern(term).test(normalized))
+}
 
+const analyzeTranscript = (text: string): Analysis => {
+  const normalized = normalizeText(text)
+  const wordCount = normalized ? normalized.split(' ').length : 0
+  const initialEvidence = threatRules
+    .map((rule) => ({ ...rule, matches: matchTerms(text, rule.terms), score: 0 }))
+    .filter((rule) => rule.matches.length >= (rule.minHits ?? 1))
+    .map((rule) => {
+      const severityBoost = rule.severity === 'critical' ? 1.35 : rule.severity === 'high' ? 1.15 : rule.severity === 'medium' ? 0.9 : 0.65
+      return { ...rule, score: Math.round((rule.weight + (rule.matches.length - 1) * 4) * severityBoost) }
+    })
+
+  const protective = detectSafeContext(text) && !hasExplicitAction(text)
+  const actionable = initialEvidence.some((item) => ['safe-account', 'remote-access', 'urgency-isolation'].includes(item.id))
+  const evidence =
+    protective && !actionable
+      ? initialEvidence.filter((item) => !['bank-security', 'otp-code', 'messenger-takeover'].includes(item.id))
+      : initialEvidence
+  const matchedTerms = evidence.reduce((total, item) => total + item.matches.length, 0)
+  const has = (id: string) => evidence.some((item) => item.id === id)
+  const comboBonus =
+    has('otp-code') && has('safe-account')
+      ? 22
+      : has('remote-access') && has('bank-security')
+        ? 18
+        : has('ai-family') && has('safe-account')
+        ? 16
+        : has('phishing-link') && (has('delivery-customs') || has('messenger-takeover'))
+          ? 14
+          : has('victim-called') && has('otp-code')
+            ? 22
+            : 0
+  const shortTextPenalty = wordCount < 3 ? 0.25 : wordCount < 7 ? 0.65 : 1
+  const rawScore = Math.round((evidence.reduce((sum, item) => sum + item.score, 0) + comboBonus) * shortTextPenalty)
+  const score = evidence.length === 0 ? 0 : Math.min(99, rawScore)
+  const risk: Severity = score >= 85 ? 'critical' : score >= 65 ? 'high' : score >= 35 ? 'medium' : 'low'
+  const confidence = evidence.length === 0 ? 0 : Math.min(98, Math.round((matchedTerms * 7 + evidence.length * 9 + Math.min(wordCount, 45)) * shortTextPenalty))
+  const verdict =
+    risk === 'critical'
+      ? 'Immediate scam intervention'
+      : risk === 'high'
+        ? 'Likely fraud attempt'
+        : risk === 'medium'
+          ? 'Manual review required'
+          : 'No actionable scam pattern'
+  const nextAction =
+    risk === 'critical' || risk === 'high'
+      ? 'End contact, verify through official saved channels, preserve the transcript.'
+      : risk === 'medium'
+        ? 'Pause and verify before any payment, code sharing, or app installation.'
+        : 'Continue only through official channels and keep monitoring.'
+
+  return { caseId: createCaseId(text), confidence, evidence, matchedTerms, nextAction, risk, score, verdict, wordCount }
+}
+
+const sentenceTimeline = (text: string) =>
+  text
+    .split(/(?<=[.!?。])\s+|\n+/u)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment, index) => ({ index: index + 1, segment, analysis: analyzeTranscript(segment) }))
+
+const buildReport = (text: string, analysis: Analysis) => [
+  'KZ VoiceShield Case Report',
+  `Case ID: ${analysis.caseId}`,
+  `Generated: ${new Date().toLocaleString()}`,
+  `Risk: ${analysis.risk.toUpperCase()} (${analysis.score}/100)`,
+  `Confidence: ${analysis.confidence}/100`,
+  `Verdict: ${analysis.verdict}`,
+  `Recommended action: ${analysis.nextAction}`,
+  '',
+  'Evidence:',
+  ...(analysis.evidence.length
+    ? analysis.evidence.map((item) => `- ${item.title} [${item.tactic}/${item.stage}]: ${item.matches.join(', ')} | ${item.advice}`)
+    : ['- No matched scam patterns']),
+  '',
+  'Transcript:',
+  text || '[empty]',
+].join('\n')
+
+function RiskBadge({ risk }: { risk: Severity }) {
+  const label = risk === 'critical' ? 'Critical' : risk === 'high' ? 'High risk' : risk === 'medium' ? 'Review' : 'Low risk'
+  const Icon = risk === 'critical' || risk === 'high' ? ShieldAlert : risk === 'medium' ? AlertTriangle : ShieldCheck
   return (
     <span className={`risk-badge ${risk}`}>
       <Icon size={16} />
@@ -363,49 +405,44 @@ function RiskBadge({ risk }: { risk: Severity }) {
   )
 }
 
+const tabs: Array<[View, string]> = [
+  ['review', 'Case Review'],
+  ['timeline', 'Timeline'],
+  ['threats', 'Threat Lab'],
+  ['simulator', 'Simulator'],
+  ['playbook', 'Playbook'],
+]
+
 function App() {
-  const [transcript, setTranscript] = useState(SAMPLE_TRANSCRIPTS.bank)
+  const [activeView, setActiveView] = useState<View>('review')
+  const [transcript, setTranscript] = useState(samples.bank)
   const [fileName, setFileName] = useState('sample-bank-call.txt')
   const [liveLanguage, setLiveLanguage] = useState('ru-RU')
   const [isListening, setIsListening] = useState(false)
   const [liveStatus, setLiveStatus] = useState('Live mode is ready')
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const analysis = useMemo(() => analyzeTranscript(transcript), [transcript])
-  const caseId = useMemo(() => createCaseId(transcript), [transcript])
-  const isSpeechSupported =
-    typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
+  const timeline = useMemo(() => sentenceTimeline(transcript), [transcript])
+  const isSpeechSupported = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
+  const progressStyle = { '--score': `${analysis.score}%` } as CSSProperties
 
-  useEffect(() => {
-    return () => {
-      recognitionRef.current?.stop()
-    }
-  }, [])
+  useEffect(() => () => recognitionRef.current?.stop(), [])
+
+  const exportReport = () => {
+    const blob = new Blob([buildReport(transcript, analysis)], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `kz-voiceshield-${analysis.caseId}.txt`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
 
   const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-
     setFileName(file.name)
-    if (file.type.startsWith('text/') || file.name.endsWith('.txt')) {
-      file.text().then(setTranscript)
-    }
-  }
-
-  const highSignals = analysis.evidence.filter((item) => item.severity === 'high').length
-  const progressStyle = { '--score': `${analysis.score}%` } as CSSProperties
-  const recommendedAction = getRecommendedAction(analysis.risk)
-  const caseReadiness = analysis.risk === 'high' ? 'Ready for alert' : analysis.risk === 'medium' ? 'Needs review' : 'Monitor only'
-  const sampleKeys = Object.keys(SAMPLE_TRANSCRIPTS) as SampleKey[]
-
-  const exportReport = () => {
-    const report = buildReport(transcript, analysis)
-    const blob = new Blob([report], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `kz-voiceshield-report-${Date.now()}.txt`
-    link.click()
-    URL.revokeObjectURL(url)
+    if (file.type.startsWith('text/') || file.name.endsWith('.txt')) file.text().then(setTranscript)
   }
 
   const stopLiveTranscription = () => {
@@ -421,46 +458,31 @@ function App() {
       setLiveStatus('Live speech recognition is not supported in this browser')
       return
     }
-
     recognitionRef.current?.stop()
     const recognition = new Recognition()
     recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = liveLanguage
-
     recognition.onresult = (event) => {
       let finalText = ''
       let interimText = ''
-
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index]
-        const phrase = result[0]?.transcript.trim()
+        const phrase = event.results[index][0]?.transcript.trim()
         if (!phrase) continue
-
-        if (result.isFinal) {
-          finalText += `${phrase}. `
-        } else {
-          interimText += phrase
-        }
+        if (event.results[index].isFinal) finalText += `${phrase}. `
+        else interimText += phrase
       }
-
-      if (finalText) {
-        setTranscript((current) => `${current.trim()} ${finalText}`.trim())
-      }
-
+      if (finalText) setTranscript((current) => `${current.trim()} ${finalText}`.trim())
       setLiveStatus(interimText ? `Listening: ${interimText}` : 'Listening for speech...')
     }
-
     recognition.onerror = (event) => {
       setLiveStatus(`Live transcription error: ${event.error}`)
       setIsListening(false)
     }
-
     recognition.onend = () => {
       setIsListening(false)
       recognitionRef.current = null
     }
-
     recognitionRef.current = recognition
     setTranscript('')
     setFileName('live-call-transcript')
@@ -469,233 +491,164 @@ function App() {
     recognition.start()
   }
 
-  const loadSample = (sample: SampleKey) => {
-    setTranscript(SAMPLE_TRANSCRIPTS[sample])
-    setFileName(SAMPLE_META[sample].fileName)
-  }
+  const highSignals = analysis.evidence.filter((item) => item.severity === 'critical' || item.severity === 'high').length
 
   return (
     <main className="app-shell">
-      <header className="topbar" aria-label="Product header">
+      <header className="topbar">
         <div className="brand">
-          <div className="brand-mark">
-            <LockKeyhole size={19} />
-          </div>
+          <div className="brand-mark"><LockKeyhole size={19} /></div>
           <div>
             <h1>KZ VoiceShield</h1>
-            <p>Anti-scam call review for Kazakh/Russian conversations</p>
+            <p>Threat intelligence workspace for Kazakh/Russian phone fraud</p>
           </div>
         </div>
         <div className="topbar-actions">
-          <span className="language-chip">
-            <Languages size={15} />
-            Kazakh/Russian
-          </span>
-          <button className="ghost-button" type="button" onClick={exportReport}>
-            <FileDown size={16} />
-            Export report
-          </button>
+          <span className="language-chip"><Languages size={15} />KZ/RU</span>
+          <button className="ghost-button" type="button" onClick={exportReport}><FileDown size={16} />Export report</button>
         </div>
       </header>
 
-      <section className="workspace" aria-label="Voice scam analysis workspace">
+      <nav className="view-tabs" aria-label="Application views">
+        {tabs.map(([view, label]) => (
+          <button className={activeView === view ? 'active' : ''} key={view} type="button" onClick={() => setActiveView(view)}>
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      <section className="workspace">
         <aside className="panel input-panel">
           <div className="panel-heading">
-            <div>
-              <h2>Audio or transcript</h2>
-              <p>Paste a call transcript or upload a text file for local review.</p>
-            </div>
-            <FileAudio size={20} />
+            <div><h2>Transcript intake</h2><p>Paste, upload, stream, or load a real-world scam scenario.</p></div>
+            <PhoneCall size={20} />
           </div>
-
           <label className="upload-box">
-            <input accept=".txt,.mp3,.wav,.m4a,audio/*,text/plain" onChange={handleFile} type="file" />
+            <input accept=".txt,text/plain" onChange={handleFile} type="file" />
             <Upload size={20} />
             <span>Upload transcript</span>
             <small>{fileName}</small>
           </label>
-
           <div className={`live-box ${isListening ? 'active' : ''}`}>
-            <div className="live-copy">
-              <strong>Real-time call transcription</strong>
-              <span>{liveStatus}</span>
-            </div>
+            <div className="live-copy"><strong>Live transcription</strong><span>{liveStatus}</span></div>
             <div className="live-controls">
-              <select
-                aria-label="Live transcription language"
-                disabled={isListening}
-                value={liveLanguage}
-                onChange={(event) => setLiveLanguage(event.target.value)}
-              >
+              <select disabled={isListening} value={liveLanguage} onChange={(event) => setLiveLanguage(event.target.value)}>
                 <option value="ru-RU">Russian</option>
                 <option value="kk-KZ">Kazakh</option>
               </select>
               {isListening ? (
-                <button className="danger-button" type="button" onClick={stopLiveTranscription}>
-                  <MicOff size={15} />
-                  Stop
-                </button>
+                <button className="danger-button" type="button" onClick={stopLiveTranscription}><MicOff size={15} />Stop</button>
               ) : (
-                <button
-                  className="primary-button"
-                  disabled={!isSpeechSupported}
-                  type="button"
-                  onClick={startLiveTranscription}
-                >
-                  <Mic size={15} />
-                  Start live
-                </button>
+                <button className="primary-button" disabled={!isSpeechSupported} type="button" onClick={startLiveTranscription}><Mic size={15} />Start</button>
               )}
             </div>
           </div>
-
-          <textarea
-            aria-label="Call transcript"
-            spellCheck={false}
-            value={transcript}
-            onChange={(event) => setTranscript(event.target.value)}
-          />
-
-          <div className="sample-row" aria-label="Sample transcripts">
-            {sampleKeys.map((sample) => (
-              <button key={sample} type="button" onClick={() => loadSample(sample)}>
-                {SAMPLE_META[sample].label}
-              </button>
+          <textarea spellCheck={false} value={transcript} onChange={(event) => setTranscript(event.target.value)} />
+          <div className="sample-row">
+            {sampleMeta.map(([key, label]) => (
+              <button key={key} type="button" onClick={() => { setTranscript(samples[key]); setFileName(`${key}.txt`) }}>{label}</button>
             ))}
           </div>
         </aside>
 
-        <section className="panel score-panel">
+        <section className="panel main-panel">
           <div className="panel-heading">
-            <div>
-              <h2>Analyze call</h2>
-              <p>Risk score for pressure, impersonation, money requests and isolation.</p>
-            </div>
-            <PhoneCall size={20} />
+            <div><h2>{tabs.find(([view]) => view === activeView)?.[1]}</h2><p>{analysis.caseId} · {analysis.verdict}</p></div>
+            <Radar size={20} />
           </div>
 
-          <div className={`score-card ${analysis.risk}`}>
-            <div className="score-topline">
-              <RiskBadge risk={analysis.risk} />
-              <span>{caseId}</span>
-            </div>
-            <div className="score-number">{analysis.score}</div>
-            <div className="score-meter" style={progressStyle}>
-              <span />
-            </div>
-            <p>
-              {analysis.risk === 'high'
-                ? 'This call contains multiple high-risk scam indicators. Stop the conversation and verify independently.'
-                : analysis.risk === 'medium'
-                  ? 'Several warning signs are present. Verify through official channels before taking action.'
-                  : 'No major scam pattern detected in this transcript, but official verification is still recommended.'}
-            </p>
-          </div>
+          {activeView === 'review' && (
+            <>
+              <div className={`score-card ${analysis.risk}`}>
+                <div className="score-topline"><RiskBadge risk={analysis.risk} /><span>{analysis.caseId}</span></div>
+                <div className="score-number">{analysis.score}</div>
+                <div className="score-meter" style={progressStyle}><span /></div>
+                <p>{analysis.nextAction}</p>
+              </div>
+              <div className="metric-grid">
+                <div><ShieldAlert size={18} /><strong>{highSignals}</strong><span>major signals</span></div>
+                <div><BadgeCheck size={18} /><strong>{analysis.confidence}</strong><span>confidence</span></div>
+                <div><ClipboardCheck size={18} /><strong>{analysis.evidence.length}</strong><span>rules matched</span></div>
+                <div><BrainCircuit size={18} /><strong>{analysis.matchedTerms}</strong><span>terms found</span></div>
+                <div><Clock3 size={18} /><strong>{timeline.length}</strong><span>segments</span></div>
+                <div><Banknote size={18} /><strong>{analysis.evidence.some((item) => item.stage === 'Cash-out') ? 'Yes' : 'No'}</strong><span>cash-out stage</span></div>
+              </div>
+              <div className="action-box"><h3>Operator action</h3><p>{analysis.nextAction}</p></div>
+            </>
+          )}
 
-          <div className="metric-grid">
-            <div>
-              <Siren size={18} />
-              <strong>{highSignals}</strong>
-              <span>critical signals</span>
+          {activeView === 'timeline' && (
+            <div className="timeline-list">
+              {timeline.map((item) => (
+                <article className={`timeline-item ${item.analysis.risk}`} key={`${item.index}-${item.segment}`}>
+                  <span>{item.index}</span>
+                  <div><strong>{item.analysis.score}/100 · {item.analysis.verdict}</strong><p>{item.segment}</p></div>
+                </article>
+              ))}
             </div>
-            <div>
-              <BadgeCheck size={18} />
-              <strong>{analysis.confidence}</strong>
-              <span>confidence</span>
-            </div>
-            <div>
-              <Banknote size={18} />
-              <strong>{analysis.evidence.some((item) => item.id === 'money-transfer') ? 'Yes' : 'No'}</strong>
-              <span>money request</span>
-            </div>
-            <div>
-              <AudioLines size={18} />
-              <strong>{Math.max(1, Math.ceil(transcript.length / 820))}m</strong>
-              <span>estimated length</span>
-            </div>
-            <div>
-              <Smartphone size={18} />
-              <strong>{analysis.evidence.some((item) => item.id === 'unofficial-channel') ? 'Yes' : 'No'}</strong>
-              <span>off-platform ask</span>
-            </div>
-            <div>
-              <WalletCards size={18} />
-              <strong>{analysis.matchedTerms}</strong>
-              <span>matched terms</span>
-            </div>
-          </div>
+          )}
 
-          <div className="action-box">
-            <h3>Recommended action</h3>
-            <p>{recommendedAction}. Do not share codes, money, screen access or personal data during the call.</p>
-          </div>
+          {activeView === 'threats' && (
+            <div className="threat-grid">
+              {threatRules.map((rule) => (
+                <article className={`threat-card ${rule.severity}`} key={rule.id}>
+                  <strong>{rule.title}</strong>
+                  <span>{rule.tactic} · {rule.stage} · weight {rule.weight}</span>
+                  <p>{rule.advice}</p>
+                </article>
+              ))}
+            </div>
+          )}
 
-          <div className="pipeline-box">
-            <div>
-              <Mic size={16} />
-              <span>Speech stream</span>
+          {activeView === 'simulator' && (
+            <div className="simulator-grid">
+              {sampleMeta.map(([key, label]) => {
+                const result = analyzeTranscript(samples[key])
+                return (
+                  <button className={`scenario-button ${result.risk}`} key={key} type="button" onClick={() => { setTranscript(samples[key]); setFileName(`${key}.txt`); setActiveView('review') }}>
+                    <strong>{label}</strong>
+                    <span>{result.score}/100 · {result.verdict}</span>
+                  </button>
+                )
+              })}
             </div>
-            <div>
-              <Clock3 size={16} />
-              <span>Live transcript</span>
-            </div>
-            <div>
-              <ClipboardCheck size={16} />
-              <span>Case report</span>
-            </div>
-          </div>
+          )}
 
-          <div className="checklist-box">
-            <h3>Response checklist</h3>
-            <ul>
-              <li><Ban size={14} /> End the call before sending money or codes.</li>
-              <li><PhoneCall size={14} /> Call back through a saved official number.</li>
-              <li><ClipboardCheck size={14} /> Save the transcript and report for review.</li>
-            </ul>
-          </div>
+          {activeView === 'playbook' && (
+            <div className="playbook">
+              <article><ShieldCheck size={18} /><div><strong>1. Freeze action</strong><p>Stop transfers, code sharing, screen sharing and app installs immediately.</p></div></article>
+              <article><PhoneCall size={18} /><div><strong>2. Verify independently</strong><p>Call the bank, courier, relative or agency through a saved official number.</p></div></article>
+              <article><Smartphone size={18} /><div><strong>3. Secure accounts</strong><p>Change passwords, end suspicious sessions and check messenger linked devices.</p></div></article>
+              <article><FileDown size={18} /><div><strong>4. Preserve evidence</strong><p>Export this report, keep screenshots, phone numbers, links and timestamps.</p></div></article>
+            </div>
+          )}
         </section>
 
         <aside className="panel evidence-panel">
           <div className="panel-heading">
-            <div>
-              <h2>Scam signals</h2>
-              <p>Detected evidence and clear next steps.</p>
-            </div>
-            <ShieldCheck size={20} />
+            <div><h2>Evidence</h2><p>Matched tactics, stages and concrete terms.</p></div>
+            <MessageCircleWarning size={20} />
           </div>
-
           <div className="evidence-list">
             {analysis.evidence.length === 0 ? (
-              <div className="empty-state">
-                <CheckCircle2 size={22} />
-                <strong>No matched scam patterns</strong>
-                <span>Try another transcript or add more call context.</span>
-              </div>
+              <div className="empty-state"><CheckCircle2 size={22} /><strong>No actionable scam pattern</strong><span>Ordinary text now stays at 0 unless real signals appear.</span></div>
             ) : (
               analysis.evidence.map((item) => (
                 <article className={`evidence-item ${item.severity}`} key={item.id}>
-                  <div>
-                    <strong>{item.title}</strong>
-                    <p>{item.advice}</p>
-                  </div>
-                  <div className="term-row">
-                    {item.matches.map((match) => (
-                      <span key={match}>{match}</span>
-                    ))}
-                  </div>
+                  <div><strong>{item.title}</strong><p>{item.tactic} · {item.stage} · +{item.score}</p></div>
+                  <div className="term-row">{item.matches.map((match) => <span key={match}>{match}</span>)}</div>
                 </article>
               ))
             )}
           </div>
-
           <div className={`case-summary ${analysis.risk}`}>
-            <strong>{caseReadiness}</strong>
-            <span>Score {analysis.score}/100</span>
-            <p>{recommendedAction}</p>
-            <button className="ghost-button" type="button" onClick={exportReport}>
-              <FileDown size={15} />
-              Download case report
-            </button>
+            <strong>{analysis.verdict}</strong>
+            <span>Score {analysis.score}/100 · Confidence {analysis.confidence}/100</span>
+            <p>{analysis.nextAction}</p>
+          </div>
+          <div className="source-box">
+            <BookOpenCheck size={17} />
+            <span>Threat model covers bank vishing, OTP theft, remote access, AI-family scams, delivery phishing, investment fraud, messenger takeover, marketplace deposits and reverse-vishing setup calls.</span>
           </div>
         </aside>
       </section>

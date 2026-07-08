@@ -63,6 +63,26 @@ npm run build
 npm run lint
 ```
 
+## Test
+
+```bash
+npm test
+```
+
+The regression suite covers low-risk ordinary text, defensive warnings, bank cash-out scripts, AI-family emergency scams, reverse-vishing, and dataset exports.
+
+## Deploy
+
+The repository includes production-ready SPA fallbacks for both Vercel and Netlify:
+
+- `vercel.json` rewrites routes to `index.html`.
+- `netlify.toml` builds with `npm run build` and publishes `dist`.
+- `.env.example` reserves `VITE_VOICESHIELD_API_URL` for a future backend.
+
+## CI
+
+GitHub Actions runs `npm ci`, `npm run lint`, `npm test`, and `npm run build` on pushes to `main` and pull requests.
+
 ## Product Notes
 
 This is an MVP, not a final fraud-detection engine. The next production steps are:

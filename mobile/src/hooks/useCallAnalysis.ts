@@ -15,6 +15,7 @@ export const useCallAnalysis = () => {
   const [isListening, setIsListening] = useState(false)
   const [modelReady, setModelReady] = useState(false)
   const [audioLevel, setAudioLevel] = useState(0)
+  const [error, setError] = useState<string | null>(null)
   const result = useMemo(() => scoreTranscript(transcript), [transcript])
 
   useEffect(() => {
@@ -37,35 +38,48 @@ export const useCallAnalysis = () => {
   }, [])
 
   useEffect(() => {
-    void OverlayModule.updateRisk(result.score, result.level, source)
+    void OverlayModule.updateRisk(result.score, result.level, source).catch(() => undefined)
   }, [result.level, result.score, source])
 
   const prepareWhisper = useCallback(async () => {
-    const existing = await ModelDownloader.getModelPath(modelFile)
-    const path = existing ?? await ModelDownloader.downloadModel(modelUrl, modelFile)
-    await WhisperModule.initialize(path, 'ru')
-    setModelReady(true)
+    setError(null)
+    try {
+      const existing = await ModelDownloader.getModelPath(modelFile)
+      const path = existing ?? await ModelDownloader.downloadModel(modelUrl, modelFile)
+      await WhisperModule.initialize(path, 'ru')
+      setModelReady(true)
+    } catch {
+      setModelReady(false)
+      setError('Could not prepare the speech model. Check internet access and free storage.')
+    }
   }, [])
 
   const start = useCallback(async () => {
-    const accessibilityEnabled = await AccessibilityModule.isEnabled()
-    if (!accessibilityEnabled && !modelReady) await prepareWhisper()
-    if (!accessibilityEnabled) {
-      await AudioCaptureModule.startCapture()
-      await WhisperModule.startStreaming()
+    setError(null)
+    try {
+      const accessibilityEnabled = await AccessibilityModule.isEnabled()
+      if (!accessibilityEnabled && !modelReady) await prepareWhisper()
+      if (!accessibilityEnabled) {
+        await AudioCaptureModule.startCapture()
+        await WhisperModule.startStreaming()
+      }
+      await OverlayModule.show()
+      setIsListening(true)
+    } catch {
+      setIsListening(false)
+      setError('Protection could not start. Enable microphone, overlay and accessibility permissions in setup.')
     }
-    await OverlayModule.show()
-    setIsListening(true)
   }, [modelReady, prepareWhisper])
 
   const stop = useCallback(async () => {
-    await AudioCaptureModule.stopCapture()
-    await WhisperModule.stopStreaming()
+    await AudioCaptureModule.stopCapture().catch(() => undefined)
+    await WhisperModule.stopStreaming().catch(() => undefined)
     setIsListening(false)
   }, [])
 
   return {
     audioLevel,
+    error,
     isListening,
     modelReady,
     prepareWhisper,

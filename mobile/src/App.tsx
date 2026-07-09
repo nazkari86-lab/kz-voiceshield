@@ -47,6 +47,7 @@ export default function App() {
           <View style={styles.panel}>
             <Text style={styles.panelTitle}>{analysis.result.level.toUpperCase()} · {analysis.source}</Text>
             <Text style={styles.summary}>{analysis.result.summary}</Text>
+            {analysis.error && <Text style={styles.error}>{analysis.error}</Text>}
             <TextInput
               multiline
               onChangeText={analysis.setTranscript}
@@ -93,6 +94,7 @@ const styles = StyleSheet.create({
   badgeText: { color: '#ffffff', fontSize: 24, fontWeight: '900' },
   check: { color: '#334155', fontSize: 13, lineHeight: 20 },
   content: { gap: 14, padding: 16 },
+  error: { backgroundColor: '#fee2e2', borderColor: '#fecaca', borderRadius: 12, borderWidth: 1, color: '#991b1b', fontSize: 13, lineHeight: 19, padding: 12 },
   header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', padding: 18 },
   historyItem: { backgroundColor: '#f8fafc', borderRadius: 12, gap: 6, padding: 12 },
   historyScore: { color: '#0f172a', fontWeight: '900' },

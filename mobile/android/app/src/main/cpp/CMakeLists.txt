@@ -4,11 +4,14 @@ project(voiceshield_whisper)
 set(WHISPER_CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/whisper.cpp")
 
 add_library(whisper-jni SHARED whisper_jni.cpp)
+add_library(react_featureflagsjni SHARED react_featureflags_jni.cpp)
 
 find_library(log-lib log)
 
 target_compile_features(whisper-jni PRIVATE cxx_std_17)
 target_compile_options(whisper-jni PRIVATE -O3 -ffast-math)
+target_compile_features(react_featureflagsjni PRIVATE cxx_std_17)
+target_link_libraries(react_featureflagsjni ${log-lib})
 
 if(EXISTS "${WHISPER_CPP_DIR}/CMakeLists.txt")
   set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)

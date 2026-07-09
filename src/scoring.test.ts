@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeTranscript, buildEvidenceBundle, createWorkflowState, datasetQuality, datasetSchemaVersion, exportCsv, exportJsonl, exportSplitJson, samples } from './scoring'
+import { analyzeTranscript, buildEvidenceBundle, buildReport, createWorkflowState, datasetQuality, datasetSchemaVersion, exportCsv, exportJsonl, exportSplitJson, samples, sentenceTimeline } from './scoring'
 import type { SavedCase } from './scoring'
 
 const savedCase = (transcript: string): SavedCase => {
@@ -142,6 +142,50 @@ describe('scam scoring — job scam (new rule)', () => {
   })
 })
 
+describe('scam scoring — romance and marketplace fraud (new rule)', () => {
+  it('detects romance + prepayment setup', () => {
+    const result = analyzeTranscript(samples.romanceWork)
+    expect(result.evidence.map((e) => e.id)).toContain('romance-work')
+    expect(result.score).toBeGreaterThan(0)
+  })
+
+  it('single marketplace term without payment pressure does not trigger', () => {
+    const result = analyzeTranscript('Продаю диван на OLX.')
+    expect(result.evidence.some((e) => e.id === 'romance-work')).toBe(false)
+  })
+})
+
+describe('scam scoring — phishing link fraud (new rule)', () => {
+  it('detects phishing link with suspicious form actions', () => {
+    const result = analyzeTranscript(samples.phishingLink)
+    expect(result.evidence.map((e) => e.id)).toContain('phishing-link')
+    expect(result.score).toBeGreaterThan(0)
+  })
+
+  it('phishing link + delivery combo scores higher than phishing alone', () => {
+    const withCombo = analyzeTranscript('Курьер. Посылка задержана. Перейдите по ссылке для оплаты таможенного сбора и нажмите на ссылку.')
+    const withoutCombo = analyzeTranscript('Перейдите по ссылке для подтверждения.')
+    expect(withCombo.score).toBeGreaterThan(withoutCombo.score)
+  })
+})
+
+describe('scam scoring — victim-called reverse vishing (isolated)', () => {
+  it('flags victim-called setup with confirmation pressure as medium or higher', () => {
+    const result = analyzeTranscript(samples.victimCall)
+    expect(['medium', 'high', 'critical']).toContain(result.risk)
+    expect(result.evidence.map((e) => e.id)).toContain('victim-called')
+  })
+})
+
+describe('scam scoring — law enforcement + OTP combo', () => {
+  it('КНБ with OTP extraction reaches high or critical', () => {
+    const result = analyzeTranscript('КНБ. По делу возбуждено уголовное дело. Срочно назовите код из SMS для подтверждения личности.')
+    expect(['high', 'critical']).toContain(result.risk)
+    expect(result.evidence.map((e) => e.id)).toContain('law-enforcement')
+    expect(result.evidence.map((e) => e.id)).toContain('otp-code')
+  })
+})
+
 describe('scam scoring — investment and delivery', () => {
   it('flags investment scam', () => {
     const result = analyzeTranscript(samples.investment)
@@ -169,6 +213,39 @@ describe('scam scoring — law enforcement intimidation', () => {
     const result = analyzeTranscript('КНБ. По вашему делу возбуждено уголовное дело. Срочно не кладите трубку.')
     expect(['medium', 'high', 'critical']).toContain(result.risk)
     expect(result.evidence.map((e) => e.id)).toContain('law-enforcement')
+  })
+})
+
+describe('sentenceTimeline', () => {
+  it('splits multi-sentence transcript into indexed segments', () => {
+    const timeline = sentenceTimeline('Здравствуйте. Это банк. Назовите код.')
+    expect(timeline.length).toBeGreaterThanOrEqual(2)
+    expect(timeline[0].index).toBe(1)
+    expect(typeof timeline[0].segment).toBe('string')
+    expect(timeline[0].analysis).toBeDefined()
+  })
+
+  it('returns empty array for empty string', () => {
+    expect(sentenceTimeline('')).toHaveLength(0)
+  })
+})
+
+describe('buildReport', () => {
+  it('includes case ID, risk, verdict, and transcript in output', () => {
+    const text = 'Служба безопасности банка. Назовите SMS код.'
+    const analysis = analyzeTranscript(text)
+    const report = buildReport(text, analysis)
+    expect(report).toContain('KZ VoiceShield Case Report')
+    expect(report).toContain(analysis.caseId)
+    expect(report).toContain(analysis.risk.toUpperCase())
+    expect(report).toContain(analysis.verdict)
+    expect(report).toContain(text)
+  })
+
+  it('shows no matched patterns for safe text', () => {
+    const text = 'Добрый день, уточните время записи.'
+    const report = buildReport(text, analyzeTranscript(text))
+    expect(report).toContain('No matched scam patterns')
   })
 })
 

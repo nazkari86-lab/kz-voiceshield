@@ -1,0 +1,11 @@
+node_modules/
+.jdk/
+android/.gradle/
+android/.kotlin/
+android/app/.cxx/
+android/build/
+android/app/build/
+android/app/src/main/cpp/whisper.cpp/
+.cache/
+.metro/
+*.log

@@ -9,6 +9,8 @@ It helps a reviewer paste or capture a call transcript, score scam risk, inspect
 
 ## Core Workflow
 
+### Web Workspace
+
 1. Paste a transcript, upload a `.txt` file, import `.jsonl` cases, upload audio to a configured backend, or use browser live speech recognition.
 2. Review the scam risk score, confidence, case ID, and matched signals.
 3. Check evidence by category: impersonation, SMS/PIN request, money transfer, urgency, isolation, unofficial channel, remote access, family emergency, or investment scam.
@@ -17,6 +19,24 @@ It helps a reviewer paste or capture a call transcript, score scam risk, inspect
 6. Move the case through `new -> reviewing -> escalated -> closed`, assign a reviewer, set bank-contact/evidence flags, and export a report or evidence bundle.
 7. Monitor the Operations queue for escalations, bank-contact backlog, stale open cases, and unsynced local cases.
 8. Export a plain-text case report, JSONL training dataset, CSV audit table, or train/dev/test split.
+
+### Mobile Workspace
+
+The repository also includes a React Native Android prototype in `mobile/`:
+
+- Kotlin native modules for call screening, accessibility transcript reading, overlay badge, audio capture, Whisper JNI, and model download.
+- React Native live screen, setup wizard, bridge wrappers, and local RU/KZ scoring.
+- Android resources, manifest permissions, JNI/CMake scaffold, and `scripts/fetch-whisper.sh` for pulling `whisper.cpp`.
+
+Run the mobile TypeScript check with:
+
+```bash
+cd mobile
+npm install
+npm run typecheck
+```
+
+Android Gradle builds require JDK 17. The checked-in Gradle wrapper lives in `mobile/android/gradlew`.
 
 ## Features
 

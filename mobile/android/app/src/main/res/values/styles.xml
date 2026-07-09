@@ -1,0 +1,19 @@
+<resources>
+    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:navigationBarColor">@color/vs_bg</item>
+        <item name="android:colorAccent">@color/vs_brand</item>
+    </style>
+
+    <style name="AppTheme.Dialog" parent="@android:style/Theme.Material.Light.Dialog.Alert" />
+
+    <style name="AppTheme.Overlay" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
+    <style name="TextAppearance.VS.Badge" parent="@android:style/TextAppearance.Material.Body1">
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">#FFFFFF</item>
+    </style>
+</resources>

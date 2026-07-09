@@ -1,0 +1,48 @@
+{
+  "name": "kz-voiceshield-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "android": "react-native run-android",
+    "start": "react-native start",
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.1.2",
+    "react": "19.0.0",
+    "react-native": "0.79.2",
+    "react-native-safe-area-context": "^5.4.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.26.10",
+    "@babel/runtime": "^7.26.10",
+    "@react-native-community/cli": "^20.2.0",
+    "@react-native/babel-preset": "0.79.2",
+    "@react-native/eslint-config": "0.79.2",
+    "@react-native/metro-config": "0.79.2",
+    "@react-native/typescript-config": "0.79.2",
+    "@types/jest": "^29.5.14",
+    "@types/react": "^19.0.0",
+    "babel-jest": "^29.7.0",
+    "babel-plugin-module-resolver": "^5.0.2",
+    "jest": "^29.7.0",
+    "typescript": "^5.8.3"
+  },
+  "jest": {
+    "preset": "react-native",
+    "testPathIgnorePatterns": [
+      "<rootDir>/android/app/src/main/cpp/whisper.cpp/"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/android/app/src/main/cpp/whisper.cpp/"
+    ],
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1",
+      "^@bridge/(.*)$": "<rootDir>/src/bridge/$1",
+      "^@hooks/(.*)$": "<rootDir>/src/hooks/$1",
+      "^@screens/(.*)$": "<rootDir>/src/screens/$1",
+      "^@scoring$": "<rootDir>/src/scoring"
+    }
+  }
+}

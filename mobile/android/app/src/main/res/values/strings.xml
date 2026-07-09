@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">KZ VoiceShield</string>
+    <string name="overlay_channel_name">VoiceShield overlay</string>
+    <string name="audio_channel_name">VoiceShield audio capture</string>
+    <string name="overlay_notification_title">VoiceShield protection active</string>
+    <string name="overlay_notification_body">Monitoring call risk locally on device</string>
+    <string name="risk_safe">Safe</string>
+    <string name="risk_low">Low</string>
+    <string name="risk_medium">Review</string>
+    <string name="risk_high">High</string>
+    <string name="risk_critical">Critical</string>
+    <string name="permission_overlay">Allow overlay to show risk badge over phone calls.</string>
+    <string name="permission_audio">Allow microphone for local Whisper fallback.</string>
+    <string name="permission_a11y">Enable accessibility to read Live Caption text.</string>
+    <string name="model_download">Download offline speech model</string>
+    <string name="model_downloading">Downloading model</string>
+    <string name="model_ready">Model ready</string>
+</resources>

@@ -1,0 +1,13 @@
+<resources>
+    <color name="vs_bg">#EEF4F8</color>
+    <color name="vs_bg_panel">#FFFFFF</color>
+    <color name="vs_text">#0F172A</color>
+    <color name="vs_text_muted">#64748B</color>
+    <color name="vs_brand">#0EA5B7</color>
+    <color name="vs_risk_safe">#16A34A</color>
+    <color name="vs_risk_low">#65A30D</color>
+    <color name="vs_risk_medium">#F59E0B</color>
+    <color name="vs_risk_high">#EF4444</color>
+    <color name="vs_risk_critical">#991B1B</color>
+    <color name="vs_overlay_bg">#CC0F1117</color>
+</resources>

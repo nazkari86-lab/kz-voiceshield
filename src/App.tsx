@@ -1,55 +1,35 @@
-import {
-  Activity,
-  AlertTriangle,
-  BadgeCheck,
-  Banknote,
-  BookOpenCheck,
-  BrainCircuit,
-  CheckCircle2,
-  ClipboardCheck,
-  Clock3,
-  Database,
-  FileDown,
-  FileText,
-  Languages,
-  LockKeyhole,
-  MessageCircleWarning,
-  Mic,
-  MicOff,
-  PhoneCall,
-  Radar,
-  Save,
-  Send,
-  ShieldAlert,
-  ShieldCheck,
-  Smartphone,
-  Target,
-  Trash2,
-  Upload,
-} from 'lucide-react'
+import { FileDown, LockKeyhole, Radar, Save } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, CSSProperties } from 'react'
+import type { ChangeEvent } from 'react'
 import './App.css'
 import { analyzeTranscriptWithBackend, isBackendConfigured, syncCaseWithBackend, transcribeAudioWithBackend } from './apiClient'
 import type { MlAssessment } from './apiClient'
+import { CasesView } from './components/CasesView'
+import { DatasetView } from './components/DatasetView'
+import { EvidencePanel } from './components/EvidencePanel'
+import { OperationsView } from './components/OperationsView'
+import { PlaybookView } from './components/PlaybookView'
+import { ReviewView } from './components/ReviewView'
+import { SimulatorView } from './components/SimulatorView'
+import { ThreatsView } from './components/ThreatsView'
+import { TimelineView } from './components/TimelineView'
+import { TranscriptInput } from './components/TranscriptInput'
 import {
   analyzeTranscript,
-  buildReport,
   buildEvidenceBundle,
+  buildReport,
   createWorkflowState,
   datasetQuality,
   exportCsv,
   exportJsonl,
   exportSplitJson,
   labelText,
-  sampleMeta,
   samples,
   sentenceTimeline,
   statusText,
   storageKey,
-  threatRules,
 } from './scoring'
-import type { CaseLabel, CaseStatus, SavedCase, Severity, WorkflowFlags } from './scoring'
+import type { CaseLabel, CaseStatus, SavedCase, WorkflowFlags } from './scoring'
 
 type View = 'review' | 'timeline' | 'threats' | 'simulator' | 'cases' | 'operations' | 'dataset' | 'playbook'
 
@@ -83,6 +63,12 @@ declare global {
   }
 }
 
+type SyncState = {
+  status: 'idle' | 'syncing' | 'synced' | 'failed'
+  message: string
+  syncedAt?: string
+}
+
 const downloadFile = (fileName: string, body: string, type = 'text/plain;charset=utf-8') => {
   const blob = new Blob([body], { type })
   const url = URL.createObjectURL(blob)
@@ -91,17 +77,6 @@ const downloadFile = (fileName: string, body: string, type = 'text/plain;charset
   link.download = fileName
   link.click()
   URL.revokeObjectURL(url)
-}
-
-function RiskBadge({ risk }: { risk: Severity }) {
-  const label = risk === 'critical' ? 'Critical' : risk === 'high' ? 'High risk' : risk === 'medium' ? 'Review' : 'Low risk'
-  const Icon = risk === 'critical' || risk === 'high' ? ShieldAlert : risk === 'medium' ? AlertTriangle : ShieldCheck
-  return (
-    <span className={`risk-badge ${risk}`}>
-      <Icon size={16} />
-      {label}
-    </span>
-  )
 }
 
 const tabs: Array<[View, string]> = [
@@ -118,22 +93,13 @@ const tabs: Array<[View, string]> = [
 const validLabels: CaseLabel[] = ['unreviewed', 'true_positive', 'false_positive', 'needs_review']
 const validStatuses: CaseStatus[] = ['new', 'reviewing', 'escalated', 'closed']
 
-const mlVerdictLabel = (verdict: MlAssessment['verdict']) =>
-  verdict === 'fraud' ? 'Fraud' : verdict === 'safe' ? 'Safe' : 'Needs review'
-
-const mlDisagreement = (risk: Severity, ml?: MlAssessment) => {
+const mlDisagreement = (risk: string, ml?: MlAssessment) => {
   if (!ml) return 'No backend ML result yet'
   const rulesHigh = risk === 'critical' || risk === 'high'
   const mlHigh = ml.verdict === 'fraud'
   if (rulesHigh && !mlHigh) return 'Disagreement: rules high, ML low'
   if (!rulesHigh && mlHigh) return 'Disagreement: rules low, ML high'
   return 'Rules and ML are aligned'
-}
-
-type SyncState = {
-  status: 'idle' | 'syncing' | 'synced' | 'failed'
-  message: string
-  syncedAt?: string
 }
 
 const parseImportedCases = (body: string, fileName: string) => {
@@ -205,6 +171,7 @@ function App() {
   const [mlResult, setMlResult] = useState<{ caseId: string; assessment: MlAssessment } | undefined>()
   const [syncState, setSyncState] = useState<Record<string, SyncState>>({})
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
+
   const analysis = useMemo(() => analyzeTranscript(transcript), [transcript])
   const mlAssessment = mlResult?.caseId === analysis.caseId ? mlResult.assessment : undefined
   const timeline = useMemo(() => sentenceTimeline(transcript), [transcript])
@@ -239,9 +206,9 @@ function App() {
       unsyncedCount: cases.filter((item) => syncState[item.id]?.status !== 'synced').length,
     }
   }, [cases, syncState])
+
   const isSpeechSupported = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
-  const progressStyle = { '--score': `${analysis.score}%` } as CSSProperties
-  const mlProgressStyle = { '--score': `${mlAssessment?.score ?? 0}%` } as CSSProperties
+  const highSignals = analysis.evidence.filter((item) => item.severity === 'critical' || item.severity === 'high').length
 
   useEffect(() => {
     try {
@@ -257,9 +224,7 @@ function App() {
     localStorage.setItem(storageKey, JSON.stringify(cases))
   }, [cases])
 
-  const exportReport = () => {
-    downloadFile(`kz-voiceshield-${analysis.caseId}.txt`, buildReport(transcript, analysis))
-  }
+  const exportReport = () => downloadFile(`kz-voiceshield-${analysis.caseId}.txt`, buildReport(transcript, analysis))
 
   const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -398,10 +363,7 @@ function App() {
     } catch (error) {
       setSyncState((current) => ({
         ...current,
-        [item.id]: {
-          message: error instanceof Error ? error.message : 'Case sync failed',
-          status: 'failed',
-        },
+        [item.id]: { message: error instanceof Error ? error.message : 'Case sync failed', status: 'failed' },
       }))
     }
   }
@@ -411,14 +373,7 @@ function App() {
   }
 
   const deleteCase = (id: string) => setCases((current) => current.filter((item) => item.id !== id))
-
   const clearCases = () => setCases([])
-
-  const exportDatasetJsonl = () => downloadFile('kz-voiceshield-dataset.jsonl', exportJsonl(cases), 'application/x-ndjson;charset=utf-8')
-
-  const exportDatasetCsv = () => downloadFile('kz-voiceshield-dataset.csv', exportCsv(cases), 'text/csv;charset=utf-8')
-
-  const exportDatasetSplit = () => downloadFile('kz-voiceshield-split.json', exportSplitJson(cases), 'application/json;charset=utf-8')
 
   const runBackendAnalysis = async () => {
     if (!isBackendConfigured()) {
@@ -429,7 +384,7 @@ function App() {
     try {
       const result = await analyzeTranscriptWithBackend(transcript, analysis)
       setMlResult({ assessment: result.ml, caseId: analysis.caseId })
-      setBackendStatus(`Backend ML completed: ${mlVerdictLabel(result.ml.verdict)} (${result.ml.score}/100).`)
+      setBackendStatus(`Backend ML completed: ${result.ml.verdict} (${result.ml.score}/100).`)
     } catch (error) {
       setBackendStatus(error instanceof Error ? error.message : 'Backend ML request failed')
     }
@@ -481,7 +436,7 @@ function App() {
     recognition.start()
   }
 
-  const highSignals = analysis.evidence.filter((item) => item.severity === 'critical' || item.severity === 'high').length
+  const activeLabel = tabs.find(([view]) => view === activeView)?.[1]
 
   return (
     <main className="app-shell">
@@ -494,7 +449,6 @@ function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          <span className="language-chip"><Languages size={15} />KZ/RU</span>
           <button className="ghost-button" type="button" onClick={saveCurrentCase}><Save size={16} />Save case</button>
           <button className="ghost-button" type="button" onClick={exportReport}><FileDown size={16} />Export report</button>
         </div>
@@ -509,363 +463,110 @@ function App() {
       </nav>
 
       <section className="workspace">
-        <aside className="panel input-panel">
-          <div className="panel-heading">
-            <div><h2>Transcript intake</h2><p>Paste, upload, stream, or load a real-world scam scenario.</p></div>
-            <PhoneCall size={20} />
-          </div>
-          <label className="upload-box">
-            <input accept=".txt,.jsonl,.csv,text/plain,application/x-ndjson,audio/*" onChange={handleFile} type="file" />
-            <Upload size={20} />
-            <span>Upload transcript</span>
-            <small>{fileName}</small>
-          </label>
-          <div className={`live-box ${isListening ? 'active' : ''}`}>
-            <div className="live-copy"><strong>Live transcription</strong><span>{liveStatus}</span></div>
-            <div className="live-controls">
-              <select disabled={isListening} value={liveLanguage} onChange={(event) => setLiveLanguage(event.target.value)}>
-                <option value="ru-RU">Russian</option>
-                <option value="kk-KZ">Kazakh</option>
-              </select>
-              {isListening ? (
-                <button className="danger-button" type="button" onClick={stopLiveTranscription}><MicOff size={15} />Stop</button>
-              ) : (
-                <button className="primary-button" disabled={!isSpeechSupported} type="button" onClick={startLiveTranscription}><Mic size={15} />Start</button>
-              )}
-            </div>
-          </div>
-          <textarea spellCheck={false} value={transcript} onChange={(event) => setTranscript(event.target.value)} />
-          <div className="review-controls">
-            <select value={caseLabel} onChange={(event) => setCaseLabel(event.target.value as CaseLabel)}>
-              <option value="unreviewed">Unreviewed</option>
-              <option value="true_positive">True positive</option>
-              <option value="false_positive">False positive</option>
-              <option value="needs_review">Needs review</option>
-            </select>
-            <input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} placeholder="Reviewer" />
-            <input value={analystNote} onChange={(event) => setAnalystNote(event.target.value)} placeholder="Analyst note" />
-          </div>
-          <div className="sample-row">
-            {sampleMeta.map(([key, label]) => (
-              <button key={key} type="button" onClick={() => { setTranscript(samples[key]); setFileName(`${key}.txt`) }}>{label}</button>
-            ))}
-          </div>
-        </aside>
+        <TranscriptInput
+          transcript={transcript}
+          fileName={fileName}
+          caseLabel={caseLabel}
+          reviewerName={reviewerName}
+          analystNote={analystNote}
+          isListening={isListening}
+          liveLanguage={liveLanguage}
+          liveStatus={liveStatus}
+          isSpeechSupported={isSpeechSupported}
+          onTranscriptChange={setTranscript}
+          onFileNameChange={setFileName}
+          onCaseLabelChange={setCaseLabel}
+          onReviewerNameChange={setReviewerName}
+          onAnalystNoteChange={setAnalystNote}
+          onLiveLanguageChange={setLiveLanguage}
+          onStartListening={startLiveTranscription}
+          onStopListening={stopLiveTranscription}
+          onFileUpload={handleFile}
+          onSaveCase={saveCurrentCase}
+          onExportReport={exportReport}
+        />
 
         <section className="panel main-panel">
           <div className="panel-heading">
-            <div><h2>{tabs.find(([view]) => view === activeView)?.[1]}</h2><p>{analysis.caseId} · {analysis.verdict}</p></div>
+            <div><h2>{activeLabel}</h2><p>{analysis.caseId} · {analysis.verdict}</p></div>
             <Radar size={20} />
           </div>
 
           {activeView === 'review' && (
-            <>
-              <div className={`score-card ${analysis.risk}`}>
-                <div className="score-topline"><RiskBadge risk={analysis.risk} /><span>{analysis.caseId}</span></div>
-                <div className="score-number">{analysis.score}</div>
-                <div className="score-meter" style={progressStyle}><span /></div>
-                <p>{analysis.nextAction}</p>
-              </div>
-              <div className="ml-card">
-                <div className="ml-card-heading">
-                  <div>
-                    <strong>ML comparison layer</strong>
-                    <span>{mlDisagreement(analysis.risk, mlAssessment)}</span>
-                  </div>
-                  <button className="primary-button" type="button" onClick={runBackendAnalysis}>
-                    <BrainCircuit size={15} />Run ML check
-                  </button>
-                </div>
-                {mlAssessment ? (
-                  <>
-                    <div className="ml-score-row">
-                      <div><strong>{mlAssessment.score}</strong><span>ML score</span></div>
-                      <div><strong>{mlAssessment.confidence}</strong><span>ML confidence</span></div>
-                      <div><strong>{mlVerdictLabel(mlAssessment.verdict)}</strong><span>{mlAssessment.model}</span></div>
-                    </div>
-                    <div className="score-meter compact" style={mlProgressStyle}><span /></div>
-                    {mlAssessment.embeddingModel && <p>Embeddings: {mlAssessment.embeddingModel}</p>}
-                    {mlAssessment.signals.length > 0 && <div className="term-row">{mlAssessment.signals.map((signal) => <span key={signal}>{signal}</span>)}</div>}
-                  </>
-                ) : (
-                  <p>Rules remain the source of truth. Backend ML can add fraud/safe/needs_review comparison and disagreement review when configured.</p>
-                )}
-                <small>{backendStatus}</small>
-              </div>
-              <div className="metric-grid">
-                <div><ShieldAlert size={18} /><strong>{highSignals}</strong><span>major signals</span></div>
-                <div><BadgeCheck size={18} /><strong>{analysis.confidence}</strong><span>confidence</span></div>
-                <div><ClipboardCheck size={18} /><strong>{analysis.evidence.length}</strong><span>rules matched</span></div>
-                <div><BrainCircuit size={18} /><strong>{analysis.matchedTerms}</strong><span>terms found</span></div>
-                <div><Clock3 size={18} /><strong>{timeline.length}</strong><span>segments</span></div>
-                <div><Banknote size={18} /><strong>{analysis.evidence.some((item) => item.stage === 'Cash-out') ? 'Yes' : 'No'}</strong><span>cash-out stage</span></div>
-              </div>
-              <div className="triage-grid">
-                <section className="action-box">
-                  <h3>Escalation reasons</h3>
-                  <ul>{analysis.escalationReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>
-                </section>
-                <section className="action-box">
-                  <h3>Response checklist</h3>
-                  <ul>{analysis.responseChecklist.map((item) => <li key={item}>{item}</li>)}</ul>
-                </section>
-              </div>
-              <div className="stage-strip" aria-label="Threat stage coverage">
-                {analysis.stageCoverage.length === 0 ? (
-                  <span>No active threat stages</span>
-                ) : (
-                  analysis.stageCoverage.map((stage) => (
-                    <div key={stage.stage}>
-                      <strong>{stage.stage}</strong>
-                      <span>{stage.count} rule(s) · {stage.score} pts</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </>
+            <ReviewView
+              analysis={analysis}
+              timelineLength={timeline.length}
+              mlAssessment={mlAssessment}
+              mlDisagreementText={mlDisagreement(analysis.risk, mlAssessment)}
+              backendStatus={backendStatus}
+              highSignals={highSignals}
+              onRunBackendAnalysis={() => { void runBackendAnalysis() }}
+            />
           )}
 
-          {activeView === 'timeline' && (
-            <div className="timeline-list">
-              {timeline.map((item) => (
-                <article className={`timeline-item ${item.analysis.risk}`} key={`${item.index}-${item.segment}`}>
-                  <span>{item.index}</span>
-                  <div><strong>{item.analysis.score}/100 · {item.analysis.verdict}</strong><p>{item.segment}</p></div>
-                </article>
-              ))}
-            </div>
-          )}
+          {activeView === 'timeline' && <TimelineView timeline={timeline} />}
 
-          {activeView === 'threats' && (
-            <div className="threat-grid">
-              {threatRules.map((rule) => (
-                <article className={`threat-card ${rule.severity}`} key={rule.id}>
-                  <strong>{rule.title}</strong>
-                  <span>{rule.tactic} · {rule.stage} · weight {rule.weight}</span>
-                  <p>{rule.advice}</p>
-                </article>
-              ))}
-            </div>
-          )}
+          {activeView === 'threats' && <ThreatsView />}
 
           {activeView === 'simulator' && (
-            <div className="simulator-grid">
-              {sampleMeta.map(([key, label]) => {
-                const result = analyzeTranscript(samples[key])
-                return (
-                  <button className={`scenario-button ${result.risk}`} key={key} type="button" onClick={() => { setTranscript(samples[key]); setFileName(`${key}.txt`); setActiveView('review') }}>
-                    <strong>{label}</strong>
-                    <span>{result.score}/100 · {result.verdict}</span>
-                  </button>
-                )
-              })}
-            </div>
+            <SimulatorView
+              onLoadScenario={(key) => {
+                setTranscript(samples[key])
+                setFileName(`${key}.txt`)
+                setActiveView('review')
+              }}
+            />
           )}
 
           {activeView === 'cases' && (
-            <div className="case-library">
-              <div className="library-actions">
-                <strong>{cases.length} saved cases</strong>
-                <button className="primary-button" type="button" onClick={saveCurrentCase}><Save size={15} />Save current</button>
-              </div>
-              {cases.length === 0 ? (
-                <div className="empty-state"><Database size={22} /><strong>No saved cases yet</strong><span>Save reviewed calls to build a local investigation library.</span></div>
-              ) : (
-                cases.map((item) => (
-                  <article className={`saved-case ${item.analysis.risk}`} key={item.id}>
-                    <button className="case-open" type="button" onClick={() => loadCase(item)}>
-                      <strong>{item.id}</strong>
-                      <span>{item.analysis.score}/100 · {item.analysis.verdict} · {labelText(item.label)} · {statusText(item.status)}</span>
-                      <p>{item.transcript.slice(0, 180)}{item.transcript.length > 180 ? '...' : ''}</p>
-                      <span className="case-workflow-meta">
-                        <span>{item.assignedTo}</span>
-                        {item.flags.bankContactNeeded && <span>Bank contact</span>}
-                        {item.flags.customerCallbackNeeded && <span>Callback</span>}
-                        {item.flags.evidenceBundleReady && <span>Evidence ready</span>}
-                      </span>
-                    </button>
-                    <div className="case-tools">
-                      <select value={item.label} onChange={(event) => updateCaseLabel(item.id, event.target.value as CaseLabel)}>
-                        <option value="unreviewed">Unreviewed</option>
-                        <option value="true_positive">True positive</option>
-                        <option value="false_positive">False positive</option>
-                        <option value="needs_review">Needs review</option>
-                      </select>
-                      <select value={item.status} onChange={(event) => updateCaseStatus(item.id, event.target.value as CaseStatus)}>
-                        <option value="new">New</option>
-                        <option value="reviewing">Reviewing</option>
-                        <option value="escalated">Escalated</option>
-                        <option value="closed">Closed</option>
-                      </select>
-                      <input value={item.assignedTo} onChange={(event) => updateCaseAssignee(item.id, event.target.value)} aria-label="Assignee" />
-                      <button className={item.flags.bankContactNeeded ? 'flag-button active' : 'flag-button'} type="button" onClick={() => toggleCaseFlag(item.id, 'bankContactNeeded')}>Bank</button>
-                      <button className={item.flags.customerCallbackNeeded ? 'flag-button active' : 'flag-button'} type="button" onClick={() => toggleCaseFlag(item.id, 'customerCallbackNeeded')}>Callback</button>
-                      <button className={item.flags.evidenceBundleReady ? 'flag-button active' : 'flag-button'} type="button" onClick={() => toggleCaseFlag(item.id, 'evidenceBundleReady')}>Evidence</button>
-                      <button className="ghost-button" type="button" onClick={() => exportEvidenceBundle(item)}><FileDown size={15} />Bundle</button>
-                      <button className="ghost-button" type="button" onClick={() => { void syncCase(item) }}><Send size={15} />Sync</button>
-                      <button className="icon-button" type="button" onClick={() => deleteCase(item.id)} aria-label="Delete case"><Trash2 size={16} /></button>
-                    </div>
-                    <div className="workflow-timeline">
-                      {item.incidentTimeline.slice(0, 4).map((event) => (
-                        <div key={`${item.id}-${event.title}-${event.detail}`}>
-                          <strong>{event.title}</strong>
-                          <span>{event.detail}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="audit-strip">
-                      <strong>{item.auditLog.length}</strong>
-                      <span>audit events · last updated {new Date(item.updatedAt).toLocaleString()} · {syncState[item.id]?.message ?? 'not synced'}</span>
-                    </div>
-                  </article>
-                ))
-              )}
-            </div>
+            <CasesView
+              cases={cases}
+              reviewerName={reviewerName}
+              syncState={syncState}
+              onSaveCurrent={saveCurrentCase}
+              onLoadCase={loadCase}
+              onUpdateLabel={updateCaseLabel}
+              onUpdateStatus={updateCaseStatus}
+              onUpdateAssignee={updateCaseAssignee}
+              onToggleFlag={toggleCaseFlag}
+              onExportBundle={exportEvidenceBundle}
+              onSyncCase={(item) => { void syncCase(item) }}
+              onDeleteCase={deleteCase}
+            />
           )}
 
           {activeView === 'operations' && (
-            <div className="operations-panel">
-              <div className="dataset-actions">
-                <button className="primary-button" disabled={cases.length === 0} type="button" onClick={() => { void syncAllCases() }}><Send size={15} />Sync all</button>
-                <button className="ghost-button" type="button" onClick={() => setActiveView('cases')}><Database size={16} />Open cases</button>
-              </div>
-              <div className="ops-grid">
-                <div><Activity size={18} /><strong>{operations.openCases.length}</strong><span>open cases</span></div>
-                <div><ShieldAlert size={18} /><strong>{operations.escalationQueue.length}</strong><span>escalated</span></div>
-                <div><Banknote size={18} /><strong>{operations.bankContactQueue.length}</strong><span>bank contact needed</span></div>
-                <div><Clock3 size={18} /><strong>{operations.staleCases.length}</strong><span>stale open cases</span></div>
-                <div><Send size={18} /><strong>{operations.unsyncedCount}</strong><span>not synced</span></div>
-              </div>
-              <div className="status-board">
-                {validStatuses.map((status) => (
-                  <div key={status}>
-                    <strong>{operations.statusCounts[status]}</strong>
-                    <span>{statusText(status)}</span>
-                  </div>
-                ))}
-              </div>
-              <section className="queue-section">
-                <div className="section-heading">
-                  <strong>Escalation queue</strong>
-                  <span>{operations.escalationQueue.length} case(s)</span>
-                </div>
-                {operations.escalationQueue.length === 0 ? (
-                  <div className="empty-state"><CheckCircle2 size={22} /><strong>No escalated cases</strong><span>High-risk cases saved from review will appear here.</span></div>
-                ) : (
-                  operations.escalationQueue.map((item) => (
-                    <article className={`queue-item ${item.analysis.risk}`} key={`ops-${item.id}`}>
-                      <button className="case-open" type="button" onClick={() => loadCase(item)}>
-                        <strong>{item.id}</strong>
-                        <span>{item.analysis.score}/100 · {item.assignedTo} · {syncState[item.id]?.status ?? 'unsynced'}</span>
-                        <p>{item.analysis.escalationReasons[0]}</p>
-                      </button>
-                      <div className="queue-actions">
-                        <button className="ghost-button" type="button" onClick={() => updateCaseStatus(item.id, 'reviewing')}>Review</button>
-                        <button className="ghost-button" type="button" onClick={() => { void syncCase(item) }}><Send size={15} />Sync</button>
-                      </div>
-                    </article>
-                  ))
-                )}
-              </section>
-              <section className="queue-section">
-                <div className="section-heading">
-                  <strong>Bank contact queue</strong>
-                  <span>{operations.bankContactQueue.length} case(s)</span>
-                </div>
-                {operations.bankContactQueue.map((item) => (
-                  <article className={`queue-item ${item.analysis.risk}`} key={`bank-${item.id}`}>
-                    <button className="case-open" type="button" onClick={() => loadCase(item)}>
-                      <strong>{item.id}</strong>
-                      <span>{statusText(item.status)} · {item.assignedTo}</span>
-                      <p>{item.analysis.nextAction}</p>
-                    </button>
-                    <div className="queue-actions">
-                      <button className="ghost-button" type="button" onClick={() => toggleCaseFlag(item.id, 'bankContactNeeded')}>Clear bank flag</button>
-                      <button className="ghost-button" type="button" onClick={() => exportEvidenceBundle(item)}><FileDown size={15} />Bundle</button>
-                    </div>
-                  </article>
-                ))}
-              </section>
-            </div>
+            <OperationsView
+              operations={operations}
+              cases={cases}
+              syncState={syncState}
+              onSyncAll={() => { void syncAllCases() }}
+              onSyncCase={(item) => { void syncCase(item) }}
+              onLoadCase={loadCase}
+              onUpdateStatus={updateCaseStatus}
+              onToggleFlag={toggleCaseFlag}
+              onExportBundle={exportEvidenceBundle}
+              onOpenCases={() => setActiveView('cases')}
+            />
           )}
 
           {activeView === 'dataset' && (
-            <div className="dataset-panel">
-              <div className="dataset-actions">
-                <button className="ghost-button" disabled={cases.length === 0} type="button" onClick={exportDatasetJsonl}><FileText size={16} />Export JSONL</button>
-                <button className="ghost-button" disabled={cases.length === 0} type="button" onClick={exportDatasetCsv}><FileDown size={16} />Export CSV</button>
-                <button className="ghost-button" disabled={cases.length === 0} type="button" onClick={exportDatasetSplit}><Database size={16} />Export split</button>
-                <button className="danger-button" disabled={cases.length === 0} type="button" onClick={clearCases}><Trash2 size={15} />Clear</button>
-              </div>
-              {importStatus && <div className="import-status"><Target size={16} />{importStatus}</div>}
-              <div className="dataset-stats">
-                <div><strong>{quality.total}</strong><span>cases</span></div>
-                <div><strong>{quality.labelBalance.true_positive}</strong><span>true positive</span></div>
-                <div><strong>{quality.labelBalance.false_positive}</strong><span>false positive</span></div>
-                <div><strong>{quality.labelBalance.needs_review}</strong><span>needs review</span></div>
-              </div>
-              <div className="quality-grid">
-                <div><strong>{quality.unlabeledCount}</strong><span>unreviewed labels</span></div>
-                <div><strong>{quality.duplicateGroups.length}</strong><span>duplicate groups</span></div>
-                <div><strong>{quality.falsePositiveReview.length}</strong><span>false positives to review</span></div>
-                <div><strong>{quality.averageWords}</strong><span>avg words</span></div>
-              </div>
-              <div className="stage-strip">
-                {datasetStageTotals.length === 0 ? (
-                  <span>No stage coverage yet</span>
-                ) : (
-                  datasetStageTotals.map(([stage, count]) => (
-                    <div key={stage}>
-                      <strong>{stage}</strong>
-                      <span>{count} matched rule(s)</span>
-                    </div>
-                  ))
-                )}
-              </div>
-              <div className="dataset-schema">
-                <strong>Training fields · {quality.schemaVersion}</strong>
-                <p>Each export includes transcript, score, risk, confidence, verdict, escalation reasons, response checklist, stage coverage, evidence IDs, matched terms, analyst label and notes. JSONL is for model training, CSV is for spreadsheet audit, and split JSON creates deterministic train/dev/test sets.</p>
-              </div>
-            </div>
+            <DatasetView
+              quality={quality}
+              caseCount={cases.length}
+              importStatus={importStatus}
+              datasetStageTotals={datasetStageTotals}
+              onExportJsonl={() => downloadFile('kz-voiceshield-dataset.jsonl', exportJsonl(cases), 'application/x-ndjson;charset=utf-8')}
+              onExportCsv={() => downloadFile('kz-voiceshield-dataset.csv', exportCsv(cases), 'text/csv;charset=utf-8')}
+              onExportSplit={() => downloadFile('kz-voiceshield-split.json', exportSplitJson(cases), 'application/json;charset=utf-8')}
+              onClear={clearCases}
+            />
           )}
 
-          {activeView === 'playbook' && (
-            <div className="playbook">
-              <article><ShieldCheck size={18} /><div><strong>1. Freeze action</strong><p>Stop transfers, code sharing, screen sharing and app installs immediately.</p></div></article>
-              <article><PhoneCall size={18} /><div><strong>2. Verify independently</strong><p>Call the bank, courier, relative or agency through a saved official number.</p></div></article>
-              <article><Smartphone size={18} /><div><strong>3. Secure accounts</strong><p>Change passwords, end suspicious sessions and check messenger linked devices.</p></div></article>
-              <article><FileDown size={18} /><div><strong>4. Preserve evidence</strong><p>Export this report, keep screenshots, phone numbers, links and timestamps.</p></div></article>
-            </div>
-          )}
+          {activeView === 'playbook' && <PlaybookView />}
         </section>
 
-        <aside className="panel evidence-panel">
-          <div className="panel-heading">
-            <div><h2>Evidence</h2><p>Matched tactics, stages and concrete terms.</p></div>
-            <MessageCircleWarning size={20} />
-          </div>
-          <div className="evidence-list">
-            {analysis.evidence.length === 0 ? (
-              <div className="empty-state"><CheckCircle2 size={22} /><strong>No actionable scam pattern</strong><span>Ordinary text now stays at 0 unless real signals appear.</span></div>
-            ) : (
-              analysis.evidence.map((item) => (
-                <article className={`evidence-item ${item.severity}`} key={item.id}>
-                  <div><strong>{item.title}</strong><p>{item.tactic} · {item.stage} · +{item.score}</p></div>
-                  <div className="term-row">{item.matches.map((match) => <span key={match}>{match}</span>)}</div>
-                </article>
-              ))
-            )}
-          </div>
-          <div className={`case-summary ${analysis.risk}`}>
-            <strong>{analysis.verdict}</strong>
-            <span>Score {analysis.score}/100 · Confidence {analysis.confidence}/100</span>
-            <p>{analysis.nextAction}</p>
-          </div>
-          <div className="source-box">
-            <BookOpenCheck size={17} />
-            <span>Threat model covers bank vishing, OTP theft, remote access, AI-family scams, delivery phishing, investment fraud, messenger takeover, marketplace deposits and reverse-vishing setup calls.</span>
-          </div>
-        </aside>
+        <EvidencePanel analysis={analysis} />
       </section>
     </main>
   )

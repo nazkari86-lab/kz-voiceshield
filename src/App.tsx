@@ -482,8 +482,6 @@ function App() {
           onStartListening={startLiveTranscription}
           onStopListening={stopLiveTranscription}
           onFileUpload={handleFile}
-          onSaveCase={saveCurrentCase}
-          onExportReport={exportReport}
         />
 
         <section className="panel main-panel">

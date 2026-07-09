@@ -747,6 +747,8 @@ export const analyzeTranscript = (text: string): Analysis => {
                 ? 22
                 : has('egov-benefits') && has('otp-code')
                   ? 20
+                  : has('law-enforcement') && has('otp-code')
+                  ? 20
                   : has('kaspi-qr') && (has('safe-account') || has('job-scam'))
                     ? 18
                     : has('job-scam') && has('kaspi-qr')

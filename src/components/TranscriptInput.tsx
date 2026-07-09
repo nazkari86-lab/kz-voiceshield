@@ -22,8 +22,6 @@ type Props = {
   onStartListening: () => void
   onStopListening: () => void
   onFileUpload: (event: ChangeEvent<HTMLInputElement>) => void
-  onSaveCase: () => void
-  onExportReport: () => void
 }
 
 export function TranscriptInput({

@@ -1,5 +1,8 @@
 # KZ VoiceShield
 
+[![CI](https://github.com/nazkari86-lab/kz-voiceshield/actions/workflows/ci.yml/badge.svg)](https://github.com/nazkari86-lab/kz-voiceshield/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 KZ VoiceShield is a browser-based anti-scam call review workspace for Kazakh and Russian conversations.
 
 It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. The current version runs fully in the browser and uses transparent rule-based detection, which makes it suitable for demos, early user testing, and dataset design before adding server-side speech or ML models.
@@ -77,7 +80,7 @@ npm run lint
 npm test
 ```
 
-The regression suite covers low-risk ordinary text, defensive warnings, bank cash-out scripts, AI-family emergency scams, reverse-vishing, and dataset exports.
+28 tests across 11 describe groups: safe input, bank fraud, AI voice/family, reverse-vishing, SIM swap, eGov/benefits, Kaspi QR, job scam, investment/delivery, messenger takeover, law enforcement, short-text penalty, and dataset export/quality/split.
 
 ## Deploy
 

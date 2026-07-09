@@ -1,5 +1,6 @@
 export type Severity = 'critical' | 'high' | 'medium' | 'low'
 export type CaseLabel = 'unreviewed' | 'true_positive' | 'false_positive' | 'needs_review'
+export type CaseStatus = 'new' | 'reviewing' | 'escalated' | 'closed'
 
 export type ThreatRule = {
   id: string
@@ -18,16 +19,44 @@ export type Evidence = ThreatRule & {
   score: number
 }
 
+export type StageCoverage = {
+  stage: string
+  count: number
+  score: number
+}
+
 export type Analysis = {
   score: number
   confidence: number
   risk: Severity
   evidence: Evidence[]
+  escalationReasons: string[]
+  responseChecklist: string[]
+  stageCoverage: StageCoverage[]
   matchedTerms: number
   wordCount: number
   caseId: string
   verdict: string
   nextAction: string
+}
+
+export type WorkflowFlags = {
+  bankContactNeeded: boolean
+  evidenceBundleReady: boolean
+  customerCallbackNeeded: boolean
+}
+
+export type AuditEntry = {
+  at: string
+  actor: string
+  action: string
+  detail: string
+}
+
+export type IncidentEvent = {
+  at: string
+  title: string
+  detail: string
 }
 
 export type SavedCase = {
@@ -37,9 +66,27 @@ export type SavedCase = {
   fileName: string
   transcript: string
   label: CaseLabel
+  status: CaseStatus
+  assignedTo: string
+  flags: WorkflowFlags
   analystNote: string
+  decisionHistory: AuditEntry[]
+  auditLog: AuditEntry[]
+  incidentTimeline: IncidentEvent[]
   analysis: Analysis
 }
+
+export type DatasetQuality = {
+  total: number
+  schemaVersion: string
+  labelBalance: Record<CaseLabel, number>
+  duplicateGroups: Array<{ fingerprint: string; ids: string[] }>
+  falsePositiveReview: SavedCase[]
+  unlabeledCount: number
+  averageWords: number
+}
+
+export const datasetSchemaVersion = 'voiceshield.dataset.v1'
 
 export const samples = {
   bank:
@@ -257,6 +304,7 @@ const normalizeText = (text: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
+const fingerprintTranscript = (text: string) => normalizeText(text).slice(0, 220)
 const pattern = (term: string) => new RegExp(`(^|\\s)${escapeRegExp(normalizeText(term)).replace(/\s+/g, '\\s+')}(?=\\s|$)`, 'u')
 const createCaseId = (text: string) => {
   let hash = 0
@@ -270,6 +318,78 @@ const matchTerms = (text: string, terms: string[]) => {
   const normalized = normalizeText(text)
   if (!normalized) return []
   return terms.filter((term) => pattern(term).test(normalized))
+}
+
+const buildStageCoverage = (evidence: Evidence[]) => {
+  const totals = new Map<string, StageCoverage>()
+  evidence.forEach((item) => {
+    const current = totals.get(item.stage) ?? { stage: item.stage, count: 0, score: 0 }
+    current.count += 1
+    current.score += item.score
+    totals.set(item.stage, current)
+  })
+  return [...totals.values()].sort((left, right) => right.score - left.score || right.count - left.count)
+}
+
+const buildEscalationReasons = (evidence: Evidence[], comboBonus: number) => {
+  if (evidence.length === 0) return ['No scam-specific pattern crossed the review threshold.']
+  const topEvidence = [...evidence].sort((left, right) => right.score - left.score).slice(0, 3)
+  const reasons = topEvidence.map((item) => `${item.title}: ${item.matches.slice(0, 3).join(', ')}`)
+  if (comboBonus > 0) reasons.unshift('Multiple tactics appear in the same call, increasing likelihood of coordinated fraud.')
+  return reasons
+}
+
+const buildResponseChecklist = (risk: Severity, evidence: Evidence[]) => {
+  if (risk === 'low') return ['Keep the conversation on official channels.', 'Do not share codes, passwords, IIN, PIN or CVV.', 'Save the transcript if anything changes.']
+
+  const checklist = ['Stop the call or chat before any transfer, code sharing or app install.', 'Verify the story through a saved official number or trusted contact.', 'Preserve the transcript, phone number, links and timestamps.']
+  if (evidence.some((item) => item.id === 'remote-access')) checklist.push('Remove remote-access apps and check active device sessions.')
+  if (evidence.some((item) => item.id === 'messenger-takeover')) checklist.push('Open messenger security settings and revoke unknown linked devices.')
+  if (evidence.some((item) => item.id === 'safe-account' || item.stage === 'Cash-out')) checklist.push('Contact the bank fraud line and freeze suspicious money movement.')
+  return checklist
+}
+
+export const statusText = (status: CaseStatus) =>
+  status === 'new'
+    ? 'New'
+    : status === 'reviewing'
+      ? 'Reviewing'
+      : status === 'escalated'
+        ? 'Escalated'
+        : 'Closed'
+
+export const createWorkflowState = (analysis: Analysis, createdAt = new Date().toISOString(), actor = 'system') => {
+  const needsBank = analysis.evidence.some((item) => item.id === 'bank-security' || item.stage === 'Cash-out')
+  const needsCallback = analysis.risk === 'critical' || analysis.risk === 'high'
+  const status: CaseStatus = analysis.risk === 'critical' ? 'escalated' : 'new'
+  const auditLog: AuditEntry[] = [
+    {
+      action: 'case_created',
+      actor,
+      at: createdAt,
+      detail: `${analysis.verdict} at ${analysis.score}/100`,
+    },
+  ]
+
+  return {
+    assignedTo: analysis.risk === 'critical' || analysis.risk === 'high' ? 'Fraud reviewer' : 'Triage queue',
+    auditLog,
+    decisionHistory: [],
+    flags: {
+      bankContactNeeded: needsBank,
+      customerCallbackNeeded: needsCallback,
+      evidenceBundleReady: analysis.evidence.length > 0,
+    },
+    incidentTimeline: [
+      { at: createdAt, detail: analysis.verdict, title: 'Transcript scored' },
+      ...analysis.escalationReasons.slice(0, 3).map((reason, index) => ({
+        at: createdAt,
+        detail: reason,
+        title: `Signal ${index + 1}`,
+      })),
+    ],
+    status,
+  }
 }
 
 export const analyzeTranscript = (text: string): Analysis => {
@@ -322,8 +442,11 @@ export const analyzeTranscript = (text: string): Analysis => {
       : risk === 'medium'
         ? 'Pause and verify before any payment, code sharing, or app installation.'
         : 'Continue only through official channels and keep monitoring.'
+  const escalationReasons = buildEscalationReasons(evidence, comboBonus)
+  const responseChecklist = buildResponseChecklist(risk, evidence)
+  const stageCoverage = buildStageCoverage(evidence)
 
-  return { caseId: createCaseId(text), confidence, evidence, matchedTerms, nextAction, risk, score, verdict, wordCount }
+  return { caseId: createCaseId(text), confidence, escalationReasons, evidence, matchedTerms, nextAction, responseChecklist, risk, score, stageCoverage, verdict, wordCount }
 }
 
 export const sentenceTimeline = (text: string) =>
@@ -342,6 +465,12 @@ export const buildReport = (text: string, analysis: Analysis) => [
   `Verdict: ${analysis.verdict}`,
   `Recommended action: ${analysis.nextAction}`,
   '',
+  'Escalation reasons:',
+  ...analysis.escalationReasons.map((reason) => `- ${reason}`),
+  '',
+  'Response checklist:',
+  ...analysis.responseChecklist.map((item) => `- ${item}`),
+  '',
   'Evidence:',
   ...(analysis.evidence.length
     ? analysis.evidence.map((item) => `- ${item.title} [${item.tactic}/${item.stage}]: ${item.matches.join(', ')} | ${item.advice}`)
@@ -352,16 +481,26 @@ export const buildReport = (text: string, analysis: Analysis) => [
 ].join('\n')
 
 export const serializeCase = (item: SavedCase) => ({
+  schemaVersion: datasetSchemaVersion,
   id: item.id,
   createdAt: item.createdAt,
   updatedAt: item.updatedAt,
   fileName: item.fileName,
   label: item.label,
+  status: item.status,
+  assignedTo: item.assignedTo,
+  flags: item.flags,
   analystNote: item.analystNote,
+  decisionHistory: item.decisionHistory,
+  auditLog: item.auditLog,
+  incidentTimeline: item.incidentTimeline,
   score: item.analysis.score,
   risk: item.analysis.risk,
   confidence: item.analysis.confidence,
   verdict: item.analysis.verdict,
+  escalationReasons: item.analysis.escalationReasons,
+  responseChecklist: item.analysis.responseChecklist,
+  stageCoverage: item.analysis.stageCoverage,
   evidence: item.analysis.evidence.map((evidence) => ({
     id: evidence.id,
     title: evidence.title,
@@ -374,11 +513,93 @@ export const serializeCase = (item: SavedCase) => ({
   transcript: item.transcript,
 })
 
+export const buildEvidenceBundle = (item: SavedCase) => [
+  'KZ VoiceShield Evidence Bundle',
+  `Case ID: ${item.id}`,
+  `Generated: ${new Date().toISOString()}`,
+  `Status: ${statusText(item.status)}`,
+  `Assigned to: ${item.assignedTo}`,
+  `Label: ${labelText(item.label)}`,
+  `Risk: ${item.analysis.risk.toUpperCase()} (${item.analysis.score}/100)`,
+  `Confidence: ${item.analysis.confidence}/100`,
+  '',
+  'Workflow flags:',
+  `- Bank contact needed: ${item.flags.bankContactNeeded ? 'yes' : 'no'}`,
+  `- Customer callback needed: ${item.flags.customerCallbackNeeded ? 'yes' : 'no'}`,
+  `- Evidence bundle ready: ${item.flags.evidenceBundleReady ? 'yes' : 'no'}`,
+  '',
+  'Incident timeline:',
+  ...(item.incidentTimeline.length ? item.incidentTimeline.map((event) => `- ${event.at} | ${event.title}: ${event.detail}`) : ['- No incident events recorded']),
+  '',
+  'Decision history:',
+  ...(item.decisionHistory.length ? item.decisionHistory.map((entry) => `- ${entry.at} | ${entry.actor}: ${entry.action} | ${entry.detail}`) : ['- No reviewer decisions recorded']),
+  '',
+  'Audit log:',
+  ...(item.auditLog.length ? item.auditLog.map((entry) => `- ${entry.at} | ${entry.actor}: ${entry.action} | ${entry.detail}`) : ['- No audit entries recorded']),
+  '',
+  'Evidence:',
+  ...(item.analysis.evidence.length
+    ? item.analysis.evidence.map((evidence) => `- ${evidence.title} [${evidence.tactic}/${evidence.stage}]: ${evidence.matches.join(', ')} | ${evidence.advice}`)
+    : ['- No matched scam patterns']),
+  '',
+  'Transcript:',
+  item.transcript || '[empty]',
+].join('\n')
+
 export const exportJsonl = (cases: SavedCase[]) => cases.map((item) => JSON.stringify(serializeCase(item))).join('\n')
+
+export const datasetQuality = (cases: SavedCase[]): DatasetQuality => {
+  const labelBalance = cases.reduce<Record<CaseLabel, number>>(
+    (totals, item) => ({ ...totals, [item.label]: totals[item.label] + 1 }),
+    { false_positive: 0, needs_review: 0, true_positive: 0, unreviewed: 0 },
+  )
+  const duplicateBuckets = cases.reduce<Map<string, string[]>>((buckets, item) => {
+    const fingerprint = fingerprintTranscript(item.transcript)
+    if (!fingerprint) return buckets
+    buckets.set(fingerprint, [...(buckets.get(fingerprint) ?? []), item.id])
+    return buckets
+  }, new Map())
+  const duplicateGroups = [...duplicateBuckets.entries()]
+    .filter(([, ids]) => ids.length > 1)
+    .map(([fingerprint, ids]) => ({ fingerprint, ids }))
+  const totalWords = cases.reduce((sum, item) => sum + item.analysis.wordCount, 0)
+
+  return {
+    averageWords: cases.length ? Math.round(totalWords / cases.length) : 0,
+    duplicateGroups,
+    falsePositiveReview: cases.filter((item) => item.label === 'false_positive' && item.analysis.score >= 65),
+    labelBalance,
+    schemaVersion: datasetSchemaVersion,
+    total: cases.length,
+    unlabeledCount: labelBalance.unreviewed,
+  }
+}
+
+export const exportSplitJson = (cases: SavedCase[]) => {
+  const sorted = [...cases].sort((left, right) => left.id.localeCompare(right.id))
+  const trainEnd = Math.ceil(sorted.length * 0.7)
+  const devEnd = trainEnd + Math.ceil(sorted.length * 0.15)
+  return JSON.stringify(
+    {
+      schemaVersion: datasetSchemaVersion,
+      generatedAt: new Date().toISOString(),
+      counts: {
+        dev: sorted.slice(trainEnd, devEnd).length,
+        test: sorted.slice(devEnd).length,
+        train: sorted.slice(0, trainEnd).length,
+      },
+      train: sorted.slice(0, trainEnd).map(serializeCase),
+      dev: sorted.slice(trainEnd, devEnd).map(serializeCase),
+      test: sorted.slice(devEnd).map(serializeCase),
+    },
+    null,
+    2,
+  )
+}
 
 export const exportCsv = (cases: SavedCase[]) => {
   const rows = [
-    ['id', 'createdAt', 'label', 'risk', 'score', 'confidence', 'verdict', 'evidenceCount', 'transcript'],
+    ['id', 'createdAt', 'label', 'risk', 'score', 'confidence', 'verdict', 'evidenceCount', 'topStages', 'transcript'],
     ...cases.map((item) => [
       item.id,
       item.createdAt,
@@ -388,6 +609,7 @@ export const exportCsv = (cases: SavedCase[]) => {
       String(item.analysis.confidence),
       item.analysis.verdict,
       String(item.analysis.evidence.length),
+      item.analysis.stageCoverage.map((stage) => `${stage.stage}:${stage.count}`).join('; '),
       item.transcript,
     ]),
   ]

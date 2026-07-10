@@ -1,17 +1,17 @@
-import { scoreTranscript } from '../src/scoring'
+import { analyzeTranscript } from '../src/scoring'
 
 describe('mobile scoring', () => {
   it('flags bank OTP transfer scripts as critical', () => {
-    const result = scoreTranscript('Служба безопасности банка. Срочно назовите SMS код и переведите деньги на безопасный счет.')
+    const result = analyzeTranscript('Служба безопасности банка. Срочно назовите SMS код и переведите деньги на безопасный счет.')
 
-    expect(result.level).toBe('critical')
+    expect(result.risk).toBe('critical')
     expect(result.score).toBeGreaterThanOrEqual(85)
   })
 
-  it('keeps ordinary reminders safe', () => {
-    const result = scoreTranscript('Здравствуйте, напоминаем о записи в клинику завтра утром.')
+  it('keeps ordinary reminders low risk', () => {
+    const result = analyzeTranscript('Здравствуйте, напоминаем о записи в клинику завтра утром.')
 
-    expect(result.level).toBe('safe')
+    expect(result.risk).toBe('low')
     expect(result.score).toBe(0)
   })
 })

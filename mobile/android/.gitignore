@@ -3,3 +3,4 @@
 android/app/release.keystore
 release.keystore
 keystore.properties
+local.properties

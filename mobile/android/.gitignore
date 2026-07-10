@@ -2,3 +2,4 @@
 # Release signing key — never commit
 android/app/release.keystore
 release.keystore
+keystore.properties

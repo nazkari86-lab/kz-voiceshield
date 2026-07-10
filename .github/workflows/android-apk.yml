@@ -14,6 +14,10 @@ permissions:
 jobs:
   build-release-apk:
     runs-on: ubuntu-latest
+    # True only when the release keystore secret is configured. Steps that sign
+    # or publish are gated on this so forks / secret-less runs still build.
+    env:
+      HAS_SIGNING: ${{ secrets.RELEASE_KEYSTORE_B64 != '' }}
     defaults:
       run:
         working-directory: mobile
@@ -54,6 +58,23 @@ jobs:
       - name: Test
         run: npm test -- --runInBand
 
+      - name: Configure release signing
+        if: env.HAS_SIGNING == 'true'
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          VS_RELEASE_STORE_PASSWORD: ${{ secrets.VS_RELEASE_STORE_PASSWORD }}
+          VS_RELEASE_KEY_ALIAS: ${{ secrets.VS_RELEASE_KEY_ALIAS }}
+          VS_RELEASE_KEY_PASSWORD: ${{ secrets.VS_RELEASE_KEY_PASSWORD }}
+        run: |
+          echo "$RELEASE_KEYSTORE_B64" | base64 -d > android/app/release.keystore
+          cat > android/keystore.properties <<EOF
+          storeFile=app/release.keystore
+          storePassword=${VS_RELEASE_STORE_PASSWORD}
+          keyAlias=${VS_RELEASE_KEY_ALIAS}
+          keyPassword=${VS_RELEASE_KEY_PASSWORD}
+          EOF
+          echo "Release signing configured."
+
       - name: Build release APK
         run: ./android/gradlew -p android assembleRelease --no-daemon
 
@@ -71,9 +92,29 @@ jobs:
           path: dist/kz-voiceshield-android.apk
           if-no-files-found: error
 
-      # NOTE: auto-publishing the CI APK to the latest release was removed.
-      # Without the release signing key (kept out of git), CI produces a
-      # debug-signed APK, and blindly clobbering the curated release asset
-      # shipped an unsigned/older build to users. Release APKs are now built
-      # and signed locally with the real release key, then attached by hand.
-      # The build artifact above is still kept for 90 days for testing.
+      - name: Verify APK is release-signed
+        if: env.HAS_SIGNING == 'true'
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/35.0.0)
+          DN=$("$BT/apksigner" verify --print-certs \
+                android/app/build/outputs/apk/release/app-release.apk \
+                | grep -m1 "certificate DN")
+          echo "$DN"
+          echo "$DN" | grep -q "CN=KZ VoiceShield" \
+            || { echo "::error::APK is NOT signed with the release key"; exit 1; }
+
+      - name: Publish signed APK to latest release
+        if: env.HAS_SIGNING == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)
+          if [ -z "$RELEASE_TAG" ]; then
+            echo "No release found — skipping upload."; exit 0
+          fi
+          VERSION=$(grep -m1 versionName mobile/android/app/build.gradle | sed -E 's/.*"([^"]+)".*/\1/')
+          ASSET="kz-voiceshield-${VERSION}.apk"
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk "$ASSET"
+          gh release upload "$RELEASE_TAG" "$ASSET" --clobber
+          echo "Uploaded release-signed $ASSET to $RELEASE_TAG"
+        working-directory: ${{ github.workspace }}

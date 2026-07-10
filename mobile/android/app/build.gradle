@@ -8,6 +8,18 @@ react {
     autolinkLibrariesWithApp()
 }
 
+// Release signing is configured via android/keystore.properties (git-ignored).
+// Locally: created once next to this project. In CI: written from repo secrets.
+// No signing passwords live in version control.
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+def hasReleaseSigning = false
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+    hasReleaseSigning = keystoreProps["storeFile"] != null &&
+        rootProject.file(keystoreProps["storeFile"]).exists()
+}
+
 android {
     namespace "kz.voiceshield"
     compileSdk rootProject.ext.compileSdkVersion
@@ -35,16 +47,12 @@ android {
             keyAlias "androiddebugkey"
             keyPassword "android"
         }
-        release {
-            // Real release key. Credentials come from gradle properties / env so
-            // they are never committed; falls back to the bundled keystore + env
-            // defaults for local and CI builds.
-            def ksFile = file(System.getenv("VS_RELEASE_STORE_FILE") ?: "release.keystore")
-            if (ksFile.exists()) {
-                storeFile ksFile
-                storePassword System.getenv("VS_RELEASE_STORE_PASSWORD") ?: "voiceshield2026"
-                keyAlias System.getenv("VS_RELEASE_KEY_ALIAS") ?: "voiceshield"
-                keyPassword System.getenv("VS_RELEASE_KEY_PASSWORD") ?: "voiceshield2026"
+        if (hasReleaseSigning) {
+            release {
+                storeFile rootProject.file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
             }
         }
     }
@@ -52,9 +60,10 @@ android {
     buildTypes {
         debug { signingConfig signingConfigs.debug }
         release {
-            // Use the real release key when its keystore is present, otherwise fall
-            // back to debug so CI without secrets still produces an installable APK.
-            signingConfig file("release.keystore").exists() || System.getenv("VS_RELEASE_STORE_FILE") ? signingConfigs.release : signingConfigs.debug
+            // Use the real release key when keystore.properties resolves it,
+            // otherwise fall back to debug so a build without the secret still
+            // produces an installable (debug-signed) APK.
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }

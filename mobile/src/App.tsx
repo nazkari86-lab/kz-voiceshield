@@ -16,10 +16,11 @@ import { SimulatorView } from './components/SimulatorView'
 import { ThreatsView } from './components/ThreatsView'
 import { TimelineView } from './components/TimelineView'
 import { VerifyView } from './components/VerifyView'
+import { ModelView } from './components/ModelView'
 
 type Tab =
   | 'live' | 'review' | 'evidence' | 'timeline' | 'threats'
-  | 'chain' | 'simulator' | 'cases' | 'operations' | 'dataset' | 'playbook' | 'family' | 'verify' | 'setup'
+  | 'chain' | 'simulator' | 'cases' | 'operations' | 'dataset' | 'playbook' | 'family' | 'verify' | 'model' | 'setup'
 
 const TABS: Array<[Tab, string]> = [
   ['live', 'Live'],
@@ -35,6 +36,7 @@ const TABS: Array<[Tab, string]> = [
   ['playbook', 'Playbook'],
   ['family', 'Family'],
   ['verify', 'Verify'],
+  ['model', 'Data & Model'],
   ['setup', 'Setup'],
 ]
 
@@ -140,6 +142,7 @@ export default function App() {
           />
         )}
         {tab === 'verify' && <VerifyView />}
+        {tab === 'model' && <ModelView />}
         {tab === 'setup' && (
           <SetupScreen
             modelReady={w.modelReady}

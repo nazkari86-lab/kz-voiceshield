@@ -1066,6 +1066,8 @@ export const serializeCase = (item: SavedCase) => ({
   incidentTimeline: item.incidentTimeline,
   score: item.analysis.score,
   risk: item.analysis.risk,
+  scheme: item.analysis.scheme,
+  schemeLabel: item.analysis.schemeLabel,
   confidence: item.analysis.confidence,
   verdict: item.analysis.verdict,
   escalationReasons: item.analysis.escalationReasons,

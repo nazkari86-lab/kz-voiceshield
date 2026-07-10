@@ -10,6 +10,7 @@ import {
   buildReport,
   createWorkflowState,
   datasetQuality,
+  deviceSignalsFromPackage,
   exportCsv,
   exportJsonl,
   exportSplitJson,
@@ -19,7 +20,7 @@ import {
   statusText,
   storageKey,
 } from '@scoring'
-import type { CaseLabel, CaseStatus, SavedCase, WorkflowFlags } from '@scoring'
+import type { CaseLabel, CaseStatus, RiskSignal, SavedCase, WorkflowFlags } from '@scoring'
 
 const validStatuses: CaseStatus[] = ['new', 'reviewing', 'escalated', 'closed']
 
@@ -27,7 +28,7 @@ const modelFile = 'ggml-small.bin'
 const modelUrl = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin'
 
 const normalizeSavedCase = (item: SavedCase): SavedCase => {
-  const analysis = analyzeTranscript(item.transcript)
+  const analysis = analyzeTranscript(item.transcript, { signals: item.analysis?.contextSignals ?? [] })
   const workflow = createWorkflowState(analysis, item.createdAt, 'migration')
   return {
     ...item,
@@ -55,12 +56,13 @@ export function useWorkspace() {
   const [modelReady, setModelReady] = useState(false)
   const [audioLevel, setAudioLevel] = useState(0)
   const [captureError, setCaptureError] = useState<string | null>(null)
+  const [deviceSignals, setDeviceSignals] = useState<RiskSignal[]>([])
 
   // ---- saved cases ----
   const [cases, setCases] = useState<SavedCase[]>([])
   const [hydrated, setHydrated] = useState(false)
 
-  const analysis = useMemo(() => analyzeTranscript(transcript), [transcript])
+  const analysis = useMemo(() => analyzeTranscript(transcript, { signals: deviceSignals }), [deviceSignals, transcript])
   const timeline = useMemo(() => sentenceTimeline(transcript), [transcript])
   const quality = useMemo(() => datasetQuality(cases), [cases])
   const highSignals = analysis.evidence.filter((item) => item.severity === 'critical' || item.severity === 'high').length
@@ -125,10 +127,17 @@ export function useWorkspace() {
 
   // ---- live transcript wiring ----
   useEffect(() => {
-    const liveCaptionSub = accessibilityEvents.addListener('VS_ACCESSIBILITY_TEXT', (event: { text?: string }) => {
-      if (!event.text) return
-      setSource('Live Caption')
-      setTranscript((current) => `${current} ${event.text}`.trim())
+    const liveCaptionSub = accessibilityEvents.addListener('VS_ACCESSIBILITY_TEXT', (event: { packageName?: string; text?: string }) => {
+      if (isListening && event.packageName) {
+        const nextSignals = deviceSignalsFromPackage(event.packageName)
+        if (nextSignals.length > 0) {
+          setDeviceSignals((current) => [...new Map([...current, ...nextSignals].map((item) => [item.id, item])).values()])
+        }
+      }
+      if (event.text) {
+        setSource('Live Caption')
+        setTranscript((current) => `${current} ${event.text}`.trim())
+      }
     })
     const whisperSub = whisperEvents.addListener('VS_WHISPER_TRANSCRIPT', (event: { text?: string }) => {
       if (!event.text) return
@@ -141,7 +150,7 @@ export function useWorkspace() {
       whisperSub.remove()
       levelSub.remove()
     }
-  }, [])
+  }, [isListening])
 
   useEffect(() => {
     void OverlayModule.updateRisk(analysis.score, analysis.risk, source).catch(() => undefined)
@@ -162,6 +171,7 @@ export function useWorkspace() {
 
   const startListening = useCallback(async () => {
     setCaptureError(null)
+    setDeviceSignals([])
     try {
       const accessibilityEnabled = await AccessibilityModule.isEnabled()
       if (!accessibilityEnabled && !modelReady) await prepareWhisper()
@@ -181,6 +191,7 @@ export function useWorkspace() {
     await AudioCaptureModule.stopCapture().catch(() => undefined)
     await WhisperModule.stopStreaming().catch(() => undefined)
     setIsListening(false)
+    setDeviceSignals([])
   }, [])
 
   const loadSample = useCallback((key: keyof typeof samples, label: string) => {
@@ -194,7 +205,7 @@ export function useWorkspace() {
   // ---- case management ----
   const saveCurrentCase = useCallback(() => {
     const now = new Date().toISOString()
-    const current = analyzeTranscript(transcript)
+    const current = analyzeTranscript(transcript, { signals: deviceSignals })
     setCases((existingCases) => {
       const existing = existingCases.find((item) => item.id === current.caseId)
       const workflow = existing ?? createWorkflowState(current, now, reviewerName)
@@ -222,7 +233,7 @@ export function useWorkspace() {
       }
       return [next, ...existingCases.filter((item) => item.id !== next.id)]
     })
-  }, [analystNote, caseLabel, fileName, reviewerName, transcript])
+  }, [analystNote, caseLabel, deviceSignals, fileName, reviewerName, transcript])
 
   const loadCase = useCallback((item: SavedCase) => {
     setTranscript(item.transcript)
@@ -286,7 +297,7 @@ export function useWorkspace() {
     reviewerName, setReviewerName,
     source,
     // capture
-    isListening, modelReady, audioLevel, captureError,
+    isListening, modelReady, audioLevel, captureError, deviceSignals,
     startListening, stopListening, prepareWhisper,
     // computed
     analysis, timeline, quality, datasetStageTotals, operations, highSignals, cases,

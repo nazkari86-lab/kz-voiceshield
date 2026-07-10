@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { Analysis } from '@scoring'
 import { colors, riskColor } from '../theme'
@@ -18,6 +18,16 @@ type Props = {
 }
 
 export function LiveView({ analysis, transcript, source, isListening, audioLevel, error, onChangeTranscript, onToggleListening, onSave, onExportReport }: Props) {
+  const [pauseRemaining, setPauseRemaining] = useState(0)
+
+  useEffect(() => {
+    if (pauseRemaining <= 0) return undefined
+    const timeout = setTimeout(() => setPauseRemaining((current) => current - 1), 1000)
+    return () => clearTimeout(timeout)
+  }, [pauseRemaining])
+
+  const needsPause = analysis.risk === 'critical' || analysis.risk === 'high'
+
   return (
     <View>
       <Card tone={analysis.risk}>
@@ -26,6 +36,7 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
           <Text style={styles.source}>{source}</Text>
         </View>
         <Text style={[styles.score, { color: riskColor[analysis.risk] }]}>{analysis.score}<Text style={styles.scoreMax}>/100</Text></Text>
+        <Text style={styles.scheme}>{analysis.schemeLabel}</Text>
         <Text style={styles.verdict}>{analysis.verdict}</Text>
         <Text style={styles.next}>{analysis.nextAction}</Text>
         {isListening && (
@@ -36,6 +47,22 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
       </Card>
 
       {error && <Text style={styles.error}>{error}</Text>}
+
+      {analysis.contextSignals.length > 0 && (
+        <View style={styles.signalRow}>
+          {analysis.contextSignals.map((signal) => <Text key={signal.id} style={styles.signal}>{signal.label}</Text>)}
+        </View>
+      )}
+
+      {needsPause && (
+        <View style={styles.pauseCard}>
+          <Text style={styles.pauseTitle}>{pauseRemaining > 0 ? `Pause active: ${pauseRemaining}s` : 'Take a 30-second pause'}</Text>
+          <Text style={styles.pauseCopy}>End the call. Do not share codes or approve payments.</Text>
+          <Pressable style={styles.pauseButton} onPress={() => setPauseRemaining(30)}>
+            <Text style={styles.pauseButtonText}>{pauseRemaining > 0 ? 'Restart pause' : 'Start pause'}</Text>
+          </Pressable>
+        </View>
+      )}
 
       <TextInput
         multiline
@@ -64,11 +91,19 @@ const styles = StyleSheet.create({
   source: { color: colors.sub, fontSize: 12, fontWeight: '700' },
   score: { fontSize: 46, fontWeight: '900' },
   scoreMax: { color: colors.muted, fontSize: 18, fontWeight: '800' },
+  scheme: { color: colors.ink, fontSize: 15, fontWeight: '900' },
   verdict: { color: colors.ink, fontSize: 15, fontWeight: '800' },
   next: { color: colors.sub, fontSize: 13, lineHeight: 19 },
   levelTrack: { backgroundColor: colors.chipBg, borderRadius: 999, height: 6, overflow: 'hidden' },
   levelFill: { backgroundColor: colors.brand, height: 6 },
   error: { backgroundColor: '#fee2e2', borderColor: '#fecaca', borderRadius: 12, borderWidth: 1, color: '#991b1b', fontSize: 13, lineHeight: 19, marginBottom: 12, padding: 12 },
+  signalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  signal: { backgroundColor: '#fff7ed', borderColor: '#fed7aa', borderRadius: 999, borderWidth: 1, color: '#9a3412', fontSize: 12, fontWeight: '800', paddingHorizontal: 10, paddingVertical: 6 },
+  pauseCard: { backgroundColor: '#fff7ed', borderColor: '#fb923c', borderRadius: 14, borderWidth: 1, gap: 7, marginBottom: 12, padding: 14 },
+  pauseTitle: { color: '#9a3412', fontSize: 16, fontWeight: '900' },
+  pauseCopy: { color: '#7c2d12', fontSize: 13, lineHeight: 18 },
+  pauseButton: { alignSelf: 'flex-start', backgroundColor: '#c2410c', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  pauseButtonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   input: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 14, borderWidth: 1, color: colors.ink, marginBottom: 12, minHeight: 150, padding: 14, textAlignVertical: 'top' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   primary: { backgroundColor: colors.brand, borderRadius: 12, flexGrow: 1, paddingHorizontal: 16, paddingVertical: 13 },

@@ -16,6 +16,7 @@ export function ReviewView({ analysis, timelineLength, highSignals }: Props) {
           <Text style={styles.caseId}>{analysis.caseId}</Text>
         </View>
         <Text style={[styles.score, { color: riskColor[analysis.risk] }]}>{analysis.score}</Text>
+        <Text style={styles.scheme}>{analysis.schemeLabel}</Text>
         <View style={styles.meterTrack}>
           <View style={[styles.meterFill, { backgroundColor: riskColor[analysis.risk], width: `${analysis.score}%` }]} />
         </View>
@@ -30,6 +31,15 @@ export function ReviewView({ analysis, timelineLength, highSignals }: Props) {
         <Metric value={timelineLength} label="segments" />
         <Metric value={cashOut ? 'Yes' : 'No'} label="cash-out stage" />
       </View>
+
+      <Card>
+        <SectionTitle>Observed device context</SectionTitle>
+        {analysis.contextSignals.length === 0 ? (
+          <Text style={styles.muted}>No app-level risk context observed in this session.</Text>
+        ) : (
+          analysis.contextSignals.map((signal) => <Text key={signal.id} style={styles.bullet}>• {signal.label}</Text>)
+        )}
+      </Card>
 
       <Card>
         <SectionTitle>Escalation reasons</SectionTitle>
@@ -64,6 +74,7 @@ const styles = StyleSheet.create({
   topline: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   caseId: { color: colors.sub, fontSize: 12, fontWeight: '700' },
   score: { fontSize: 48, fontWeight: '900' },
+  scheme: { color: colors.ink, fontSize: 15, fontWeight: '900' },
   meterTrack: { backgroundColor: colors.chipBg, borderRadius: 999, height: 8, overflow: 'hidden' },
   meterFill: { borderRadius: 999, height: 8 },
   next: { color: colors.sub, fontSize: 13, lineHeight: 19 },

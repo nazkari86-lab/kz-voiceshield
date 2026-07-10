@@ -25,10 +25,39 @@ export type StageCoverage = {
   score: number
 }
 
+export type RiskSignalId = 'bank_app_open' | 'remote_access_app_open' | 'screen_share_app_open' | 'suspicious_link_open'
+
+export type RiskSignal = {
+  id: RiskSignalId
+  label: string
+  weight: number
+}
+
+export type RiskContext = {
+  signals?: RiskSignal[]
+}
+
+export type ScamScheme =
+  | 'fake_bank_employee'
+  | 'safe_account'
+  | 'fake_police'
+  | 'investment_scam'
+  | 'family_emergency'
+  | 'courier_otp'
+  | 'remote_access'
+  | 'sim_swap'
+  | 'fake_egov'
+  | 'marketplace_scam'
+  | 'messenger_takeover'
+  | 'unclassified'
+
 export type Analysis = {
   score: number
   confidence: number
   risk: Severity
+  scheme: ScamScheme
+  schemeLabel: string
+  contextSignals: RiskSignal[]
   evidence: Evidence[]
   escalationReasons: string[]
   responseChecklist: string[]
@@ -165,6 +194,36 @@ const explicitActionTerms = [
   'аударыңыз',
   'орнатыңыз',
 ]
+
+const schemeLabels: Record<ScamScheme, string> = {
+  fake_bank_employee: 'Fake bank employee',
+  safe_account: 'Safe account transfer',
+  fake_police: 'Fake police or regulator',
+  investment_scam: 'Investment scam',
+  family_emergency: 'Family emergency scam',
+  courier_otp: 'Courier or delivery OTP scam',
+  remote_access: 'Remote access takeover',
+  sim_swap: 'SIM-swap takeover',
+  fake_egov: 'Fake eGov or benefit claim',
+  marketplace_scam: 'Marketplace or job scam',
+  messenger_takeover: 'Messenger account takeover',
+  unclassified: 'Unclassified risk pattern',
+}
+
+export const deviceSignalsFromPackage = (packageName?: string | null): RiskSignal[] => {
+  const value = packageName?.toLowerCase().trim() ?? ''
+  if (!value) return []
+  if (/(anydesk|teamviewer|rustdesk|airdroid|supremo)/u.test(value)) {
+    return [{ id: 'remote_access_app_open', label: 'Remote-access app opened', weight: 36 }]
+  }
+  if (/(zoom|meet|teams)/u.test(value)) {
+    return [{ id: 'screen_share_app_open', label: 'Screen-sharing app opened', weight: 18 }]
+  }
+  if (/(kaspi|homebank|halyk|forte|bereke|jusan|bcc|centercredit|bank)/u.test(value)) {
+    return [{ id: 'bank_app_open', label: 'Banking app opened', weight: 25 }]
+  }
+  return []
+}
 
 export const threatRules: ThreatRule[] = [
   {
@@ -663,7 +722,7 @@ const buildEscalationReasons = (evidence: Evidence[], comboBonus: number) => {
   return reasons
 }
 
-const buildResponseChecklist = (risk: Severity, evidence: Evidence[]) => {
+const buildResponseChecklist = (risk: Severity, evidence: Evidence[], contextSignals: RiskSignal[]) => {
   if (risk === 'low') return ['Keep the conversation on official channels.', 'Do not share codes, passwords, IIN, PIN or CVV.', 'Save the transcript if anything changes.']
 
   const checklist = ['Stop the call or chat before any transfer, code sharing or app install.', 'Verify the story through a saved official number or trusted contact.', 'Preserve the transcript, phone number, links and timestamps.']
@@ -673,7 +732,25 @@ const buildResponseChecklist = (risk: Severity, evidence: Evidence[]) => {
   if (evidence.some((item) => item.id === 'sim-swap')) checklist.push('Call your mobile operator immediately to cancel the SIM replacement and lock your number.')
   if (evidence.some((item) => item.id === 'egov-benefits')) checklist.push('Check benefit status only at egov.kz or enbek.kz — never confirm IIN or codes by phone.')
   if (evidence.some((item) => item.id === 'kaspi-qr')) checklist.push('Do not scan the QR code or click the transfer link; verify all payments through the Kaspi app directly.')
+  if (contextSignals.some((item) => item.id === 'remote_access_app_open')) checklist.push('Close the remote-access app now. Never reveal a connection code or approve screen control during a financial call.')
+  if (contextSignals.some((item) => item.id === 'bank_app_open')) checklist.push('Do not approve payments or sign-in prompts in the bank app while the caller is still on the line.')
   return checklist
+}
+
+const classifyScheme = (evidence: Evidence[]): ScamScheme => {
+  const ids = new Set(evidence.map((item) => item.id))
+  if (ids.has('remote-access')) return 'remote_access'
+  if (ids.has('sim-swap')) return 'sim_swap'
+  if (ids.has('law-enforcement')) return 'fake_police'
+  if (ids.has('bank-security') && (ids.has('otp-code') || ids.has('safe-account'))) return 'fake_bank_employee'
+  if (ids.has('safe-account')) return 'safe_account'
+  if (ids.has('egov-benefits')) return 'fake_egov'
+  if (ids.has('ai-family')) return 'family_emergency'
+  if (ids.has('investment-crypto')) return 'investment_scam'
+  if (ids.has('delivery-customs')) return 'courier_otp'
+  if (ids.has('messenger-takeover')) return 'messenger_takeover'
+  if (ids.has('romance-work') || ids.has('job-scam') || ids.has('kaspi-qr')) return 'marketplace_scam'
+  return 'unclassified'
 }
 
 export const statusText = (status: CaseStatus) =>
@@ -719,7 +796,7 @@ export const createWorkflowState = (analysis: Analysis, createdAt = new Date().t
   }
 }
 
-export const analyzeTranscript = (text: string): Analysis => {
+export const analyzeTranscript = (text: string, context: RiskContext = {}): Analysis => {
   const normalized = normalizeText(text)
   const wordCount = normalized ? normalized.split(' ').length : 0
   const initialEvidence = threatRules
@@ -761,7 +838,11 @@ export const analyzeTranscript = (text: string): Analysis => {
                       ? 16
                       : 0
   const shortTextPenalty = wordCount < 3 ? 0.25 : wordCount < 7 ? 0.65 : 1
-  const rawScore = Math.round((evidence.reduce((sum, item) => sum + item.score, 0) + comboBonus) * shortTextPenalty)
+  const contextSignals = [...new Map((context.signals ?? []).map((item) => [item.id, item])).values()]
+  // Device context only amplifies an already suspicious conversation. Opening a bank,
+  // screen-share or remote-control app alone is never treated as fraud.
+  const contextScore = evidence.length > 0 ? contextSignals.reduce((sum, item) => sum + item.weight, 0) : 0
+  const rawScore = Math.round((evidence.reduce((sum, item) => sum + item.score, 0) + comboBonus + contextScore) * shortTextPenalty)
   const score = evidence.length === 0 ? 0 : Math.min(99, rawScore)
   const risk: Severity = score >= 85 ? 'critical' : score >= 65 ? 'high' : score >= 35 ? 'medium' : 'low'
   const confidence = evidence.length === 0 ? 0 : Math.min(98, Math.round((matchedTerms * 7 + evidence.length * 9 + Math.min(wordCount, 45)) * shortTextPenalty))
@@ -780,10 +861,12 @@ export const analyzeTranscript = (text: string): Analysis => {
         ? 'Pause and verify before any payment, code sharing, or app installation.'
         : 'Continue only through official channels and keep monitoring.'
   const escalationReasons = buildEscalationReasons(evidence, comboBonus)
-  const responseChecklist = buildResponseChecklist(risk, evidence)
+  if (evidence.length > 0 && contextSignals.length > 0) escalationReasons.unshift(`Device context: ${contextSignals.map((item) => item.label).join(', ')}.`)
+  const responseChecklist = buildResponseChecklist(risk, evidence, contextSignals)
   const stageCoverage = buildStageCoverage(evidence)
+  const scheme = classifyScheme(evidence)
 
-  return { caseId: createCaseId(text), confidence, escalationReasons, evidence, matchedTerms, nextAction, responseChecklist, risk, score, stageCoverage, verdict, wordCount }
+  return { caseId: createCaseId(text), confidence, contextSignals, escalationReasons, evidence, matchedTerms, nextAction, responseChecklist, risk, scheme, schemeLabel: schemeLabels[scheme], score, stageCoverage, verdict, wordCount }
 }
 
 export const sentenceTimeline = (text: string) =>
@@ -799,6 +882,8 @@ export const buildReport = (text: string, analysis: Analysis) => [
   `Generated: ${new Date().toLocaleString()}`,
   `Risk: ${analysis.risk.toUpperCase()} (${analysis.score}/100)`,
   `Confidence: ${analysis.confidence}/100`,
+  `Detected scheme: ${analysis.schemeLabel}`,
+  `Device context: ${analysis.contextSignals.length > 0 ? analysis.contextSignals.map((item) => item.label).join(', ') : 'None'}`,
   `Verdict: ${analysis.verdict}`,
   `Recommended action: ${analysis.nextAction}`,
   '',

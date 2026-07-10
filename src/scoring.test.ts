@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeTranscript, buildEvidenceBundle, buildReport, createWorkflowState, datasetQuality, datasetSchemaVersion, exportCsv, exportJsonl, exportSplitJson, samples, sentenceTimeline } from './scoring'
+import { analyzeTranscript, buildEvidenceBundle, buildReport, createWorkflowState, datasetQuality, datasetSchemaVersion, deviceSignalsFromPackage, exportCsv, exportJsonl, exportSplitJson, samples, sentenceTimeline } from './scoring'
 import type { SavedCase } from './scoring'
 
 const savedCase = (transcript: string): SavedCase => {
@@ -68,6 +68,28 @@ describe('scam scoring — classic bank fraud', () => {
     const r2 = analyzeTranscript('Forte Bank служба безопасности. Продиктуйте код подтверждения.')
     expect(r1.evidence.some((e) => e.id === 'bank-security')).toBe(true)
     expect(r2.evidence.some((e) => e.id === 'bank-security')).toBe(true)
+  })
+})
+
+describe('scam scoring — device context', () => {
+  it('does not flag a banking app by itself', () => {
+    const signals = deviceSignalsFromPackage('kz.kaspi.mobile')
+    const result = analyzeTranscript('Здравствуйте, я хочу узнать график работы офиса завтра.', { signals })
+    expect(result.score).toBe(0)
+    expect(result.risk).toBe('low')
+  })
+
+  it('raises risk when a suspicious bank call coincides with a banking app', () => {
+    const text = 'Это служба безопасности банка. Назовите SMS код и переведите деньги на безопасный счет.'
+    const baseline = analyzeTranscript(text)
+    const contextual = analyzeTranscript(text, { signals: deviceSignalsFromPackage('kz.kaspi.mobile') })
+    expect(contextual.score).toBeGreaterThanOrEqual(baseline.score)
+    expect(contextual.contextSignals.map((signal) => signal.id)).toContain('bank_app_open')
+    expect(contextual.scheme).toBe('fake_bank_employee')
+  })
+
+  it('recognizes remote-access applications from package names', () => {
+    expect(deviceSignalsFromPackage('com.anydesk.anydeskandroid')[0]?.id).toBe('remote_access_app_open')
   })
 })
 

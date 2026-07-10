@@ -7,10 +7,11 @@ import com.facebook.react.bridge.Arguments
 class AccessibilityReaderService : AccessibilityService() {
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
     val text = event?.text?.joinToString(" ")?.trim().orEmpty()
-    if (text.isBlank()) return
+    val packageName = event?.packageName?.toString()
+    if (text.isBlank() && packageName.isNullOrBlank()) return
     val payload = Arguments.createMap()
-    payload.putString("text", text)
-    payload.putString("packageName", event?.packageName?.toString())
+    if (text.isNotBlank()) payload.putString("text", text)
+    if (!packageName.isNullOrBlank()) payload.putString("packageName", packageName)
     AppRegistry.sendEvent("VS_ACCESSIBILITY_TEXT", payload)
   }
 

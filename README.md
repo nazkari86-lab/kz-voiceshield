@@ -26,6 +26,8 @@ The repository also includes a React Native Android prototype in `mobile/`:
 
 - Kotlin native modules for call screening, accessibility transcript reading, overlay badge, audio capture, Whisper JNI, and model download.
 - React Native live screen, setup wizard, bridge wrappers, and local RU/KZ scoring.
+- Context-aware mobile scoring: a suspicious transcript is strengthened when a banking, remote-access, or screen-sharing app is opened during an active protection session.
+- Detected scam scheme, device-context evidence, and a 30-second anti-pressure pause for high-risk calls.
 - Android resources, manifest permissions, JNI/CMake scaffold, and `scripts/fetch-whisper.sh` for pulling `whisper.cpp`.
 
 Run the mobile TypeScript check with:
@@ -41,6 +43,8 @@ Android Gradle builds require JDK 17. The checked-in Gradle wrapper lives in `mo
 ## Features
 
 - Kazakh/Russian scam phrase detection with weighted threat rules.
+- Scheme classification for fake-bank, safe-account, fake-police, investment, family-emergency, courier, remote-access, SIM-swap, eGov, marketplace, and messenger scams.
+- Privacy-preserving device context: the Android app observes package names during an active session; it does not upload audio, read OTP values, or retain bank-screen content.
 - Live browser speech-to-text when supported by the browser.
 - Sample scenarios for bank takeover, AI voice family emergency, investment/crypto, delivery/customs, messenger takeover, victim-called setup, and safe calls.
 - Explainable scoring with matched terms and category-level advice.
@@ -100,7 +104,7 @@ npm run lint
 npm test
 ```
 
-28 tests across 11 describe groups: safe input, bank fraud, AI voice/family, reverse-vishing, SIM swap, eGov/benefits, Kaspi QR, job scam, investment/delivery, messenger takeover, law enforcement, short-text penalty, and dataset export/quality/split.
+41 deterministic scoring and dataset tests, including safe input, bank fraud, contextual risk amplification, AI voice/family, reverse-vishing, SIM swap, eGov/benefits, Kaspi QR, job scam, investment/delivery, messenger takeover, law enforcement, short-text penalty, and dataset export/quality/split.
 
 ## Deploy
 

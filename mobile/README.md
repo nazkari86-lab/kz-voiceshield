@@ -9,6 +9,8 @@ It keeps the existing web workspace intact and adds a separate mobile app under 
 - React Native 0.79 Android scaffold with Hermes and New Architecture flags.
 - Kotlin native modules for call screening, accessibility transcript reading, overlay badge, audio capture, model download, and Whisper JNI bridge.
 - Local TypeScript scoring pipeline shared by live transcript and manual review.
+- Context-aware risk amplification from package-name-only signals for banking, remote-access, and screen-sharing apps during an active protection session.
+- Scheme classification, visible device-context evidence, and a local 30-second anti-pressure pause for high-risk calls.
 - Setup wizard for overlay, call screening, accessibility, and Whisper model preparation.
 - CMake/JNI bridge that automatically links `whisper.cpp` when the sources are fetched.
 
@@ -38,3 +40,7 @@ chmod +x scripts/fetch-whisper.sh
 ```
 
 The fetched sources are intentionally git-ignored. After fetching, `android/app/src/main/cpp/CMakeLists.txt` links the `whisper` target during the next clean native build.
+
+## Privacy Boundary
+
+VoiceShield does not upload audio or transcript data in local-only mode. The accessibility service passes the active package name to the app only while protection is active so that a suspicious conversation can be correlated with a banking or remote-access app. It does not retain the content of bank screens or OTP values.

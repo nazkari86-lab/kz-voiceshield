@@ -36,6 +36,7 @@ const modelUrl = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml
 const modelSha256 = '1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b'
 const modelSize = 487601967
 const privacyConsentKey = 'voiceshield.privacy-consent.v1'
+const donationConsentKey = 'voiceshield.donation-consent.v1'
 const trustedContactKey = 'voiceshield.trusted-contact.v1'
 
 export type TrustedContact = { name: string; phone: string }
@@ -76,6 +77,7 @@ export function useWorkspace() {
   const [captureNotice, setCaptureNotice] = useState<string | null>(null)
   const [deviceSignals, setDeviceSignals] = useState<RiskSignal[]>([])
   const [privacyConsent, setPrivacyConsent] = useState(false)
+  const [donationConsent, setDonationConsent] = useState(false)
   const [storageError, setStorageError] = useState<string | null>(null)
   const [callStatus, setCallStatus] = useState('No active call context')
   const [trustedContact, setTrustedContact] = useState<TrustedContact | null>(null)
@@ -133,8 +135,9 @@ export function useWorkspace() {
       SecureStorage.getItem(privacyConsentKey).catch(() => null),
       AsyncStorage.getItem(storageKey).catch(() => null),
       SecureStorage.getItem(trustedContactKey).catch(() => null),
+      SecureStorage.getItem(donationConsentKey).catch(() => null),
     ])
-      .then(([encryptedCases, consent, legacyCases, storedTrustedContact]) => {
+      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation]) => {
         if (!active) return
         const stored = encryptedCases ?? legacyCases
         if (stored) {
@@ -153,6 +156,7 @@ export function useWorkspace() {
           }
         }
         setPrivacyConsent(consent === 'accepted')
+        setDonationConsent(donation === 'accepted')
         if (storedTrustedContact) {
           try {
             const parsed = JSON.parse(storedTrustedContact) as TrustedContact
@@ -476,6 +480,29 @@ export function useWorkspace() {
   const exportCsvCases = useCallback(() => share('VoiceShield dataset (CSV)', exportCsv(cases)), [cases])
   const exportSplitCases = useCallback(() => share('VoiceShield split', exportSplitJson(cases)), [cases])
 
+  // ---- consented data donation (opt-in, redacted) ----
+  const setDonation = useCallback(async (accepted: boolean) => {
+    if (accepted) await SecureStorage.setItem(donationConsentKey, 'accepted').catch(() => undefined)
+    else await SecureStorage.removeItem(donationConsentKey).catch(() => undefined)
+    setDonationConsent(accepted)
+  }, [])
+
+  // Shares the reviewer-labelled cases as a redacted training-schema JSONL. Rows
+  // are already redacted (codes/PIN/CVV/long numbers stripped) by serializeCase
+  // and carry provenance.trusted=false, so they stay untrusted until a reviewer
+  // confirms them. No upload happens unless the user picks a target in the sheet.
+  const donateDataset = useCallback(() => {
+    if (!donationConsent) return
+    const labelled = cases.filter((item) => item.label !== 'unreviewed')
+    if (labelled.length === 0) return
+    return share('VoiceShield donation (redacted, opt-in)', exportJsonl(labelled))
+  }, [cases, donationConsent])
+
+  const donateCase = useCallback((item: SavedCase) => {
+    if (!donationConsent) return
+    return share(`VoiceShield donation ${item.id} (redacted)`, exportJsonl([item]))
+  }, [donationConsent])
+
   return {
     // intake
     transcript, setTranscript,
@@ -485,7 +512,7 @@ export function useWorkspace() {
     reviewerName, setReviewerName,
     source,
     // capture
-    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, storageError, callStatus, trustedContact,
+    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact,
     startListening, stopListening, prepareWhisper,
     // computed
     analysis, timeline, quality, datasetStageTotals, operations, highSignals, cases, hydrated,
@@ -495,5 +522,6 @@ export function useWorkspace() {
     updateCaseLabel, updateCaseStatus, toggleCaseFlag, deleteCase, clearCases,
     exportReport, exportEvidenceBundle,
     exportJsonlCases, exportCsvCases, exportSplitCases,
+    setDonation, donateDataset, donateCase,
   }
 }

@@ -2,17 +2,21 @@
 export const trainingDataSnapshot = {
   "generatedAt": "2026-07-11",
   "modelVersion": "0.1.0-baseline",
-  "total": 176,
+  "total": 5445,
   "trustedReal": 0,
   "byOrigin": {
-    "synthetic": 176
+    "synthetic": 176,
+    "korccvi": 2927,
+    "teleantifraud": 2342
   },
   "byLabel": {
-    "false_positive": 80,
-    "true_positive": 96
+    "false_positive": 4654,
+    "true_positive": 791
   },
   "byLanguage": {
     "ru": 86,
-    "kz": 90
+    "kz": 90,
+    "ko": 2927,
+    "zh": 2342
   }
 } as const

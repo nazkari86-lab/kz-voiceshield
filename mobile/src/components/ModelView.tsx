@@ -26,7 +26,7 @@ export function ModelView() {
         <Text style={styles.meta}>{ml.embeddingModel} · {ml.classifier}</Text>
       </Card>
 
-      <SectionTitle>Trained on ({snap.total} examples · {snap.generatedAt})</SectionTitle>
+      <SectionTitle>Training corpus ({snap.total} examples · {snap.generatedAt})</SectionTitle>
       <View style={ui.row}>
         <Metric value={snap.total} label="total examples" />
         <Metric value={snap.trustedReal} label="real donated" />

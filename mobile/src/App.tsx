@@ -123,7 +123,11 @@ export default function App() {
           <DatasetView
             quality={w.quality}
             caseCount={w.cases.length}
+            labelledCount={w.cases.filter((item) => item.label !== 'unreviewed').length}
             datasetStageTotals={w.datasetStageTotals}
+            donationConsent={w.donationConsent}
+            onSetDonation={(accepted) => { void w.setDonation(accepted) }}
+            onDonate={() => { void w.donateDataset() }}
             onExportJsonl={w.exportJsonlCases}
             onExportCsv={w.exportCsvCases}
             onExportSplit={w.exportSplitCases}

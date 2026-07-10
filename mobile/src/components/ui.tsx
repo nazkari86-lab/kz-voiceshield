@@ -48,6 +48,7 @@ export function EmptyState({ title, subtitle }: { title: string; subtitle: strin
   )
 }
 
+// eslint-disable-next-line react/only-export-components
 export const ui = StyleSheet.create({
   card: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 16, borderWidth: 1, gap: 10, marginBottom: 12, padding: 14 },
   badge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },

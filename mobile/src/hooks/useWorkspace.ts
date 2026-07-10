@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Share } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { accessibilityEvents, AccessibilityModule } from '@bridge/AccessibilityBridge'
@@ -21,7 +21,6 @@ import {
 } from '@scoring'
 import type { CaseLabel, CaseStatus, SavedCase, WorkflowFlags } from '@scoring'
 
-const validLabels: CaseLabel[] = ['unreviewed', 'true_positive', 'false_positive', 'needs_review']
 const validStatuses: CaseStatus[] = ['new', 'reviewing', 'escalated', 'closed']
 
 const modelFile = 'ggml-small.bin'

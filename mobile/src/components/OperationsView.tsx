@@ -2,7 +2,7 @@ import React from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { CaseStatus, SavedCase, WorkflowFlags } from '@scoring'
 import { statusText } from '@scoring'
-import { colors, riskColor } from '../theme'
+import { colors } from '../theme'
 import { Card, EmptyState, Metric, SectionTitle, ui } from './ui'
 
 type Operations = {

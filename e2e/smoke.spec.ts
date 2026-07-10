@@ -26,7 +26,7 @@ test('safe text stays at low risk', async ({ page }) => {
   const badge = page.locator('[class*="risk-badge"], [class*="badge"]').first()
   await expect(badge).toBeVisible()
   const text = await badge.innerText()
-  expect(text.toUpperCase().trim()).toBe('LOW')
+  expect(text.toUpperCase().trim()).toBe('LOW RISK')
 })
 
 test('sample button loads a transcript', async ({ page }) => {

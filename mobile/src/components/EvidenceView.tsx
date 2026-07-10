@@ -1,7 +1,7 @@
 import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import type { Analysis } from '@scoring'
-import { colors, riskColor } from '../theme'
+import { colors } from '../theme'
 import { Card, EmptyState, SectionTitle } from './ui'
 
 export function EvidenceView({ analysis }: { analysis: Analysis }) {

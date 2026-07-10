@@ -6,4 +6,11 @@ type AccessibilityNativeModule = {
 }
 
 export const AccessibilityModule = NativeModules.AccessibilityModule as AccessibilityNativeModule
-export const accessibilityEvents = new NativeEventEmitter(NativeModules.AccessibilityModule)
+
+// Guard against null module — NativeEventEmitter(null) throws immediately at
+// module-load time if AccessibilityModule wasn't registered, crashing the app
+// before the first screen renders. Mirror the safe pattern used in WhisperBridge.
+const _accessibilityModule = NativeModules.AccessibilityModule
+export const accessibilityEvents = _accessibilityModule
+  ? new NativeEventEmitter(_accessibilityModule)
+  : ({ addListener: () => ({ remove: () => {} }) } as unknown as NativeEventEmitter)

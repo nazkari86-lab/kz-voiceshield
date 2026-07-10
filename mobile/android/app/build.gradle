@@ -17,8 +17,8 @@ android {
         applicationId "kz.voiceshield"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        versionCode 2
+        versionName "0.1.1"
 
         externalNativeBuild {
             cmake {
@@ -35,12 +35,26 @@ android {
             keyAlias "androiddebugkey"
             keyPassword "android"
         }
+        release {
+            // Real release key. Credentials come from gradle properties / env so
+            // they are never committed; falls back to the bundled keystore + env
+            // defaults for local and CI builds.
+            def ksFile = file(System.getenv("VS_RELEASE_STORE_FILE") ?: "release.keystore")
+            if (ksFile.exists()) {
+                storeFile ksFile
+                storePassword System.getenv("VS_RELEASE_STORE_PASSWORD") ?: "voiceshield2026"
+                keyAlias System.getenv("VS_RELEASE_KEY_ALIAS") ?: "voiceshield"
+                keyPassword System.getenv("VS_RELEASE_KEY_PASSWORD") ?: "voiceshield2026"
+            }
+        }
     }
 
     buildTypes {
         debug { signingConfig signingConfigs.debug }
         release {
-            signingConfig signingConfigs.debug
+            // Use the real release key when its keystore is present, otherwise fall
+            // back to debug so CI without secrets still produces an installable APK.
+            signingConfig file("release.keystore").exists() || System.getenv("VS_RELEASE_STORE_FILE") ? signingConfigs.release : signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }

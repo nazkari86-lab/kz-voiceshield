@@ -31,6 +31,7 @@ export function DatasetView({ quality, caseCount, datasetStageTotals, onExportJs
         <Metric value={quality.labelBalance.false_positive} label="false positive" />
         <Metric value={quality.labelBalance.needs_review} label="needs review" />
         <Metric value={quality.unlabeledCount} label="unreviewed" />
+        <Metric value={quality.untrustedCount} label="untrusted" />
         <Metric value={quality.duplicateGroups.length} label="duplicate groups" />
         <Metric value={quality.falsePositiveReview.length} label="FP to review" />
         <Metric value={quality.averageWords} label="avg words" />
@@ -51,9 +52,8 @@ export function DatasetView({ quality, caseCount, datasetStageTotals, onExportJs
       <Card>
         <Text style={styles.schema}>Training fields · {quality.schemaVersion}</Text>
         <Text style={styles.muted}>
-          Each export includes transcript, score, risk, confidence, verdict, escalation reasons, response checklist,
-          stage coverage, evidence IDs, matched terms and analyst label. JSONL is for model training, CSV for
-          spreadsheet audit, and split JSON creates deterministic train/dev/test sets.
+          Exports include redacted transcript, provenance, trust state, score, risk, confidence, evidence and label.
+          Split JSON includes only reviewer-trusted, labeled cases to reduce training-data poisoning.
         </Text>
       </Card>
     </View>

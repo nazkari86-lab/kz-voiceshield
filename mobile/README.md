@@ -11,7 +11,12 @@ It keeps the existing web workspace intact and adds a separate mobile app under 
 - Local TypeScript scoring pipeline shared by live transcript and manual review.
 - Context-aware risk amplification from package-name-only signals for banking, remote-access, and screen-sharing apps during an active protection session.
 - Scheme classification, visible device-context evidence, and a local 30-second anti-pressure pause for high-risk calls.
-- Setup wizard for overlay, call screening, accessibility, and Whisper model preparation.
+- Explicit privacy consent and session-gated Accessibility/notification processing.
+- AES-GCM Android Keystore storage, one-time plaintext migration, secret redaction, and complete local-data deletion.
+- Privacy-preserving caller verification without retaining raw numbers, optional OTP/bank-notification type detection, and official bank callback directory.
+- Encrypted trusted-family contact with user-initiated call and risk-summary sharing.
+- Setup status for overlay, call screening, microphone, notifications, battery optimization, Xiaomi/Android app settings, and Whisper preparation.
+- Pinned Whisper model size/SHA-256 verification and download progress.
 - CMake/JNI bridge that automatically links `whisper.cpp` when the sources are fetched.
 
 ## Run
@@ -26,12 +31,12 @@ Android CLI builds require a full JDK, not only a JRE. Use JDK 17 for React Nati
 
 ```bash
 cd mobile/android
-JAVA_HOME="$PWD/../.jdk/Contents/Home" ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew assembleDebug --no-daemon
+JAVA_HOME="$PWD/../.jdk/Contents/Home" ANDROID_HOME="$HOME/Library/Android/sdk" ./gradlew testReleaseUnitTest assembleRelease bundleRelease --no-daemon
 ```
 
 ## Whisper
 
-The checked-in JNI file compiles without vendored native sources, then switches to real transcription once `whisper.cpp` is present. To fetch `whisper.cpp` v1.7.5:
+The checked-in JNI bridge refuses to report the model as ready unless real `whisper.cpp` is linked and the model loads successfully. To fetch `whisper.cpp` v1.7.5:
 
 ```bash
 cd mobile
@@ -43,4 +48,6 @@ The fetched sources are intentionally git-ignored. After fetching, `android/app/
 
 ## Privacy Boundary
 
-VoiceShield does not upload audio or transcript data in local-only mode. The accessibility service passes the active package name to the app only while protection is active so that a suspicious conversation can be correlated with a banking or remote-access app. It does not retain the content of bank screens or OTP values.
+VoiceShield does not upload audio or transcript data in local-only mode. Accessibility and notification classification stop outside a user-started protection session. Only approved system caption packages can contribute text. Notification text is reduced natively to a risk type and is not retained. Raw caller numbers are not retained. Saved transcripts are redacted and encrypted with a non-exportable Android Keystore key.
+
+Microphone `VOICE_RECOGNITION` is a fallback and cannot guarantee capture of the remote side of a cellular call on every Android device. Live Caption is preferred when available. The app must show a degraded-mode message rather than claim full two-sided transcription when the device does not expose it.

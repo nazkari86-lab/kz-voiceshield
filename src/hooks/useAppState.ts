@@ -13,6 +13,7 @@ import {
   statusText,
   storageKey,
   labelText,
+  redactSensitiveText,
 } from '../scoring'
 import type { CaseLabel, CaseStatus, SavedCase, WorkflowFlags } from '../scoring'
 
@@ -75,7 +76,7 @@ const parseImportedCases = (body: string, fileName: string) => {
     .flatMap((line, index) => {
       try {
         const parsed = JSON.parse(line) as { transcript?: string; label?: CaseLabel; fileName?: string; analystNote?: string; createdAt?: string }
-        const importedTranscript = parsed.transcript ?? line
+        const importedTranscript = redactSensitiveText(parsed.transcript ?? line)
         const importedAnalysis = analyzeTranscript(importedTranscript)
         const workflow = createWorkflowState(importedAnalysis, parsed.createdAt ?? now, 'jsonl-import')
         return [{
@@ -87,6 +88,7 @@ const parseImportedCases = (body: string, fileName: string) => {
           label: validLabels.includes(parsed.label ?? 'unreviewed') ? (parsed.label ?? 'unreviewed') : 'unreviewed',
           ...workflow,
           analystNote: parsed.analystNote ?? '',
+          provenance: { origin: 'import', trusted: false },
           analysis: importedAnalysis,
         } satisfies SavedCase]
       } catch {
@@ -104,10 +106,13 @@ const normalizeFlags = (flags: Partial<WorkflowFlags> | undefined, fallback: Wor
 })
 
 const normalizeSavedCase = (item: SavedCase): SavedCase => {
-  const analysis = analyzeTranscript(item.transcript)
+  const transcript = redactSensitiveText(item.transcript)
+  const analysis = analyzeTranscript(transcript)
   const workflow = createWorkflowState(analysis, item.createdAt, 'migration')
   return {
     ...item,
+    transcript,
+    provenance: item.provenance ?? { origin: 'migration', trusted: false },
     analysis,
     assignedTo: item.assignedTo || workflow.assignedTo,
     auditLog: item.auditLog?.length ? item.auditLog : workflow.auditLog,
@@ -229,30 +234,37 @@ export function useAppState() {
 
   const saveCurrentCase = () => {
     const now = new Date().toISOString()
+    const safeTranscript = redactSensitiveText(transcript)
+    const safeAnalysis = analyzeTranscript(safeTranscript)
     setCases((current) => {
-      const existing = current.find((item) => item.id === analysis.caseId)
-      const workflow = existing ?? createWorkflowState(analysis, now, reviewerName)
+      const existing = current.find((item) => item.id === safeAnalysis.caseId)
+      const workflow = existing ?? createWorkflowState(safeAnalysis, now, reviewerName)
       const auditEntry = {
         action: existing ? 'case_updated' : 'case_saved',
         actor: reviewerName,
         at: now,
-        detail: `${analysis.verdict} at ${analysis.score}/100`,
+        detail: `${safeAnalysis.verdict} at ${safeAnalysis.score}/100`,
       }
       const next: SavedCase = {
-        id: analysis.caseId,
+        id: safeAnalysis.caseId,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
         fileName,
-        transcript,
+        transcript: safeTranscript,
         label: caseLabel,
         status: existing?.status ?? workflow.status,
         assignedTo: existing?.assignedTo ?? workflow.assignedTo,
         flags: existing?.flags ?? workflow.flags,
         analystNote,
+        provenance: existing?.provenance ?? {
+          origin: fileName === 'live-call-transcript' ? 'live' : 'manual',
+          trusted: caseLabel !== 'unreviewed',
+          reviewedAt: caseLabel !== 'unreviewed' ? now : undefined,
+        },
         auditLog: [...(existing?.auditLog ?? workflow.auditLog), auditEntry],
         decisionHistory: existing?.decisionHistory ?? workflow.decisionHistory,
         incidentTimeline: existing?.incidentTimeline ?? workflow.incidentTimeline,
-        analysis,
+        analysis: safeAnalysis,
       }
       return [next, ...current.filter((item) => item.id !== next.id)]
     })
@@ -270,7 +282,14 @@ export function useAppState() {
     setCases((current) => current.map((item) => {
       if (item.id !== id) return item
       const entry = { action: 'label_changed', actor: reviewerName, at: now, detail: `${labelText(item.label)} -> ${labelText(label)}` }
-      return { ...item, auditLog: [...item.auditLog, entry], decisionHistory: [...item.decisionHistory, entry], label, updatedAt: now }
+      return {
+        ...item,
+        auditLog: [...item.auditLog, entry],
+        decisionHistory: [...item.decisionHistory, entry],
+        label,
+        provenance: { ...item.provenance, trusted: label !== 'unreviewed', reviewedAt: label !== 'unreviewed' ? now : undefined },
+        updatedAt: now,
+      }
     }))
   }
 

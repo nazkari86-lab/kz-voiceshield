@@ -7,6 +7,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import androidx.core.content.ContextCompat
 
 class OverlayModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   override fun getName(): String = "OverlayModule"
@@ -23,8 +24,9 @@ class OverlayModule(private val context: ReactApplicationContext) : ReactContext
   }
 
   @ReactMethod
-  fun show(promise: Promise) {
-    context.startService(Intent(context, OverlayService::class.java))
+  fun show(useMicrophone: Boolean, promise: Promise) {
+    val intent = Intent(context, OverlayService::class.java).putExtra(OverlayService.EXTRA_USE_MICROPHONE, useMicrophone)
+    ContextCompat.startForegroundService(context, intent)
     promise.resolve(null)
   }
 

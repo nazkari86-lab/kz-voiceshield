@@ -21,6 +21,16 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
   }
 
   @ReactMethod
+  fun isRoleHeld(promise: Promise) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+      promise.resolve(false)
+      return
+    }
+    val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
+    promise.resolve(roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING))
+  }
+
+  @ReactMethod
   fun requestRole(promise: Promise) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
       promise.resolve(false)
@@ -31,5 +41,10 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     context.startActivity(intent)
     promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun consumePendingCall(promise: Promise) {
+    promise.resolve(CallEventStore.consume(context)?.toWritableMap())
   }
 }

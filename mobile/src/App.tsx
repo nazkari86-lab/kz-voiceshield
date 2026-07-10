@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SetupScreen } from '@screens/SetupScreen'
 import { useWorkspace } from '@hooks/useWorkspace'
@@ -7,6 +7,7 @@ import { AttackChainView } from './components/AttackChainView'
 import { CasesView } from './components/CasesView'
 import { DatasetView } from './components/DatasetView'
 import { EvidenceView } from './components/EvidenceView'
+import { FamilyView } from './components/FamilyView'
 import { LiveView } from './components/LiveView'
 import { OperationsView } from './components/OperationsView'
 import { PlaybookView } from './components/PlaybookView'
@@ -14,10 +15,11 @@ import { ReviewView } from './components/ReviewView'
 import { SimulatorView } from './components/SimulatorView'
 import { ThreatsView } from './components/ThreatsView'
 import { TimelineView } from './components/TimelineView'
+import { VerifyView } from './components/VerifyView'
 
 type Tab =
   | 'live' | 'review' | 'evidence' | 'timeline' | 'threats'
-  | 'chain' | 'simulator' | 'cases' | 'operations' | 'dataset' | 'playbook' | 'setup'
+  | 'chain' | 'simulator' | 'cases' | 'operations' | 'dataset' | 'playbook' | 'family' | 'verify' | 'setup'
 
 const TABS: Array<[Tab, string]> = [
   ['live', 'Live'],
@@ -31,12 +33,18 @@ const TABS: Array<[Tab, string]> = [
   ['operations', 'Operations'],
   ['dataset', 'Dataset'],
   ['playbook', 'Playbook'],
+  ['family', 'Family'],
+  ['verify', 'Verify'],
   ['setup', 'Setup'],
 ]
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('live')
   const w = useWorkspace()
+
+  useEffect(() => {
+    if (w.hydrated && !w.privacyConsent) setTab('setup')
+  }, [w.hydrated, w.privacyConsent])
 
   return (
     <SafeAreaView style={styles.shell}>
@@ -69,10 +77,15 @@ export default function App() {
             isListening={w.isListening}
             audioLevel={w.audioLevel}
             error={w.captureError}
+            notice={w.captureNotice}
+            callStatus={w.callStatus}
+            storageError={w.storageError}
+            trustedContactName={w.trustedContact?.name}
             onChangeTranscript={w.setTranscript}
             onToggleListening={() => { void (w.isListening ? w.stopListening() : w.startListening()) }}
             onSave={w.saveCurrentCase}
             onExportReport={w.exportReport}
+            onCallTrusted={() => { void w.callTrustedContact() }}
           />
         )}
         {tab === 'review' && <ReviewView analysis={w.analysis} timelineLength={w.timeline.length} highSignals={w.highSignals} />}
@@ -116,7 +129,31 @@ export default function App() {
           />
         )}
         {tab === 'playbook' && <PlaybookView />}
-        {tab === 'setup' && <SetupScreen modelReady={w.modelReady} onPrepareWhisper={() => { void w.prepareWhisper() }} />}
+        {tab === 'family' && (
+          <FamilyView
+            contact={w.trustedContact}
+            privacyConsent={w.privacyConsent}
+            onSave={w.saveTrustedContact}
+            onClear={w.clearTrustedContact}
+            onCall={w.callTrustedContact}
+            onShareAlert={w.shareTrustedAlert}
+          />
+        )}
+        {tab === 'verify' && <VerifyView />}
+        {tab === 'setup' && (
+          <SetupScreen
+            modelReady={w.modelReady}
+            modelProgress={w.modelProgress}
+            privacyConsent={w.privacyConsent}
+            storageError={w.storageError}
+            callStatus={w.callStatus}
+            caseCount={w.cases.length}
+            onPrepareWhisper={() => { void w.prepareWhisper() }}
+            onAcceptPrivacy={w.acceptPrivacy}
+            onDeclinePrivacy={w.declinePrivacy}
+            onDeleteAllData={w.deleteAllLocalData}
+          />
+        )}
       </ScrollView>
     </SafeAreaView>
   )

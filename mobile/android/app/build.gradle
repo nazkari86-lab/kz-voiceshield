@@ -29,8 +29,8 @@ android {
         applicationId "kz.voiceshield"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "0.2.0"
+        versionCode 4
+        versionName "0.3.0"
 
         externalNativeBuild {
             cmake {
@@ -80,6 +80,7 @@ dependencies {
     implementation("com.facebook.react:react-android")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    testImplementation("junit:junit:4.13.2")
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
     } else {

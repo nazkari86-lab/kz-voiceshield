@@ -11,11 +11,13 @@ import com.facebook.react.bridge.ReactMethod
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 class AudioCaptureModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
-  private val scope = CoroutineScope(Dispatchers.Default)
+  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private var recorder: AudioRecord? = null
   private var job: Job? = null
 
@@ -27,6 +29,10 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
   @ReactMethod
   fun startCapture(promise: Promise) {
     try {
+      if (recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+        promise.resolve(null)
+        return
+      }
       val minBuffer = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
       if (minBuffer <= 0) {
         promise.reject("AUDIO_UNAVAILABLE", "Microphone input is unavailable on this device")
@@ -62,13 +68,24 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
 
   @ReactMethod
   fun stopCapture(promise: Promise) {
+    stopInternal()
+    promise.resolve(null)
+  }
+
+  override fun invalidate() {
+    stopInternal()
+    scope.cancel()
+    super.invalidate()
+  }
+
+  private fun stopInternal() {
     job?.cancel()
+    job = null
     try {
       recorder?.stop()
     } catch (_: Throwable) {
     }
     recorder?.release()
     recorder = null
-    promise.resolve(null)
   }
 }

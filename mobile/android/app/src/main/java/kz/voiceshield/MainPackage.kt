@@ -15,6 +15,9 @@ class MainPackage : ReactPackage {
       WhisperModule(reactContext),
       AudioCaptureModule(reactContext),
       ModelDownloader(reactContext),
+      SecureStorageModule(reactContext),
+      DeviceSettingsModule(reactContext),
+      NotificationAccessModule(reactContext),
     )
   }
 

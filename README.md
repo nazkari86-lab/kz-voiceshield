@@ -3,6 +3,8 @@
 [![CI](https://github.com/nazkari86-lab/kz-voiceshield/actions/workflows/ci.yml/badge.svg)](https://github.com/nazkari86-lab/kz-voiceshield/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+[Privacy policy](PRIVACY.md)
+
 KZ VoiceShield is a browser-based anti-scam call review workspace for Kazakh and Russian conversations.
 
 It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. The current version runs fully in the browser and uses transparent rule-based detection, which makes it suitable for demos, early user testing, and dataset design before adding server-side speech or ML models.
@@ -28,6 +30,8 @@ The repository also includes a React Native Android prototype in `mobile/`:
 - React Native live screen, setup wizard, bridge wrappers, and local RU/KZ scoring.
 - Context-aware mobile scoring: a suspicious transcript is strengthened when a banking, remote-access, or screen-sharing app is opened during an active protection session.
 - Detected scam scheme, device-context evidence, and a 30-second anti-pressure pause for high-risk calls.
+- Explicit privacy consent, session-gated caption access, Android Keystore case storage, secret redaction, and full local-data deletion.
+- Privacy-preserving call verification, optional OTP/bank-notification type signals, encrypted trusted-family contact, and official bank callback directory.
 - Android resources, manifest permissions, JNI/CMake scaffold, and `scripts/fetch-whisper.sh` for pulling `whisper.cpp`.
 
 Run the mobile TypeScript check with:
@@ -44,7 +48,10 @@ Android Gradle builds require JDK 17. The checked-in Gradle wrapper lives in `mo
 
 - Kazakh/Russian scam phrase detection with weighted threat rules.
 - Scheme classification for fake-bank, safe-account, fake-police, investment, family-emergency, courier, remote-access, SIM-swap, eGov, marketplace, and messenger scams.
-- Privacy-preserving device context: the Android app observes package names during an active session; it does not upload audio, read OTP values, or retain bank-screen content.
+- Privacy-preserving device context: the Android app observes package names and notification risk types only during an active session; it does not upload audio, expose OTP values, retain raw phone numbers, or retain bank-screen content.
+- Verified Whisper model download with a pinned size and SHA-256 digest, progress reporting, and corrupted-model cleanup.
+- Dataset provenance and reviewer trust state; untrusted imported cases are excluded from train/dev/test split exports.
+- Reproducible RU/KZ ML baseline pipeline in `ml/` using multilingual sentence embeddings and logistic regression, with duplicate/provenance gates and explicit rules-vs-ML disagreement output.
 - Live browser speech-to-text when supported by the browser.
 - Sample scenarios for bank takeover, AI voice family emergency, investment/crypto, delivery/customs, messenger takeover, victim-called setup, and safe calls.
 - Explainable scoring with matched terms and category-level advice.
@@ -104,7 +111,7 @@ npm run lint
 npm test
 ```
 
-41 deterministic scoring and dataset tests, including safe input, bank fraud, contextual risk amplification, AI voice/family, reverse-vishing, SIM swap, eGov/benefits, Kaspi QR, job scam, investment/delivery, messenger takeover, law enforcement, short-text penalty, and dataset export/quality/split.
+44 deterministic web scoring and dataset tests, 6 mobile scoring/privacy tests, 7 Kotlin privacy-classifier tests, 1 ML dataset-gate test, and 3 browser smoke tests.
 
 ## Deploy
 
@@ -126,14 +133,14 @@ The ML object is normalized as `{ verdict: "fraud" | "safe" | "needs_review", sc
 
 ## CI
 
-GitHub Actions runs `npm ci`, `npm run lint`, `npm test`, and `npm run build` on pushes to `main` and pull requests.
+GitHub Actions runs dependency audits, lint, unit tests, production builds, Playwright browser smoke tests, Kotlin unit tests, and signed APK/AAB builds.
 
 ## Product Notes
 
 This is an MVP, not a final fraud-detection engine. The next production steps are:
 
 - add real audio upload transcription through a backend service;
-- replace localStorage with encrypted server-side case storage when multi-user review is needed;
+- add encrypted server-side case storage when multi-user review is needed;
 - add ML/NLP scoring on top of the current explainable rules;
 - add real reviewer accounts, roles, SSO, and secure evidence storage;
 - add official reporting/export formats for banks or consumer-protection teams.

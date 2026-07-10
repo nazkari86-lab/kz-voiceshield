@@ -36,6 +36,7 @@ export function CasesView({ cases, onSaveCurrent, onLoadCase, onUpdateLabel, onU
             <Pressable onPress={() => onLoadCase(item)}>
               <Text style={styles.id}>{item.id}</Text>
               <Text style={styles.meta}>{item.analysis.score}/100 · {item.analysis.verdict}</Text>
+              <Text style={styles.trust}>{item.provenance.trusted ? 'Reviewer trusted' : 'Not training-eligible'} · {item.provenance.origin}</Text>
               <Text style={styles.snippet}>{item.transcript.slice(0, 160)}{item.transcript.length > 160 ? '…' : ''}</Text>
             </Pressable>
 
@@ -78,6 +79,7 @@ const styles = StyleSheet.create({
   primaryText: { color: '#fff', fontWeight: '800' },
   id: { color: colors.ink, fontSize: 13, fontWeight: '900' },
   meta: { color: colors.sub, fontSize: 12 },
+  trust: { color: colors.muted, fontSize: 11, marginTop: 2 },
   snippet: { color: colors.sub, fontSize: 12, lineHeight: 17, marginTop: 4 },
   toolRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   tool: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },

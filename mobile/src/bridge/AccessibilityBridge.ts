@@ -2,7 +2,9 @@ import { NativeEventEmitter, NativeModules } from 'react-native'
 
 type AccessibilityNativeModule = {
   isEnabled(): Promise<boolean>
+  isProtectionActive(): Promise<boolean>
   openSettings(): void
+  setProtectionActive(active: boolean): Promise<boolean>
 }
 
 export const AccessibilityModule = NativeModules.AccessibilityModule as AccessibilityNativeModule

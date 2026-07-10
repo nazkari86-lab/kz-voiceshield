@@ -3,6 +3,7 @@ package kz.voiceshield
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.pm.ServiceInfo
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
@@ -23,11 +24,27 @@ class OverlayService : Service() {
     AppRegistry.overlayService = this
     windowManager = getSystemService(WindowManager::class.java)
     createChannel()
-    startForeground(7, NotificationCompat.Builder(this, "vs_overlay")
+  }
+
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    val notification = NotificationCompat.Builder(this, "vs_overlay")
       .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle(getString(R.string.overlay_notification_title))
       .setContentText(getString(R.string.overlay_notification_body))
-      .build())
+      .setOngoing(true)
+      .build()
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      val useMicrophone = intent?.getBooleanExtra(EXTRA_USE_MICROPHONE, false) == true
+      val serviceType = when {
+        useMicrophone -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        else -> 0
+      }
+      startForeground(7, notification, serviceType)
+    } else {
+      startForeground(7, notification)
+    }
+    return START_NOT_STICKY
   }
 
   fun updateRisk(score: Int, level: String, source: String) {
@@ -39,8 +56,13 @@ class OverlayService : Service() {
         it.textSize = 14f
         it.setPadding(22, 14, 22, 14)
         it.setBackgroundResource(R.drawable.overlay_badge_bg)
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE
-        val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, type, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT)
+        val params = WindowManager.LayoutParams(
+          WindowManager.LayoutParams.WRAP_CONTENT,
+          WindowManager.LayoutParams.WRAP_CONTENT,
+          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+          PixelFormat.TRANSLUCENT,
+        )
         params.gravity = Gravity.TOP or Gravity.END
         params.x = 28
         params.y = 120
@@ -65,5 +87,9 @@ class OverlayService : Service() {
       val channel = NotificationChannel("vs_overlay", getString(R.string.overlay_channel_name), NotificationManager.IMPORTANCE_LOW)
       getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
+  }
+
+  companion object {
+    const val EXTRA_USE_MICROPHONE = "kz.voiceshield.extra.USE_MICROPHONE"
   }
 }

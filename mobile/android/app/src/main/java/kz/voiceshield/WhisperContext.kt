@@ -3,6 +3,10 @@ package kz.voiceshield
 class WhisperContext(modelPath: String, language: String, beamSize: Int = 1, threads: Int = 4) : AutoCloseable {
   private var handle: Long = nativeInit(modelPath, language, beamSize, threads)
 
+  init {
+    require(handle != 0L) { "Whisper model could not be loaded" }
+  }
+
   fun process(chunk: ShortArray) = nativeProcessChunkInt16(handle, chunk)
   fun transcribe(): String = nativeTranscribe(handle)
   fun reset() = nativeResetBuffer(handle)

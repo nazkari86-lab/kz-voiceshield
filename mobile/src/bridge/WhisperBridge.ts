@@ -9,8 +9,9 @@ type WhisperNativeModule = {
 }
 
 type ModelDownloaderNativeModule = {
-  downloadModel(url: string, fileName: string): Promise<string>
-  getModelPath(fileName: string): Promise<string | null>
+  deleteModel(fileName: string): Promise<boolean>
+  downloadModel(url: string, fileName: string, expectedSha256: string, expectedSize: number): Promise<string>
+  getVerifiedModelPath(fileName: string, expectedSha256: string, expectedSize: number): Promise<string | null>
   hasModel(fileName: string): Promise<boolean>
 }
 
@@ -28,6 +29,7 @@ export const AudioCaptureModule = NativeModules.AudioCaptureModule as AudioCaptu
 // Lazy getters ensure we only create the emitter when the module is confirmed present.
 const _whisperModule = NativeModules.WhisperModule
 const _audioModule = NativeModules.AudioCaptureModule
+const _modelDownloader = NativeModules.ModelDownloader
 
 export const whisperEvents = _whisperModule
   ? new NativeEventEmitter(_whisperModule)
@@ -35,4 +37,8 @@ export const whisperEvents = _whisperModule
 
 export const audioEvents = _audioModule
   ? new NativeEventEmitter(_audioModule)
+  : ({ addListener: () => ({ remove: () => {} }) } as unknown as NativeEventEmitter)
+
+export const modelEvents = _modelDownloader
+  ? new NativeEventEmitter(_modelDownloader)
   : ({ addListener: () => ({ remove: () => {} }) } as unknown as NativeEventEmitter)

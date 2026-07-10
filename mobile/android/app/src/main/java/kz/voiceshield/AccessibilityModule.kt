@@ -24,4 +24,15 @@ class AccessibilityModule(private val context: ReactApplicationContext) : ReactC
   fun openSettings() {
     context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
   }
+
+  @ReactMethod
+  fun setProtectionActive(active: Boolean, promise: Promise) {
+    ProtectionSessionState.setActive(active)
+    promise.resolve(active)
+  }
+
+  @ReactMethod
+  fun isProtectionActive(promise: Promise) {
+    promise.resolve(ProtectionSessionState.isActive())
+  }
 }

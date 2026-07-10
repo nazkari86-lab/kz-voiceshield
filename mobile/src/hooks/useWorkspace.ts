@@ -1,20 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Share } from 'react-native'
+import { Linking, Share } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { accessibilityEvents, AccessibilityModule } from '@bridge/AccessibilityBridge'
-import { AudioCaptureModule, audioEvents, ModelDownloader, WhisperModule, whisperEvents } from '@bridge/WhisperBridge'
+import { callEvents, CallModule } from '@bridge/CallModule'
+import type { SafeCallEvent } from '@bridge/CallModule'
+import { AudioCaptureModule, audioEvents, ModelDownloader, modelEvents, WhisperModule, whisperEvents } from '@bridge/WhisperBridge'
 import { OverlayModule } from '@bridge/OverlayBridge'
+import { notificationEvents } from '@bridge/NotificationAccessBridge'
+import { SecureStorage } from '@bridge/SecureStorageBridge'
 import {
   analyzeTranscript,
   buildEvidenceBundle,
   buildReport,
+  callSignalsFromVerification,
   createWorkflowState,
   datasetQuality,
-  deviceSignalsFromPackage,
+  deviceSignalsFromId,
   exportCsv,
   exportJsonl,
   exportSplitJson,
   labelText,
+  notificationSignalsFromId,
+  redactSensitiveText,
   samples,
   sentenceTimeline,
   statusText,
@@ -26,12 +33,21 @@ const validStatuses: CaseStatus[] = ['new', 'reviewing', 'escalated', 'closed']
 
 const modelFile = 'ggml-small.bin'
 const modelUrl = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin'
+const modelSha256 = '1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b'
+const modelSize = 487601967
+const privacyConsentKey = 'voiceshield.privacy-consent.v1'
+const trustedContactKey = 'voiceshield.trusted-contact.v1'
+
+export type TrustedContact = { name: string; phone: string }
 
 const normalizeSavedCase = (item: SavedCase): SavedCase => {
-  const analysis = analyzeTranscript(item.transcript, { signals: item.analysis?.contextSignals ?? [] })
+  const transcript = redactSensitiveText(item.transcript)
+  const analysis = analyzeTranscript(transcript, { signals: item.analysis?.contextSignals ?? [] })
   const workflow = createWorkflowState(analysis, item.createdAt, 'migration')
   return {
     ...item,
+    transcript,
+    provenance: item.provenance ?? { origin: 'migration', trusted: false },
     analysis,
     assignedTo: item.assignedTo || workflow.assignedTo,
     auditLog: item.auditLog?.length ? item.auditLog : workflow.auditLog,
@@ -44,8 +60,8 @@ const normalizeSavedCase = (item: SavedCase): SavedCase => {
 
 export function useWorkspace() {
   // ---- intake + analysis ----
-  const [transcript, setTranscript] = useState(samples.bank)
-  const [fileName, setFileName] = useState('sample-bank-call.txt')
+  const [transcript, setTranscript] = useState('')
+  const [fileName, setFileName] = useState('manual-call.txt')
   const [caseLabel, setCaseLabel] = useState<CaseLabel>('unreviewed')
   const [analystNote, setAnalystNote] = useState('')
   const [reviewerName, setReviewerName] = useState('Fraud reviewer')
@@ -54,9 +70,15 @@ export function useWorkspace() {
   // ---- live capture ----
   const [isListening, setIsListening] = useState(false)
   const [modelReady, setModelReady] = useState(false)
+  const [modelProgress, setModelProgress] = useState<number | null>(null)
   const [audioLevel, setAudioLevel] = useState(0)
   const [captureError, setCaptureError] = useState<string | null>(null)
+  const [captureNotice, setCaptureNotice] = useState<string | null>(null)
   const [deviceSignals, setDeviceSignals] = useState<RiskSignal[]>([])
+  const [privacyConsent, setPrivacyConsent] = useState(false)
+  const [storageError, setStorageError] = useState<string | null>(null)
+  const [callStatus, setCallStatus] = useState('No active call context')
+  const [trustedContact, setTrustedContact] = useState<TrustedContact | null>(null)
 
   // ---- saved cases ----
   const [cases, setCases] = useState<SavedCase[]>([])
@@ -103,15 +125,44 @@ export function useWorkspace() {
     }
   }, [cases])
 
-  // ---- persistence (AsyncStorage) ----
+  // ---- encrypted persistence with one-time plaintext migration ----
   useEffect(() => {
     let active = true
-    AsyncStorage.getItem(storageKey)
-      .then((stored) => {
+    Promise.all([
+      SecureStorage.getItem(storageKey).catch(() => null),
+      SecureStorage.getItem(privacyConsentKey).catch(() => null),
+      AsyncStorage.getItem(storageKey).catch(() => null),
+      SecureStorage.getItem(trustedContactKey).catch(() => null),
+    ])
+      .then(([encryptedCases, consent, legacyCases, storedTrustedContact]) => {
         if (!active) return
-        if (stored) setCases((JSON.parse(stored) as SavedCase[]).map(normalizeSavedCase))
+        const stored = encryptedCases ?? legacyCases
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored)
+            if (!Array.isArray(parsed)) throw new Error('Case storage is not an array')
+            const normalized = (parsed as SavedCase[]).map(normalizeSavedCase)
+            setCases(normalized)
+            if (!encryptedCases && legacyCases) {
+              void SecureStorage.setItem(storageKey, JSON.stringify(normalized))
+                .then(() => AsyncStorage.removeItem(storageKey))
+                .catch(() => setStorageError('Could not migrate existing cases into encrypted storage.'))
+            }
+          } catch {
+            setStorageError('Saved cases are damaged and were not loaded. Delete local data to recover.')
+          }
+        }
+        setPrivacyConsent(consent === 'accepted')
+        if (storedTrustedContact) {
+          try {
+            const parsed = JSON.parse(storedTrustedContact) as TrustedContact
+            if (parsed.name && parsed.phone) setTrustedContact(parsed)
+          } catch {
+            setStorageError('The trusted contact record is damaged and was ignored.')
+          }
+        }
       })
-      .catch(() => undefined)
+      .catch(() => setStorageError('Encrypted local storage could not be opened.'))
       .finally(() => {
         if (active) setHydrated(true)
       })
@@ -122,14 +173,40 @@ export function useWorkspace() {
 
   useEffect(() => {
     if (!hydrated) return
-    AsyncStorage.setItem(storageKey, JSON.stringify(cases)).catch(() => undefined)
+    SecureStorage.setItem(storageKey, JSON.stringify(cases))
+      .then(() => setStorageError(null))
+      .catch(() => setStorageError('Could not encrypt and save local cases.'))
   }, [cases, hydrated])
+
+  useEffect(() => {
+    const applyCallEvent = (event: SafeCallEvent) => {
+      const ageMs = Date.now() - event.detectedAt
+      if (ageMs < 0 || ageMs > 1000 * 60 * 5) return
+      setCallStatus(
+        event.verificationStatus === 'failed'
+          ? 'Incoming call detected: caller ID verification failed'
+          : event.verificationStatus === 'passed'
+            ? 'Incoming call detected: caller ID verification passed'
+            : 'Incoming call detected: caller ID is not verified',
+      )
+      if (!privacyConsent) return
+      const nextSignals = callSignalsFromVerification(event.verificationStatus)
+      setDeviceSignals((current) => [...new Map([...current, ...nextSignals].map((item) => [item.id, item])).values()])
+    }
+
+    const subscription = callEvents.addListener('VS_CALL_INCOMING', applyCallEvent)
+    if (privacyConsent) {
+      void CallModule.consumePendingCall().then((event) => event && applyCallEvent(event)).catch(() => undefined)
+    }
+    return () => subscription.remove()
+  }, [privacyConsent])
 
   // ---- live transcript wiring ----
   useEffect(() => {
-    const liveCaptionSub = accessibilityEvents.addListener('VS_ACCESSIBILITY_TEXT', (event: { packageName?: string; text?: string }) => {
-      if (isListening && event.packageName) {
-        const nextSignals = deviceSignalsFromPackage(event.packageName)
+    const liveCaptionSub = accessibilityEvents.addListener('VS_ACCESSIBILITY_TEXT', (event: { appSignalId?: string; text?: string }) => {
+      if (!isListening) return
+      if (event.appSignalId) {
+        const nextSignals = deviceSignalsFromId(event.appSignalId)
         if (nextSignals.length > 0) {
           setDeviceSignals((current) => [...new Map([...current, ...nextSignals].map((item) => [item.id, item])).values()])
         }
@@ -145,10 +222,18 @@ export function useWorkspace() {
       setTranscript((current) => `${current} ${event.text}`.trim())
     })
     const levelSub = audioEvents.addListener('VS_AUDIO_LEVEL', (event: { level?: number }) => setAudioLevel(event.level ?? 0))
+    const notificationSub = notificationEvents.addListener('VS_NOTIFICATION_SIGNAL', (event: { signalId?: string }) => {
+      if (!isListening) return
+      const nextSignals = notificationSignalsFromId(event.signalId)
+      setDeviceSignals((current) => [...new Map([...current, ...nextSignals].map((item) => [item.id, item])).values()])
+    })
+    const modelSub = modelEvents.addListener('VS_MODEL_DOWNLOAD_PROGRESS', (event: { progress?: number }) => setModelProgress(event.progress ?? null))
     return () => {
       liveCaptionSub.remove()
       whisperSub.remove()
       levelSub.remove()
+      notificationSub.remove()
+      modelSub.remove()
     }
   }, [isListening])
 
@@ -158,40 +243,66 @@ export function useWorkspace() {
 
   const prepareWhisper = useCallback(async () => {
     setCaptureError(null)
+    setCaptureNotice(null)
+    setModelProgress(0)
     try {
-      const existing = await ModelDownloader.getModelPath(modelFile)
-      const path = existing ?? (await ModelDownloader.downloadModel(modelUrl, modelFile))
-      await WhisperModule.initialize(path, 'ru')
+      const existing = await ModelDownloader.getVerifiedModelPath(modelFile, modelSha256, modelSize)
+      const path = existing ?? (await ModelDownloader.downloadModel(modelUrl, modelFile, modelSha256, modelSize))
+      await WhisperModule.initialize(path, 'auto')
       setModelReady(true)
+      setModelProgress(null)
     } catch {
       setModelReady(false)
+      setModelProgress(null)
       setCaptureError('Could not prepare the speech model. Check internet access and free storage.')
     }
   }, [])
 
   const startListening = useCallback(async () => {
     setCaptureError(null)
-    setDeviceSignals([])
+    setCaptureNotice(null)
+    setDeviceSignals((current) => current.filter((signal) => signal.id === 'caller_verification_failed' || signal.id === 'caller_unverified'))
+    if (!privacyConsent) {
+      setCaptureError('Review and accept the privacy notice in Setup before starting protection.')
+      return
+    }
     try {
       const accessibilityEnabled = await AccessibilityModule.isEnabled()
       if (!accessibilityEnabled && !modelReady) await prepareWhisper()
-      await OverlayModule.show()
+      await OverlayModule.show(!accessibilityEnabled)
       if (!accessibilityEnabled) {
         await AudioCaptureModule.startCapture()
         await WhisperModule.startStreaming()
+        setCaptureNotice('Microphone fallback is active. Android may not expose the remote caller audio on this device.')
+      } else {
+        setCaptureNotice('Live Caption mode is active. Only approved system caption text is processed.')
       }
+      await AccessibilityModule.setProtectionActive(true)
       setIsListening(true)
     } catch {
+      await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
+      await OverlayModule.hide().catch(() => undefined)
       setIsListening(false)
       setCaptureError('Protection could not start. Enable microphone, overlay and accessibility permissions in setup.')
     }
-  }, [modelReady, prepareWhisper])
+  }, [modelReady, prepareWhisper, privacyConsent])
 
   const stopListening = useCallback(async () => {
+    await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
     await AudioCaptureModule.stopCapture().catch(() => undefined)
     await WhisperModule.stopStreaming().catch(() => undefined)
+    await OverlayModule.hide().catch(() => undefined)
     setIsListening(false)
     setDeviceSignals([])
+    setCaptureNotice(null)
+    setCallStatus('No active call context')
+  }, [])
+
+  useEffect(() => () => {
+    void AccessibilityModule.setProtectionActive(false).catch(() => undefined)
+    void AudioCaptureModule.stopCapture().catch(() => undefined)
+    void WhisperModule.stopStreaming().catch(() => undefined)
+    void OverlayModule.hide().catch(() => undefined)
   }, [])
 
   const loadSample = useCallback((key: keyof typeof samples, label: string) => {
@@ -205,7 +316,8 @@ export function useWorkspace() {
   // ---- case management ----
   const saveCurrentCase = useCallback(() => {
     const now = new Date().toISOString()
-    const current = analyzeTranscript(transcript, { signals: deviceSignals })
+    const safeTranscript = redactSensitiveText(transcript)
+    const current = analyzeTranscript(safeTranscript, { signals: deviceSignals })
     setCases((existingCases) => {
       const existing = existingCases.find((item) => item.id === current.caseId)
       const workflow = existing ?? createWorkflowState(current, now, reviewerName)
@@ -220,12 +332,17 @@ export function useWorkspace() {
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
         fileName,
-        transcript,
+        transcript: safeTranscript,
         label: caseLabel,
         status: existing?.status ?? workflow.status,
         assignedTo: existing?.assignedTo ?? workflow.assignedTo,
         flags: existing?.flags ?? workflow.flags,
         analystNote,
+        provenance: existing?.provenance ?? {
+          origin: source === 'Manual' ? 'manual' : 'live',
+          trusted: caseLabel !== 'unreviewed',
+          reviewedAt: caseLabel !== 'unreviewed' ? now : undefined,
+        },
         auditLog: [...(existing?.auditLog ?? workflow.auditLog), auditEntry],
         decisionHistory: existing?.decisionHistory ?? workflow.decisionHistory,
         incidentTimeline: existing?.incidentTimeline ?? workflow.incidentTimeline,
@@ -233,7 +350,71 @@ export function useWorkspace() {
       }
       return [next, ...existingCases.filter((item) => item.id !== next.id)]
     })
-  }, [analystNote, caseLabel, deviceSignals, fileName, reviewerName, transcript])
+  }, [analystNote, caseLabel, deviceSignals, fileName, reviewerName, source, transcript])
+
+  const acceptPrivacy = useCallback(async () => {
+    await SecureStorage.setItem(privacyConsentKey, 'accepted')
+    setPrivacyConsent(true)
+  }, [])
+
+  const declinePrivacy = useCallback(async () => {
+    await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
+    await AudioCaptureModule.stopCapture().catch(() => undefined)
+    await WhisperModule.stopStreaming().catch(() => undefined)
+    await SecureStorage.removeItem(privacyConsentKey).catch(() => undefined)
+    await OverlayModule.hide().catch(() => undefined)
+    setPrivacyConsent(false)
+    setIsListening(false)
+    setDeviceSignals([])
+    setCaptureNotice(null)
+  }, [])
+
+  const deleteAllLocalData = useCallback(async () => {
+    await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
+    await AudioCaptureModule.stopCapture().catch(() => undefined)
+    await WhisperModule.stopStreaming().catch(() => undefined)
+    await OverlayModule.hide().catch(() => undefined)
+    await ModelDownloader.deleteModel(modelFile).catch(() => undefined)
+    await AsyncStorage.removeItem(storageKey).catch(() => undefined)
+    await SecureStorage.clear()
+    setCases([])
+    setTranscript('')
+    setDeviceSignals([])
+    setPrivacyConsent(false)
+    setModelReady(false)
+    setIsListening(false)
+    setStorageError(null)
+    setTrustedContact(null)
+    setCaptureNotice(null)
+  }, [])
+
+  const saveTrustedContact = useCallback(async (name: string, phone: string) => {
+    const normalized: TrustedContact = {
+      name: name.trim().slice(0, 60),
+      phone: phone.replace(/[^+\d]/gu, '').slice(0, 20),
+    }
+    if (!normalized.name || normalized.phone.replace(/\D/gu, '').length < 7) throw new Error('Enter a valid trusted contact name and phone number.')
+    await SecureStorage.setItem(trustedContactKey, JSON.stringify(normalized))
+    setTrustedContact(normalized)
+  }, [])
+
+  const clearTrustedContact = useCallback(async () => {
+    await SecureStorage.removeItem(trustedContactKey)
+    setTrustedContact(null)
+  }, [])
+
+  const callTrustedContact = useCallback(async () => {
+    if (!trustedContact) return
+    await Linking.openURL(`tel:${trustedContact.phone}`)
+  }, [trustedContact])
+
+  const shareTrustedAlert = useCallback(async () => {
+    if (!trustedContact) return
+    await Share.share({
+      title: 'VoiceShield risk alert',
+      message: `VoiceShield detected ${analysis.schemeLabel} risk at ${analysis.score}/100. Please call me using my saved number. No secret codes or transcript are included.`,
+    })
+  }, [analysis.schemeLabel, analysis.score, trustedContact])
 
   const loadCase = useCallback((item: SavedCase) => {
     setTranscript(item.transcript)
@@ -249,7 +430,14 @@ export function useWorkspace() {
       current.map((item) => {
         if (item.id !== id) return item
         const entry = { action: 'label_changed', actor: reviewerName, at: now, detail: `${labelText(item.label)} -> ${labelText(label)}` }
-        return { ...item, auditLog: [...item.auditLog, entry], decisionHistory: [...item.decisionHistory, entry], label, updatedAt: now }
+        return {
+          ...item,
+          auditLog: [...item.auditLog, entry],
+          decisionHistory: [...item.decisionHistory, entry],
+          label,
+          provenance: { ...item.provenance, trusted: label !== 'unreviewed', reviewedAt: label !== 'unreviewed' ? now : undefined },
+          updatedAt: now,
+        }
       }),
     )
   }, [reviewerName])
@@ -297,12 +485,13 @@ export function useWorkspace() {
     reviewerName, setReviewerName,
     source,
     // capture
-    isListening, modelReady, audioLevel, captureError, deviceSignals,
+    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, storageError, callStatus, trustedContact,
     startListening, stopListening, prepareWhisper,
     // computed
-    analysis, timeline, quality, datasetStageTotals, operations, highSignals, cases,
+    analysis, timeline, quality, datasetStageTotals, operations, highSignals, cases, hydrated,
     // handlers
-    loadSample, saveCurrentCase, loadCase,
+    loadSample, saveCurrentCase, loadCase, acceptPrivacy, declinePrivacy, deleteAllLocalData,
+    saveTrustedContact, clearTrustedContact, callTrustedContact, shareTrustedAlert,
     updateCaseLabel, updateCaseStatus, toggleCaseFlag, deleteCase, clearCases,
     exportReport, exportEvidenceBundle,
     exportJsonlCases, exportCsvCases, exportSplitCases,

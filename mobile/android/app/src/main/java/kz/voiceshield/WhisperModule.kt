@@ -8,11 +8,13 @@ import com.facebook.react.bridge.ReactMethod
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class WhisperModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
-  private val scope = CoroutineScope(Dispatchers.Default)
+  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private var whisper: WhisperContext? = null
   private var streamJob: Job? = null
 
@@ -51,8 +53,10 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
         delay(4000)
         val context = whisper ?: continue
         if (context.bufferSize() >= 16000) {
+          val text = context.transcribe().trim()
+          if (text.isEmpty()) continue
           val payload = Arguments.createMap()
-          payload.putString("text", context.transcribe())
+          payload.putString("text", text)
           AppRegistry.sendEvent("VS_WHISPER_TRANSCRIPT", payload)
         }
       }
@@ -60,7 +64,17 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     promise.resolve(null)
   }
 
-  @ReactMethod fun stopStreaming(promise: Promise) { streamJob?.cancel(); promise.resolve(null) }
+  @ReactMethod fun stopStreaming(promise: Promise) { streamJob?.cancel(); streamJob = null; promise.resolve(null) }
   @ReactMethod fun resetBuffer(promise: Promise) { whisper?.reset(); promise.resolve(null) }
   @ReactMethod fun getBufferSize(promise: Promise) { promise.resolve(whisper?.bufferSize() ?: 0) }
+
+  override fun invalidate() {
+    streamJob?.cancel()
+    streamJob = null
+    whisper?.close()
+    whisper = null
+    AppRegistry.whisperModule = null
+    scope.cancel()
+    super.invalidate()
+  }
 }

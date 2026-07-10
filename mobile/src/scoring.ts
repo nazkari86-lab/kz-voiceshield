@@ -25,7 +25,7 @@ export type StageCoverage = {
   score: number
 }
 
-export type RiskSignalId = 'bank_app_open' | 'remote_access_app_open' | 'screen_share_app_open' | 'suspicious_link_open'
+export type RiskSignalId = 'bank_app_open' | 'remote_access_app_open' | 'screen_share_app_open' | 'suspicious_link_open' | 'caller_verification_failed' | 'caller_unverified' | 'otp_notification' | 'bank_activity_notification'
 
 export type RiskSignal = {
   id: RiskSignalId
@@ -88,12 +88,19 @@ export type IncidentEvent = {
   detail: string
 }
 
+export type CaseProvenance = {
+  origin: 'manual' | 'live' | 'import' | 'migration'
+  trusted: boolean
+  reviewedAt?: string
+}
+
 export type SavedCase = {
   id: string
   createdAt: string
   updatedAt: string
   fileName: string
   transcript: string
+  provenance: CaseProvenance
   label: CaseLabel
   status: CaseStatus
   assignedTo: string
@@ -113,9 +120,10 @@ export type DatasetQuality = {
   falsePositiveReview: SavedCase[]
   unlabeledCount: number
   averageWords: number
+  untrustedCount: number
 }
 
-export const datasetSchemaVersion = 'voiceshield.dataset.v1'
+export const datasetSchemaVersion = 'voiceshield.dataset.v2'
 
 export const samples = {
   bank:
@@ -231,6 +239,25 @@ export const deviceSignalsFromPackage = (packageName?: string | null): RiskSigna
   if (/(kaspi|homebank|halyk|forte|bereke|jusan|bcc|centercredit|bank)/u.test(value)) {
     return [{ id: 'bank_app_open', label: 'Banking app opened', weight: 25 }]
   }
+  return []
+}
+
+export const deviceSignalsFromId = (signalId?: string | null): RiskSignal[] => {
+  if (signalId === 'remote_access_app_open') return [{ id: 'remote_access_app_open', label: 'Remote-access app opened', weight: 36 }]
+  if (signalId === 'screen_share_app_open') return [{ id: 'screen_share_app_open', label: 'Screen-sharing app opened', weight: 18 }]
+  if (signalId === 'bank_app_open') return [{ id: 'bank_app_open', label: 'Banking app opened', weight: 25 }]
+  return []
+}
+
+export const callSignalsFromVerification = (status?: string | null): RiskSignal[] => {
+  if (status === 'failed') return [{ id: 'caller_verification_failed', label: 'Caller ID verification failed', weight: 25 }]
+  if (status === 'unverified') return [{ id: 'caller_unverified', label: 'Caller ID is not verified', weight: 8 }]
+  return []
+}
+
+export const notificationSignalsFromId = (signalId?: string | null): RiskSignal[] => {
+  if (signalId === 'otp_notification') return [{ id: 'otp_notification', label: 'OTP notification received during call', weight: 32 }]
+  if (signalId === 'bank_activity_notification') return [{ id: 'bank_activity_notification', label: 'Bank activity notification received during call', weight: 24 }]
   return []
 }
 
@@ -786,6 +813,12 @@ const normalizeText = (text: string) =>
     .replace(/\s+/g, ' ')
     .trim()
 
+export const redactSensitiveText = (text: string) =>
+  text
+    .replace(/\b(?:\d[ -]?){12,19}\b/gu, '[REDACTED NUMBER]')
+    .replace(/((?:sms|смс|код|otp|pin|cvv|пароль|иин|жсн)[^\p{L}\p{N}]{0,16})\d{3,12}\b/giu, '$1[REDACTED]')
+    .replace(/\b\d{4,11}\b/gu, '[REDACTED NUMBER]')
+
 const fingerprintTranscript = (text: string) => normalizeText(text).slice(0, 220)
 const pattern = (term: string) => new RegExp(`(^|\\s)${escapeRegExp(normalizeText(term)).replace(/\s+/g, '\\s+')}(?=\\s|$)`, 'u')
 const createCaseId = (text: string) => {
@@ -836,6 +869,8 @@ const buildResponseChecklist = (risk: Severity, evidence: Evidence[], contextSig
   if (evidence.some((item) => item.id === 'pretexting')) checklist.push('You did not file that request — the backstory is fabricated. Verify any claim through official channels independently.')
   if (contextSignals.some((item) => item.id === 'remote_access_app_open')) checklist.push('Close the remote-access app now. Never reveal a connection code or approve screen control during a financial call.')
   if (contextSignals.some((item) => item.id === 'bank_app_open')) checklist.push('Do not approve payments or sign-in prompts in the bank app while the caller is still on the line.')
+  if (contextSignals.some((item) => item.id === 'otp_notification')) checklist.push('An OTP arrived during the call. Do not read, forward, enter or approve that code for the caller.')
+  if (contextSignals.some((item) => item.id === 'bank_activity_notification')) checklist.push('Review the bank activity only after ending the call and reopening the official bank app yourself.')
   return checklist
 }
 
@@ -1011,7 +1046,7 @@ export const buildReport = (text: string, analysis: Analysis) => [
     : ['- No matched scam patterns']),
   '',
   'Transcript:',
-  text || '[empty]',
+  redactSensitiveText(text) || '[empty]',
 ].join('\n')
 
 export const serializeCase = (item: SavedCase) => ({
@@ -1025,6 +1060,7 @@ export const serializeCase = (item: SavedCase) => ({
   assignedTo: item.assignedTo,
   flags: item.flags,
   analystNote: item.analystNote,
+  provenance: item.provenance,
   decisionHistory: item.decisionHistory,
   auditLog: item.auditLog,
   incidentTimeline: item.incidentTimeline,
@@ -1044,7 +1080,7 @@ export const serializeCase = (item: SavedCase) => ({
     matches: evidence.matches,
     score: evidence.score,
   })),
-  transcript: item.transcript,
+  transcript: redactSensitiveText(item.transcript),
 })
 
 export const buildEvidenceBundle = (item: SavedCase) => [
@@ -1056,6 +1092,7 @@ export const buildEvidenceBundle = (item: SavedCase) => [
   `Label: ${labelText(item.label)}`,
   `Risk: ${item.analysis.risk.toUpperCase()} (${item.analysis.score}/100)`,
   `Confidence: ${item.analysis.confidence}/100`,
+  `Provenance: ${item.provenance.origin} · ${item.provenance.trusted ? 'reviewer trusted' : 'untrusted'}`,
   '',
   'Workflow flags:',
   `- Bank contact needed: ${item.flags.bankContactNeeded ? 'yes' : 'no'}`,
@@ -1077,7 +1114,7 @@ export const buildEvidenceBundle = (item: SavedCase) => [
     : ['- No matched scam patterns']),
   '',
   'Transcript:',
-  item.transcript || '[empty]',
+  redactSensitiveText(item.transcript) || '[empty]',
 ].join('\n')
 
 export const exportJsonl = (cases: SavedCase[]) => cases.map((item) => JSON.stringify(serializeCase(item))).join('\n')
@@ -1106,11 +1143,14 @@ export const datasetQuality = (cases: SavedCase[]): DatasetQuality => {
     schemaVersion: datasetSchemaVersion,
     total: cases.length,
     unlabeledCount: labelBalance.unreviewed,
+    untrustedCount: cases.filter((item) => !item.provenance.trusted).length,
   }
 }
 
 export const exportSplitJson = (cases: SavedCase[]) => {
-  const sorted = [...cases].sort((left, right) => left.id.localeCompare(right.id))
+  const sorted = cases
+    .filter((item) => item.provenance.trusted && item.label !== 'unreviewed')
+    .sort((left, right) => left.id.localeCompare(right.id))
   const trainEnd = Math.ceil(sorted.length * 0.7)
   const devEnd = trainEnd + Math.ceil(sorted.length * 0.15)
   return JSON.stringify(
@@ -1133,18 +1173,20 @@ export const exportSplitJson = (cases: SavedCase[]) => {
 
 export const exportCsv = (cases: SavedCase[]) => {
   const rows = [
-    ['id', 'createdAt', 'label', 'risk', 'score', 'confidence', 'verdict', 'evidenceCount', 'topStages', 'transcript'],
+    ['id', 'createdAt', 'label', 'trusted', 'origin', 'risk', 'score', 'confidence', 'verdict', 'evidenceCount', 'topStages', 'transcript'],
     ...cases.map((item) => [
       item.id,
       item.createdAt,
       item.label,
+      String(item.provenance.trusted),
+      item.provenance.origin,
       item.analysis.risk,
       String(item.analysis.score),
       String(item.analysis.confidence),
       item.analysis.verdict,
       String(item.analysis.evidence.length),
       item.analysis.stageCoverage.map((stage) => `${stage.stage}:${stage.count}`).join('; '),
-      item.transcript,
+      redactSensitiveText(item.transcript),
     ]),
   ]
   return rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(',')).join('\n')

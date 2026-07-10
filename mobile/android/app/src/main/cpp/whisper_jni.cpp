@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #if VS_HAS_WHISPER_CPP
 #include "whisper.h"
@@ -15,6 +16,7 @@ struct VsWhisperHandle {
   int threads = 4;
   std::string lastTranscript;
   std::vector<int16_t> pcmBuffer;
+  std::mutex bufferMutex;
 };
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -35,6 +37,13 @@ Java_kz_voiceshield_WhisperContext_nativeInit(JNIEnv *env, jobject, jstring mode
   if (modelPathChars != nullptr) {
     env->ReleaseStringUTFChars(modelPath, modelPathChars);
   }
+  if (handle->ctx == nullptr) {
+    delete handle;
+    return 0;
+  }
+#else
+  delete handle;
+  return 0;
 #endif
   return reinterpret_cast<jlong>(handle);
 }
@@ -43,6 +52,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_kz_voiceshield_WhisperContext_nativeProcessChunkInt16(JNIEnv *env, jobject, jlong ptr, jshortArray chunk) {
   auto *handle = reinterpret_cast<VsWhisperHandle *>(ptr);
   if (handle == nullptr) return;
+  std::lock_guard<std::mutex> lock(handle->bufferMutex);
   const jsize len = env->GetArrayLength(chunk);
   const size_t offset = handle->pcmBuffer.size();
   handle->pcmBuffer.resize(offset + static_cast<size_t>(len));
@@ -53,6 +63,7 @@ extern "C" JNIEXPORT void JNICALL
 Java_kz_voiceshield_WhisperContext_nativeProcessChunkFloat32(JNIEnv *env, jobject, jlong ptr, jfloatArray chunk) {
   auto *handle = reinterpret_cast<VsWhisperHandle *>(ptr);
   if (handle == nullptr) return;
+  std::lock_guard<std::mutex> lock(handle->bufferMutex);
   const jsize len = env->GetArrayLength(chunk);
   std::vector<float> samples(static_cast<size_t>(len));
   env->GetFloatArrayRegion(chunk, 0, len, samples.data());
@@ -70,6 +81,7 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_kz_voiceshield_WhisperContext_nativeTranscribe(JNIEnv *env, jobject, jlong ptr) {
   auto *handle = reinterpret_cast<VsWhisperHandle *>(ptr);
   if (handle == nullptr) return env->NewStringUTF("");
+  std::lock_guard<std::mutex> lock(handle->bufferMutex);
 #if VS_HAS_WHISPER_CPP
   if (handle->ctx != nullptr && !handle->pcmBuffer.empty()) {
     std::vector<float> pcmf32;
@@ -97,8 +109,6 @@ Java_kz_voiceshield_WhisperContext_nativeTranscribe(JNIEnv *env, jobject, jlong 
       handle->lastTranscript = "";
     }
   }
-#else
-  handle->lastTranscript = handle->pcmBuffer.empty() ? "" : "[whisper.cpp not linked]";
 #endif
   handle->pcmBuffer.clear();
   return env->NewStringUTF(handle->lastTranscript.c_str());
@@ -113,13 +123,18 @@ Java_kz_voiceshield_WhisperContext_nativeGetLastTranscript(JNIEnv *env, jobject,
 extern "C" JNIEXPORT void JNICALL
 Java_kz_voiceshield_WhisperContext_nativeResetBuffer(JNIEnv *, jobject, jlong ptr) {
   auto *handle = reinterpret_cast<VsWhisperHandle *>(ptr);
-  if (handle != nullptr) handle->pcmBuffer.clear();
+  if (handle != nullptr) {
+    std::lock_guard<std::mutex> lock(handle->bufferMutex);
+    handle->pcmBuffer.clear();
+  }
 }
 
 extern "C" JNIEXPORT jint JNICALL
 Java_kz_voiceshield_WhisperContext_nativeBufferSize(JNIEnv *, jobject, jlong ptr) {
   auto *handle = reinterpret_cast<VsWhisperHandle *>(ptr);
-  return handle == nullptr ? 0 : static_cast<jint>(handle->pcmBuffer.size());
+  if (handle == nullptr) return 0;
+  std::lock_guard<std::mutex> lock(handle->bufferMutex);
+  return static_cast<jint>(handle->pcmBuffer.size());
 }
 
 extern "C" JNIEXPORT void JNICALL

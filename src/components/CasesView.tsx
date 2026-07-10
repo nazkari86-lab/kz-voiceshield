@@ -49,7 +49,7 @@ export function CasesView({
           <article className={`saved-case ${item.analysis.risk}`} key={item.id}>
             <button className="case-open" type="button" onClick={() => onLoadCase(item)}>
               <strong>{item.id}</strong>
-              <span>{item.analysis.score}/100 · {item.analysis.verdict} · {labelText(item.label)} · {statusText(item.status)}</span>
+              <span>{item.analysis.score}/100 · {item.analysis.verdict} · {labelText(item.label)} · {statusText(item.status)} · {item.provenance.trusted ? 'trusted' : 'not training-eligible'}</span>
               <p>{item.transcript.slice(0, 180)}{item.transcript.length > 180 ? '...' : ''}</p>
               <span className="case-workflow-meta">
                 <span>{item.assignedTo}</span>

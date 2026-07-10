@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeTranscript, buildEvidenceBundle, buildReport, createWorkflowState, datasetQuality, datasetSchemaVersion, deviceSignalsFromPackage, exportCsv, exportJsonl, exportSplitJson, samples, sentenceTimeline } from './scoring'
+import { analyzeTranscript, buildEvidenceBundle, buildReport, callSignalsFromVerification, createWorkflowState, datasetQuality, datasetSchemaVersion, deviceSignalsFromPackage, exportCsv, exportJsonl, exportSplitJson, notificationSignalsFromId, redactSensitiveText, samples, sentenceTimeline } from './scoring'
 import type { SavedCase } from './scoring'
 
 const savedCase = (transcript: string): SavedCase => {
@@ -11,6 +11,7 @@ const savedCase = (transcript: string): SavedCase => {
     updatedAt: '2026-07-08T00:00:00.000Z',
     fileName: 'case.txt',
     transcript,
+    provenance: { origin: 'manual', trusted: true, reviewedAt: '2026-07-08T00:00:00.000Z' },
     label: 'true_positive',
     ...workflow,
     analystNote: 'reviewed',
@@ -90,6 +91,21 @@ describe('scam scoring — device context', () => {
 
   it('recognizes remote-access applications from package names', () => {
     expect(deviceSignalsFromPackage('com.anydesk.anydeskandroid')[0]?.id).toBe('remote_access_app_open')
+  })
+
+  it('maps privacy-preserving call and notification context', () => {
+    expect(callSignalsFromVerification('failed')[0]?.id).toBe('caller_verification_failed')
+    expect(notificationSignalsFromId('otp_notification')[0]?.id).toBe('otp_notification')
+  })
+})
+
+describe('sensitive data redaction', () => {
+  it('redacts OTP, IIN and long card-like numbers before persistence', () => {
+    const value = redactSensitiveText('SMS код 123456, ИИН 990101123456, карта 4400 1234 5678 9012')
+    expect(value).not.toContain('123456')
+    expect(value).not.toContain('990101123456')
+    expect(value).not.toContain('4400 1234 5678 9012')
+    expect(value).toContain('[REDACTED')
   })
 })
 
@@ -330,5 +346,13 @@ describe('dataset exports', () => {
     expect(quality.labelBalance.needs_review).toBe(1)
     expect(quality.unlabeledCount).toBe(1)
     expect(quality.total).toBe(4)
+  })
+
+  it('excludes untrusted imported data from train/dev/test splits', () => {
+    const imported = { ...savedCase(samples.bank), provenance: { origin: 'import' as const, trusted: false } }
+    const quality = datasetQuality([imported])
+    const split = JSON.parse(exportSplitJson([imported])) as { counts: { train: number; dev: number; test: number } }
+    expect(quality.untrustedCount).toBe(1)
+    expect(split.counts.train + split.counts.dev + split.counts.test).toBe(0)
   })
 })

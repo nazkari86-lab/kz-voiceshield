@@ -30,6 +30,7 @@ export function DatasetView({ quality, caseCount, importStatus, datasetStageTota
       </div>
       <div className="quality-grid">
         <div><strong>{quality.unlabeledCount}</strong><span>unreviewed labels</span></div>
+        <div><strong>{quality.untrustedCount}</strong><span>untrusted provenance</span></div>
         <div><strong>{quality.duplicateGroups.length}</strong><span>duplicate groups</span></div>
         <div><strong>{quality.falsePositiveReview.length}</strong><span>false positives to review</span></div>
         <div><strong>{quality.averageWords}</strong><span>avg words</span></div>
@@ -48,7 +49,7 @@ export function DatasetView({ quality, caseCount, importStatus, datasetStageTota
       </div>
       <div className="dataset-schema">
         <strong>Training fields · {quality.schemaVersion}</strong>
-        <p>Each export includes transcript, score, risk, confidence, verdict, escalation reasons, response checklist, stage coverage, evidence IDs, matched terms, analyst label and notes. JSONL is for model training, CSV is for spreadsheet audit, and split JSON creates deterministic train/dev/test sets.</p>
+        <p>Each export includes redacted transcript, provenance, trust state, score, risk, confidence, verdict, evidence and analyst label. Split JSON includes only reviewer-trusted, labeled cases to reduce training-data poisoning.</p>
       </div>
     </div>
   )

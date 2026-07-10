@@ -4,7 +4,7 @@ import type { Severity } from '@scoring'
 type OverlayNativeModule = {
   canDrawOverlays(): Promise<boolean>
   openOverlaySettings(): void
-  show(): Promise<void>
+  show(useMicrophone: boolean): Promise<void>
   hide(): Promise<void>
   updateRisk(score: number, level: Severity, source: string): Promise<void>
 }

@@ -49,6 +49,9 @@ jobs:
       - name: Install mobile dependencies
         run: npm ci
 
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
       - name: Fetch whisper.cpp
         run: ./scripts/fetch-whisper.sh
 
@@ -57,6 +60,9 @@ jobs:
 
       - name: Test
         run: npm test -- --runInBand
+
+      - name: Kotlin unit tests
+        run: ./android/gradlew -p android testReleaseUnitTest --no-daemon
 
       - name: Configure release signing
         if: env.HAS_SIGNING == 'true'
@@ -75,21 +81,25 @@ jobs:
           EOF
           echo "Release signing configured."
 
-      - name: Build release APK
-        run: ./android/gradlew -p android assembleRelease --no-daemon
+      - name: Build release APK and AAB
+        run: ./android/gradlew -p android assembleRelease bundleRelease --no-daemon
 
       - name: Rename APK
         run: |
           mkdir -p ../dist
           cp android/app/build/outputs/apk/release/app-release.apk \
              ../dist/kz-voiceshield-android.apk
+          cp android/app/build/outputs/bundle/release/app-release.aab \
+             ../dist/kz-voiceshield-android.aab
         working-directory: mobile
 
       - name: Upload APK artifact (always kept for 90 days)
         uses: actions/upload-artifact@v4
         with:
           name: kz-voiceshield-release-apk
-          path: dist/kz-voiceshield-android.apk
+          path: |
+            dist/kz-voiceshield-android.apk
+            dist/kz-voiceshield-android.aab
           if-no-files-found: error
 
       - name: Verify APK is release-signed

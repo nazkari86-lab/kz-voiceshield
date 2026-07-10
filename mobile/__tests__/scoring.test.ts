@@ -1,4 +1,4 @@
-import { analyzeTranscript, deviceSignalsFromPackage } from '../src/scoring'
+import { analyzeTranscript, callSignalsFromVerification, deviceSignalsFromPackage, notificationSignalsFromId, redactSensitiveText } from '../src/scoring'
 
 describe('mobile scoring', () => {
   it('flags bank OTP transfer scripts as critical', () => {
@@ -27,5 +27,17 @@ describe('mobile scoring', () => {
 
   it('recognizes remote-access app packages without reading their content', () => {
     expect(deviceSignalsFromPackage('com.anydesk.anydeskandroid')[0]?.id).toBe('remote_access_app_open')
+  })
+
+  it('maps call and notification metadata without raw values', () => {
+    expect(callSignalsFromVerification('failed')[0]?.id).toBe('caller_verification_failed')
+    expect(notificationSignalsFromId('otp_notification')[0]?.id).toBe('otp_notification')
+  })
+
+  it('redacts codes and long numbers before storage', () => {
+    const value = redactSensitiveText('SMS код 123456, ИИН 990101123456, карта 4400 1234 5678 9012')
+    expect(value).not.toContain('123456')
+    expect(value).not.toContain('990101123456')
+    expect(value).not.toContain('4400 1234 5678 9012')
   })
 })

@@ -24,7 +24,11 @@ def fingerprint(text: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def load_trusted_cases(path: Path) -> tuple[list[TrainingCase], list[str]]:
+def load_trusted_cases(path: Path, require_trusted: bool = True) -> tuple[list[TrainingCase], list[str]]:
+    """Load v2 JSONL cases. With require_trusted=True (default) only reviewer-trusted
+    rows pass — used for the real eval set. With require_trusted=False, untrusted
+    transfer/synthetic rows are also accepted — used ONLY for experimental transfer
+    training, never for a held-out real RU/KZ evaluation."""
     accepted: list[TrainingCase] = []
     rejected: list[str] = []
     seen: set[str] = set()
@@ -39,7 +43,7 @@ def load_trusted_cases(path: Path) -> tuple[list[TrainingCase], list[str]]:
             provenance = payload.get("provenance") or {}
             if payload.get("schemaVersion") != SCHEMA_VERSION:
                 raise ValueError("unsupported schema")
-            if provenance.get("trusted") is not True:
+            if require_trusted and provenance.get("trusted") is not True:
                 raise ValueError("untrusted provenance")
             if label not in ALLOWED_LABELS:
                 raise ValueError("unsupported label")
@@ -61,4 +65,20 @@ def load_trusted_cases(path: Path) -> tuple[list[TrainingCase], list[str]]:
         except (TypeError, ValueError, json.JSONDecodeError) as error:
             rejected.append(f"line {line_number}: {error}")
 
+    return accepted, rejected
+
+
+def load_many(paths: list[Path], require_trusted: bool = True) -> tuple[list[TrainingCase], list[str]]:
+    """Load + dedupe across multiple JSONL files."""
+    accepted: list[TrainingCase] = []
+    rejected: list[str] = []
+    seen: set[str] = set()
+    for path in paths:
+        cases, rej = load_trusted_cases(path, require_trusted=require_trusted)
+        rejected.extend(f"{path.name}: {r}" for r in rej)
+        for case in cases:
+            if case.fingerprint in seen:
+                continue
+            seen.add(case.fingerprint)
+            accepted.append(case)
     return accepted, rejected

@@ -18,5 +18,28 @@ export const trainingDataSnapshot = {
     "kz": 90,
     "ko": 2927,
     "zh": 2342
+  },
+  "evaluation": {
+    "trainingMode": "transfer-untrusted",
+    "vectorizer": "tfidf-char-wb-1-4",
+    "trainCount": 4353,
+    "testCount": 1089,
+    "accuracy": 0.9844,
+    "macroF1": 0.9699,
+    "confusionMatrix": [
+      [
+        914,
+        17
+      ],
+      [
+        0,
+        158
+      ]
+    ],
+    "classes": [
+      "false_positive",
+      "true_positive"
+    ],
+    "caveat": "Evaluated on a held-out split of transfer/synthetic data (ru/kz/ko/zh), NOT on real reviewer-labelled RU/KZ calls. Not for live decisions."
   }
 } as const

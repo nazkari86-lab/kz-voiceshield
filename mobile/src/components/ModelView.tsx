@@ -51,6 +51,22 @@ export function ModelView() {
         ))}
       </Card>
 
+      {snap.evaluation && (
+        <>
+          <SectionTitle>Baseline evaluation</SectionTitle>
+          <View style={ui.row}>
+            <Metric value={`${Math.round(snap.evaluation.accuracy * 100)}%`} label="accuracy" />
+            <Metric value={snap.evaluation.macroF1.toFixed(2)} label="macro F1" />
+            <Metric value={snap.evaluation.testCount} label="held-out test" />
+            <Metric value={snap.evaluation.trainCount} label="train" />
+          </View>
+          <Card tone="medium">
+            <Text style={styles.meta}>{snap.evaluation.vectorizer} · {snap.evaluation.trainingMode}</Text>
+            <Text style={styles.body}>⚠ {snap.evaluation.caveat}</Text>
+          </Card>
+        </>
+      )}
+
       <SectionTitle>Data sources</SectionTitle>
       {ml.sources.map((s) => (
         <Card key={s.name}>

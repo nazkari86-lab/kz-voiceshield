@@ -72,6 +72,19 @@ python ml/train_baseline.py trusted.jsonl --output ml/artifacts/baseline   # nee
 what any model was trained on. Artifacts are git-ignored; the committed snapshot
 in `mobile/src/data/` is what ships.
 
+## Status (2026-07-11)
+
+- Transfer corpus assembled from **real** data: KorCCVi (2,927), TeleAntiFraud
+  sample dialogues (2,342), synthetic RU/KZ (176) = 5,445 rows, all `trusted:false`.
+- **Baseline trained** (`train_baseline.py --allow-untrusted --vectorizer tfidf`):
+  TF-IDF char n-grams + logistic regression, held-out accuracy ≈0.98 / macro-F1
+  ≈0.97 **on the transfer split — NOT validated on real RU/KZ**. Metrics are shown
+  in the app's Data & Model screen with that caveat. Not used for live decisions.
+- Full TeleAntiFraud-28k on HuggingFace is **gated per-account** — request access
+  on the dataset page; the adapter already handles its parquet/dialogue formats.
+- Next: real RU/KZ labelled data (donation + baiting) → retrain + real held-out
+  eval → only then consider ML for live scoring.
+
 ## Transparency in the app
 
 The **Model** tab shows: the active detector (rule engine, N rules, not ML, not

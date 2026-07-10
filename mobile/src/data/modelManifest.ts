@@ -7,7 +7,7 @@ import { trainingDataSnapshot } from './trainingDataSnapshot'
 // and not used for live decisions. Composition numbers come from ml/model_card.py
 // (regenerate the snapshot; never hand-edit its numbers).
 
-export const APP_VERSION = '0.4.1'
+export const APP_VERSION = '0.5.0'
 
 export type SourceRef = { name: string; role: string; link?: string }
 
@@ -23,8 +23,8 @@ export const modelManifest = {
   ml: {
     status: 'experimental — not used for live decisions',
     version: trainingDataSnapshot.modelVersion,
-    embeddingModel: 'paraphrase-multilingual-MiniLM-L12-v2',
-    classifier: 'logistic-regression (baseline)',
+    embeddingModel: 'TF-IDF char n-grams (multilingual, on-device friendly)',
+    classifier: 'logistic-regression',
     trainedOn: trainingDataSnapshot,
     sources: [
       { name: 'Synthetic RU/KZ scripts', role: 'Generated from the scheme taxonomy — not real calls' },

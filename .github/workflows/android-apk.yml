@@ -71,20 +71,9 @@ jobs:
           path: dist/kz-voiceshield-android.apk
           if-no-files-found: error
 
-      - name: Publish APK to latest GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Find the most recent release (draft or published) and upload the APK.
-          # If no release exists yet the step is skipped gracefully.
-          RELEASE_TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)
-          if [ -z "$RELEASE_TAG" ]; then
-            echo "No release found — skipping upload to release."
-            exit 0
-          fi
-          echo "Uploading APK to release: $RELEASE_TAG"
-          # Delete previous APK asset if it exists (prevents 'already exists' error on re-runs)
-          gh release delete-asset "$RELEASE_TAG" kz-voiceshield-android.apk --yes 2>/dev/null || true
-          gh release upload "$RELEASE_TAG" dist/kz-voiceshield-android.apk --clobber
-          echo "APK uploaded to $RELEASE_TAG successfully."
-        working-directory: ${{ github.workspace }}
+      # NOTE: auto-publishing the CI APK to the latest release was removed.
+      # Without the release signing key (kept out of git), CI produces a
+      # debug-signed APK, and blindly clobbering the curated release asset
+      # shipped an unsigned/older build to users. Release APKs are now built
+      # and signed locally with the real release key, then attached by hand.
+      # The build artifact above is still kept for 90 days for testing.

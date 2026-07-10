@@ -1,7 +1,12 @@
 <resources>
-    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <!-- ReactActivity extends AppCompatActivity, so the activity theme MUST descend
+         from Theme.AppCompat. The old parent (@android:.../Theme.Material) is a
+         framework theme and crashed the app on launch with
+         "You need to use a Theme.AppCompat theme (or descendant) with this activity." -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:navigationBarColor">@color/vs_bg</item>
+        <item name="colorAccent">@color/vs_brand</item>
         <item name="android:colorAccent">@color/vs_brand</item>
     </style>
 

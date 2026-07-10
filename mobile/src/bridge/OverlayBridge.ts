@@ -1,4 +1,4 @@
-import { NativeEventEmitter, NativeModules } from 'react-native'
+import { NativeModules } from 'react-native'
 import type { RiskLevel } from '@scoring'
 
 type OverlayNativeModule = {
@@ -10,4 +10,4 @@ type OverlayNativeModule = {
 }
 
 export const OverlayModule = NativeModules.OverlayModule as OverlayNativeModule
-export const overlayEvents = new NativeEventEmitter(NativeModules.OverlayModule)
+// overlayEvents was dead code (never subscribed to) + NativeEventEmitter(null) crash risk — removed

@@ -59,11 +59,13 @@ export const useCallAnalysis = () => {
     try {
       const accessibilityEnabled = await AccessibilityModule.isEnabled()
       if (!accessibilityEnabled && !modelReady) await prepareWhisper()
+      // Android 14+: RECORD_AUDIO in the background requires the foreground service
+      // to be running FIRST. Start the overlay service before opening the mic.
+      await OverlayModule.show()
       if (!accessibilityEnabled) {
         await AudioCaptureModule.startCapture()
         await WhisperModule.startStreaming()
       }
-      await OverlayModule.show()
       setIsListening(true)
     } catch {
       setIsListening(false)

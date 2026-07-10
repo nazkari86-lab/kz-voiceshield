@@ -22,5 +22,17 @@ type AudioCaptureNativeModule = {
 export const WhisperModule = NativeModules.WhisperModule as WhisperNativeModule
 export const ModelDownloader = NativeModules.ModelDownloader as ModelDownloaderNativeModule
 export const AudioCaptureModule = NativeModules.AudioCaptureModule as AudioCaptureNativeModule
-export const whisperEvents = new NativeEventEmitter(NativeModules.WhisperModule)
-export const audioEvents = new NativeEventEmitter(NativeModules.AudioCaptureModule)
+
+// Guard against null modules — NativeEventEmitter(null) throws immediately at
+// module-load time if a native module wasn't registered, crashing the whole app.
+// Lazy getters ensure we only create the emitter when the module is confirmed present.
+const _whisperModule = NativeModules.WhisperModule
+const _audioModule = NativeModules.AudioCaptureModule
+
+export const whisperEvents = _whisperModule
+  ? new NativeEventEmitter(_whisperModule)
+  : ({ addListener: () => ({ remove: () => {} }) } as unknown as NativeEventEmitter)
+
+export const audioEvents = _audioModule
+  ? new NativeEventEmitter(_audioModule)
+  : ({ addListener: () => ({ remove: () => {} }) } as unknown as NativeEventEmitter)

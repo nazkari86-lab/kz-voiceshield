@@ -1,4 +1,4 @@
-import { NativeEventEmitter, NativeModules } from 'react-native'
+import { NativeModules } from 'react-native'
 
 type CallNativeModule = {
   isAvailable(): Promise<boolean>
@@ -6,4 +6,4 @@ type CallNativeModule = {
 }
 
 export const CallModule = NativeModules.CallScreeningModule as CallNativeModule
-export const callEvents = new NativeEventEmitter(NativeModules.CallScreeningModule)
+// callEvents was dead code (never subscribed to) + NativeEventEmitter(null) crash risk — removed

@@ -8,6 +8,9 @@ on:
       - "mobile/**"
       - ".github/workflows/android-apk.yml"
 
+permissions:
+  contents: write   # needed to upload assets to GitHub releases
+
 jobs:
   build-release-apk:
     runs-on: ubuntu-latest
@@ -54,9 +57,34 @@ jobs:
       - name: Build release APK
         run: ./android/gradlew -p android assembleRelease --no-daemon
 
-      - name: Upload APK
+      - name: Rename APK
+        run: |
+          mkdir -p ../dist
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             ../dist/kz-voiceshield-android.apk
+        working-directory: mobile
+
+      - name: Upload APK artifact (always kept for 90 days)
         uses: actions/upload-artifact@v4
         with:
           name: kz-voiceshield-release-apk
-          path: mobile/android/app/build/outputs/apk/release/app-release.apk
+          path: dist/kz-voiceshield-android.apk
           if-no-files-found: error
+
+      - name: Publish APK to latest GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the most recent release (draft or published) and upload the APK.
+          # If no release exists yet the step is skipped gracefully.
+          RELEASE_TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)
+          if [ -z "$RELEASE_TAG" ]; then
+            echo "No release found — skipping upload to release."
+            exit 0
+          fi
+          echo "Uploading APK to release: $RELEASE_TAG"
+          # Delete previous APK asset if it exists (prevents 'already exists' error on re-runs)
+          gh release delete-asset "$RELEASE_TAG" kz-voiceshield-android.apk --yes 2>/dev/null || true
+          gh release upload "$RELEASE_TAG" dist/kz-voiceshield-android.apk --clobber
+          echo "APK uploaded to $RELEASE_TAG successfully."
+        working-directory: ${{ github.workspace }}

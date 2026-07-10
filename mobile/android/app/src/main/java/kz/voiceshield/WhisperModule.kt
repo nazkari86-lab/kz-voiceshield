@@ -26,9 +26,16 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   @ReactMethod
   fun initialize(modelPath: String, language: String, promise: Promise) {
     scope.launch {
-      whisper?.close()
-      whisper = WhisperContext(modelPath, language)
-      promise.resolve(true)
+      try {
+        whisper?.close()
+        whisper = WhisperContext(modelPath, language)
+        promise.resolve(true)
+      } catch (e: UnsatisfiedLinkError) {
+        // whisper.so not bundled or ABI mismatch
+        promise.reject("WHISPER_LINK_ERROR", "Native whisper library not found: ${e.message}", e)
+      } catch (e: Exception) {
+        promise.reject("WHISPER_INIT_FAILED", e.message ?: "Unknown init error", e)
+      }
     }
   }
 

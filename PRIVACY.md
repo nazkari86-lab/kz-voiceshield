@@ -1,6 +1,6 @@
 # KZ VoiceShield Privacy Policy
 
-Effective date: 2026-07-10
+Effective date: 2026-07-11
 
 KZ VoiceShield is a local-first fraud-protection prototype. This policy describes the data handled by the Android and web applications in this repository. Questions and deletion requests can be submitted through the repository issue tracker.
 
@@ -9,12 +9,12 @@ KZ VoiceShield is a local-first fraud-protection prototype. This policy describe
 - Call captions and microphone audio are processed only while the user has explicitly started a protection session.
 - Active application package names may be classified locally as banking, remote-access, or screen-sharing context during that session.
 - With optional notification access, notification text is classified locally into a limited risk type such as OTP or bank activity. Notification text and secret values are not sent to JavaScript or retained.
-- Call screening retains only direction, time, and Android caller-verification status. Raw phone numbers are not retained.
+- With explicit consent and the Android call-screening role, number reputation uses a device-bound HMAC identifier, a masked last-four display, local complaint counts, and short-lived call-frequency timestamps. Raw phone numbers are not retained or exported.
 - A trusted contact name and phone number are stored only when entered by the user.
 
 ## Storage and Retention
 
-Android cases, consent state, and trusted-contact data are encrypted with a non-exportable Android Keystore key. Transcripts are redacted before persistence or export. Data remains on the device until the user deletes individual cases, uses "Delete all local data", clears app data, or uninstalls the application.
+Android cases, consent state, and trusted-contact data are encrypted with a non-exportable Android Keystore key. Phone identifiers are keyed with a non-exportable Android Keystore HMAC key. Transcripts are redacted before persistence or export. Data remains on the device until the user deletes individual cases, clears number rules, uses "Delete all local data", clears app data, or uninstalls the application.
 
 The downloaded Whisper model is stored in the private app directory and is removed by "Delete all local data". Live audio buffers are cleared after transcription and are not saved as audio files.
 
@@ -26,7 +26,7 @@ Local-only mode does not upload audio, transcripts, cases, contacts, notificatio
 
 ## User Control
 
-Protection permissions are requested only after an in-app disclosure. The user can decline, revoke Android permissions, stop an active session, remove the trusted contact, delete individual cases, or delete all local data. Manual transcript analysis remains available without granting call, notification, overlay, or accessibility access.
+Protection permissions are requested only after an in-app disclosure. Revoking in-app consent disables native number reputation even if the Android call-screening role remains assigned. The user can decline, revoke Android permissions, stop an active session, remove the trusted contact, delete individual cases, or delete all local data. Manual transcript and link analysis remains available without granting call, notification, overlay, or accessibility access.
 
 ## Security
 

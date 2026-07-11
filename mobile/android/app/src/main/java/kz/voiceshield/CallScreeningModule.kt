@@ -4,10 +4,13 @@ import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.telephony.PhoneNumberUtils
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.Arguments
 
 class CallScreeningModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   override fun getName(): String = "CallScreeningModule"
@@ -46,5 +49,76 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
   @ReactMethod
   fun consumePendingCall(promise: Promise) {
     promise.resolve(CallEventStore.consume(context)?.toWritableMap())
+  }
+
+  @ReactMethod
+  fun evaluateNumber(number: String, promise: Promise) {
+    runCatching {
+      require(PhoneNumberUtils.normalizeNumber(number).length >= 3) { "Enter a visible phone number" }
+      PhoneReputationStore.assess(context, number, "unverified", false).toWritableMap()
+    }
+      .onSuccess(promise::resolve)
+      .onFailure { promise.reject("PHONE_EVALUATION_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
+  fun setNumberDisposition(number: String, disposition: String, promise: Promise) {
+    runCatching {
+      PhoneReputationStore.setDisposition(context, number, disposition)
+      PhoneReputationStore.assess(context, number, "unverified", false).toWritableMap()
+    }.onSuccess(promise::resolve).onFailure { promise.reject("PHONE_RULE_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
+  fun reportNumber(number: String, category: String, promise: Promise) {
+    runCatching { PhoneReputationStore.report(context, number, category).toWritableMap() }
+      .onSuccess(promise::resolve)
+      .onFailure { promise.reject("PHONE_REPORT_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
+  fun getProtectionConfig(promise: Promise) {
+    val config = PhoneReputationStore.config(context)
+    promise.resolve(Arguments.createMap().apply {
+      putBoolean("enabled", config.enabled)
+      putBoolean("autoBlockCritical", config.autoBlockCritical)
+      putBoolean("blockHidden", config.blockHidden)
+      putBoolean("blockInternational", config.blockInternational)
+      putBoolean("blockRepeated", config.blockRepeated)
+      putBoolean("blockUnknownAtNight", config.blockUnknownAtNight)
+      putInt("nightStartHour", config.nightStartHour)
+      putInt("nightEndHour", config.nightEndHour)
+    })
+  }
+
+  @ReactMethod
+  fun updateProtectionConfig(values: ReadableMap, promise: Promise) {
+    runCatching {
+      val map = values.toHashMap()
+      PhoneReputationStore.updateConfig(context, map)
+    }.onSuccess { getProtectionConfig(promise) }.onFailure { promise.reject("PHONE_CONFIG_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
+  fun exportProtectionData(promise: Promise) {
+    runCatching { PhoneReputationStore.exportData(context) }
+      .onSuccess(promise::resolve)
+      .onFailure { promise.reject("PHONE_EXPORT_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
+  fun importProtectionData(payload: String, promise: Promise) {
+    runCatching {
+      require(payload.length <= 1_000_000) { "Rules backup is too large" }
+      PhoneReputationStore.importData(context, payload)
+    }
+      .onSuccess { promise.resolve(true) }
+      .onFailure { promise.reject("PHONE_IMPORT_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
+  fun clearProtectionData(promise: Promise) {
+    PhoneReputationStore.clear(context)
+    promise.resolve(true)
   }
 }

@@ -91,7 +91,7 @@ export function SetupScreen({
 
       <View style={[styles.notice, privacyConsent && styles.noticeAccepted]}>
         <Text style={styles.noticeTitle}>{privacyConsent ? 'Local protection consent accepted' : 'Consent required before protection starts'}</Text>
-        <Text style={styles.copy}>VoiceShield processes call captions, microphone audio, active app names and notification types only during an active protection session. Notification text, secret codes and raw phone numbers are not retained. Saved cases are redacted and encrypted with Android Keystore. Local-only mode does not upload transcripts or audio.</Text>
+        <Text style={styles.copy}>VoiceShield processes call captions, microphone audio, active app names and notification types only during an active protection session. Notification text, secret codes and raw phone numbers are not retained. Number rules use device-bound HMAC identifiers. Saved cases are redacted and encrypted with Android Keystore. Local-only mode does not upload transcripts or audio.</Text>
         <View style={styles.row}>
           <Pressable style={styles.primary} onPress={() => { void onAcceptPrivacy().then(refresh) }}><Text style={styles.primaryText}>Agree</Text></Pressable>
           <Pressable style={styles.secondary} onPress={() => { void onDeclinePrivacy() }}><Text style={styles.secondaryText}>Not now</Text></Pressable>

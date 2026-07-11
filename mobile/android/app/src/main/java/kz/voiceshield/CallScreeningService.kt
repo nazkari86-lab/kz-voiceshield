@@ -17,9 +17,26 @@ class CallScreeningService : CallScreeningService() {
     } else {
       "unavailable"
     }
-    val event = SafeCallEvent(direction, verificationStatus, System.currentTimeMillis())
+    if (!PhoneReputationStore.config(this).enabled) {
+      val event = SafeCallEvent(direction, verificationStatus, System.currentTimeMillis())
+      CallEventStore.save(this, event)
+      AppRegistry.sendEvent("VS_CALL_INCOMING", event.toWritableMap())
+      respondToCall(callDetails, CallResponse.Builder().setDisallowCall(false).setRejectCall(false).setSilenceCall(false).build())
+      return
+    }
+    val assessment = PhoneReputationStore.assess(this, callDetails.handle?.schemeSpecificPart, verificationStatus, true)
+    PhoneWarningNotifier.show(this, assessment)
+    val event = SafeCallEvent(direction, verificationStatus, System.currentTimeMillis(), assessment)
     CallEventStore.save(this, event)
     AppRegistry.sendEvent("VS_CALL_INCOMING", event.toWritableMap())
-    respondToCall(callDetails, CallResponse.Builder().setDisallowCall(false).setRejectCall(false).setSilenceCall(false).build())
+    val shouldBlock = assessment.result.action == "block"
+    respondToCall(
+      callDetails,
+      CallResponse.Builder()
+        .setDisallowCall(shouldBlock)
+        .setRejectCall(shouldBlock)
+        .setSilenceCall(false)
+        .build(),
+    )
   }
 }

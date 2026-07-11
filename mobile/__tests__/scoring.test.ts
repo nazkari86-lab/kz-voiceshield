@@ -1,4 +1,4 @@
-import { analyzeTranscript, callSignalsFromVerification, deviceSignalsFromPackage, notificationSignalsFromId, redactSensitiveText } from '../src/scoring'
+import { analyzeTranscript, callSignalsFromVerification, deviceSignalsFromPackage, notificationSignalsFromId, phoneReputationSignals, redactSensitiveText } from '../src/scoring'
 
 describe('mobile scoring', () => {
   it('flags bank OTP transfer scripts as critical', () => {
@@ -32,6 +32,14 @@ describe('mobile scoring', () => {
   it('maps call and notification metadata without raw values', () => {
     expect(callSignalsFromVerification('failed')[0]?.id).toBe('caller_verification_failed')
     expect(notificationSignalsFromId('otp_notification')[0]?.id).toBe('otp_notification')
+    expect(phoneReputationSignals(86)[0]?.id).toBe('caller_reputation_high')
+    expect(phoneReputationSignals(40)).toEqual([])
+  })
+
+  it('shows high phone reputation risk before a transcript exists', () => {
+    const result = analyzeTranscript('', { signals: phoneReputationSignals(86) })
+    expect(result.score).toBe(86)
+    expect(result.risk).toBe('critical')
   })
 
   it('redacts codes and long numbers before storage', () => {

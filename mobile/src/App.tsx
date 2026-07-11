@@ -17,10 +17,12 @@ import { ThreatsView } from './components/ThreatsView'
 import { TimelineView } from './components/TimelineView'
 import { VerifyView } from './components/VerifyView'
 import { ModelView } from './components/ModelView'
+import { NumberShieldView } from './components/NumberShieldView'
+import { ScamToolsView } from './components/ScamToolsView'
 
 type Tab =
   | 'live' | 'review' | 'evidence' | 'timeline' | 'threats'
-  | 'chain' | 'simulator' | 'cases' | 'operations' | 'dataset' | 'playbook' | 'family' | 'verify' | 'model' | 'setup'
+  | 'chain' | 'simulator' | 'cases' | 'operations' | 'dataset' | 'playbook' | 'family' | 'verify' | 'number' | 'tools' | 'model' | 'setup'
 
 const TABS: Array<[Tab, string]> = [
   ['live', 'Live'],
@@ -35,6 +37,8 @@ const TABS: Array<[Tab, string]> = [
   ['dataset', 'Dataset'],
   ['playbook', 'Playbook'],
   ['family', 'Family'],
+  ['number', 'Number Shield'],
+  ['tools', 'Scam Tools'],
   ['verify', 'Verify'],
   ['model', 'Data & Model'],
   ['setup', 'Setup'],
@@ -144,6 +148,19 @@ export default function App() {
             onCall={w.callTrustedContact}
             onShareAlert={w.shareTrustedAlert}
           />
+        )}
+        {tab === 'number' && (
+          <NumberShieldView
+            autoDeleteTranscript={w.autoDeleteTranscript}
+            onSetAutoDeleteTranscript={w.updateAutoDeleteTranscript}
+          />
+        )}
+        {tab === 'tools' && (
+          <ScamToolsView onAnalyzeAsCall={(text) => {
+            w.setTranscript(text)
+            w.setFileName('manual-scam-check.txt')
+            setTab('review')
+          }} />
         )}
         {tab === 'verify' && <VerifyView />}
         {tab === 'model' && <ModelView />}

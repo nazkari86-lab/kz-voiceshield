@@ -66,7 +66,7 @@ def case_payload(case_id: str = "case-1") -> dict:
 
 def test_health_is_public_and_auth_is_required(api):
     client, _ = api
-    assert client.get("/health").json() == {"ok": True, "version": "0.6.0", "mlAvailable": True}
+    assert client.get("/health").json() == {"ok": True, "version": "0.7.0", "mlAvailable": True}
     assert client.post("/analyze-transcript", json={"transcript": "Назовите код"}).status_code == 401
 
 

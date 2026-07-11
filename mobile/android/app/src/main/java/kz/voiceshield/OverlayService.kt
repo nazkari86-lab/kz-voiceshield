@@ -10,6 +10,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.TextView
@@ -18,6 +21,7 @@ import androidx.core.app.NotificationCompat
 class OverlayService : Service() {
   private var view: TextView? = null
   private lateinit var windowManager: WindowManager
+  private var criticalAlerted = false
 
   override fun onCreate() {
     super.onCreate()
@@ -69,13 +73,27 @@ class OverlayService : Service() {
         windowManager.addView(it, params)
         view = it
       }
-      badge.text = "VS $score $level · $source"
+      val critical = score >= 85 || level == "critical"
+      badge.text = if (critical) "VS $score CRITICAL · END CALL" else "VS $score $level · $source"
+      if (critical && !criticalAlerted) {
+        criticalAlerted = true
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          getSystemService(VibratorManager::class.java).defaultVibrator
+        } else {
+          @Suppress("DEPRECATION")
+          getSystemService(Vibrator::class.java)
+        }
+        vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1))
+      } else if (!critical) {
+        criticalAlerted = false
+      }
     }
   }
 
   override fun onDestroy() {
     view?.let { windowManager.removeView(it) }
     view = null
+    criticalAlerted = false
     AppRegistry.overlayService = null
     super.onDestroy()
   }

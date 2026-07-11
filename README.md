@@ -32,6 +32,8 @@ The repository also includes a React Native Android prototype in `mobile/`:
 - Detected scam scheme, device-context evidence, and a 30-second anti-pressure pause for high-risk calls.
 - Explicit privacy consent, session-gated caption access, Android Keystore case storage, secret redaction, and full local-data deletion.
 - Privacy-preserving call verification, optional OTP/bank-notification type signals, encrypted trusted-family contact, and official bank callback directory.
+- Pre-answer local Phone Reputation Score with device-bound number identifiers, complaints, trust/block lists, repeat/mass-dial detection, night rules, critical auto-blocking, and rule backup/import.
+- On-device Scam Tools for pasted SMS, messenger text, phishing links, fake bank domains, shortened URLs, raw-IP links, punycode, and direct APK links.
 - Android resources, manifest permissions, JNI/CMake scaffold, and `scripts/fetch-whisper.sh` for pulling `whisper.cpp`.
 
 Run the mobile TypeScript check with:

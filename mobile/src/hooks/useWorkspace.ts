@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Linking, Share } from 'react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Linking, Share, Vibration } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { accessibilityEvents, AccessibilityModule } from '@bridge/AccessibilityBridge'
 import { callEvents, CallModule } from '@bridge/CallModule'
@@ -21,6 +21,7 @@ import {
   exportSplitJson,
   labelText,
   notificationSignalsFromId,
+  phoneReputationSignals,
   redactSensitiveText,
   samples,
   sentenceTimeline,
@@ -38,6 +39,7 @@ const modelSize = 487601967
 const privacyConsentKey = 'voiceshield.privacy-consent.v1'
 const donationConsentKey = 'voiceshield.donation-consent.v1'
 const trustedContactKey = 'voiceshield.trusted-contact.v1'
+const autoDeleteTranscriptKey = 'voiceshield.auto-delete-transcript.v1'
 
 export type TrustedContact = { name: string; phone: string }
 
@@ -81,6 +83,8 @@ export function useWorkspace() {
   const [storageError, setStorageError] = useState<string | null>(null)
   const [callStatus, setCallStatus] = useState('No active call context')
   const [trustedContact, setTrustedContact] = useState<TrustedContact | null>(null)
+  const [autoDeleteTranscript, setAutoDeleteTranscript] = useState(true)
+  const criticalAlertedRef = useRef(false)
 
   // ---- saved cases ----
   const [cases, setCases] = useState<SavedCase[]>([])
@@ -136,8 +140,9 @@ export function useWorkspace() {
       AsyncStorage.getItem(storageKey).catch(() => null),
       SecureStorage.getItem(trustedContactKey).catch(() => null),
       SecureStorage.getItem(donationConsentKey).catch(() => null),
+      SecureStorage.getItem(autoDeleteTranscriptKey).catch(() => null),
     ])
-      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation]) => {
+      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete]) => {
         if (!active) return
         const stored = encryptedCases ?? legacyCases
         if (stored) {
@@ -156,7 +161,9 @@ export function useWorkspace() {
           }
         }
         setPrivacyConsent(consent === 'accepted')
+        if (consent === 'accepted') void CallModule.updateProtectionConfig({ enabled: true }).catch(() => undefined)
         setDonationConsent(donation === 'accepted')
+        setAutoDeleteTranscript(autoDelete !== 'disabled')
         if (storedTrustedContact) {
           try {
             const parsed = JSON.parse(storedTrustedContact) as TrustedContact
@@ -187,7 +194,9 @@ export function useWorkspace() {
       const ageMs = Date.now() - event.detectedAt
       if (ageMs < 0 || ageMs > 1000 * 60 * 5) return
       setCallStatus(
-        event.verificationStatus === 'failed'
+        event.reputation
+          ? `${event.reputation.maskedNumber}: risk ${event.reputation.score}/100 · ${event.reputation.action.replace('_', ' ')}`
+          : event.verificationStatus === 'failed'
           ? 'Incoming call detected: caller ID verification failed'
           : event.verificationStatus === 'passed'
             ? 'Incoming call detected: caller ID verification passed'
@@ -195,7 +204,8 @@ export function useWorkspace() {
       )
       if (!privacyConsent) return
       const nextSignals = callSignalsFromVerification(event.verificationStatus)
-      setDeviceSignals((current) => [...new Map([...current, ...nextSignals].map((item) => [item.id, item])).values()])
+      const reputationSignals = phoneReputationSignals(event.reputation?.score)
+      setDeviceSignals((current) => [...new Map([...current, ...nextSignals, ...reputationSignals].map((item) => [item.id, item])).values()])
     }
 
     const subscription = callEvents.addListener('VS_CALL_INCOMING', applyCallEvent)
@@ -244,6 +254,14 @@ export function useWorkspace() {
   useEffect(() => {
     void OverlayModule.updateRisk(analysis.score, analysis.risk, source).catch(() => undefined)
   }, [analysis.risk, analysis.score, source])
+
+  useEffect(() => {
+    if (isListening && analysis.score >= 85 && !criticalAlertedRef.current) {
+      criticalAlertedRef.current = true
+      Vibration.vibrate([0, 300, 150, 300])
+    }
+    if (!isListening || analysis.score < 65) criticalAlertedRef.current = false
+  }, [analysis.score, isListening])
 
   const prepareWhisper = useCallback(async () => {
     setCaptureError(null)
@@ -300,7 +318,12 @@ export function useWorkspace() {
     setDeviceSignals([])
     setCaptureNotice(null)
     setCallStatus('No active call context')
-  }, [])
+    if (autoDeleteTranscript) {
+      setTranscript('')
+      setFileName('manual-call.txt')
+      setSource('Manual')
+    }
+  }, [autoDeleteTranscript])
 
   useEffect(() => () => {
     void AccessibilityModule.setProtectionActive(false).catch(() => undefined)
@@ -358,6 +381,7 @@ export function useWorkspace() {
 
   const acceptPrivacy = useCallback(async () => {
     await SecureStorage.setItem(privacyConsentKey, 'accepted')
+    await CallModule.updateProtectionConfig({ enabled: true }).catch(() => undefined)
     setPrivacyConsent(true)
   }, [])
 
@@ -366,11 +390,19 @@ export function useWorkspace() {
     await AudioCaptureModule.stopCapture().catch(() => undefined)
     await WhisperModule.stopStreaming().catch(() => undefined)
     await SecureStorage.removeItem(privacyConsentKey).catch(() => undefined)
+    await CallModule.updateProtectionConfig({ enabled: false }).catch(() => undefined)
     await OverlayModule.hide().catch(() => undefined)
     setPrivacyConsent(false)
     setIsListening(false)
     setDeviceSignals([])
     setCaptureNotice(null)
+    setAutoDeleteTranscript(true)
+  }, [])
+
+  const updateAutoDeleteTranscript = useCallback(async (enabled: boolean) => {
+    if (enabled) await SecureStorage.removeItem(autoDeleteTranscriptKey)
+    else await SecureStorage.setItem(autoDeleteTranscriptKey, 'disabled')
+    setAutoDeleteTranscript(enabled)
   }, [])
 
   const deleteAllLocalData = useCallback(async () => {
@@ -379,6 +411,7 @@ export function useWorkspace() {
     await WhisperModule.stopStreaming().catch(() => undefined)
     await OverlayModule.hide().catch(() => undefined)
     await ModelDownloader.deleteModel(modelFile).catch(() => undefined)
+    await CallModule.clearProtectionData().catch(() => undefined)
     await AsyncStorage.removeItem(storageKey).catch(() => undefined)
     await SecureStorage.clear()
     setCases([])
@@ -512,7 +545,7 @@ export function useWorkspace() {
     reviewerName, setReviewerName,
     source,
     // capture
-    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact,
+    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript,
     startListening, stopListening, prepareWhisper,
     // computed
     analysis, timeline, quality, datasetStageTotals, operations, highSignals, cases, hydrated,
@@ -523,5 +556,6 @@ export function useWorkspace() {
     exportReport, exportEvidenceBundle,
     exportJsonlCases, exportCsvCases, exportSplitCases,
     setDonation, donateDataset, donateCase,
+    updateAutoDeleteTranscript,
   }
 }

@@ -25,7 +25,7 @@ export type StageCoverage = {
   score: number
 }
 
-export type RiskSignalId = 'bank_app_open' | 'remote_access_app_open' | 'screen_share_app_open' | 'suspicious_link_open' | 'caller_verification_failed' | 'caller_unverified' | 'otp_notification' | 'bank_activity_notification'
+export type RiskSignalId = 'bank_app_open' | 'remote_access_app_open' | 'screen_share_app_open' | 'suspicious_link_open' | 'caller_verification_failed' | 'caller_unverified' | 'caller_reputation_high' | 'otp_notification' | 'bank_activity_notification'
 
 export type RiskSignal = {
   id: RiskSignalId
@@ -253,6 +253,11 @@ export const callSignalsFromVerification = (status?: string | null): RiskSignal[
   if (status === 'failed') return [{ id: 'caller_verification_failed', label: 'Caller ID verification failed', weight: 25 }]
   if (status === 'unverified') return [{ id: 'caller_unverified', label: 'Caller ID is not verified', weight: 8 }]
   return []
+}
+
+export const phoneReputationSignals = (score?: number | null): RiskSignal[] => {
+  if (typeof score !== 'number' || score < 65) return []
+  return [{ id: 'caller_reputation_high', label: `Phone reputation risk ${Math.round(score)}/100`, weight: Math.min(99, Math.round(score)) }]
 }
 
 export const notificationSignalsFromId = (signalId?: string | null): RiskSignal[] => {
@@ -984,15 +989,20 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
                               : 0
   const shortTextPenalty = wordCount < 3 ? 0.25 : wordCount < 7 ? 0.65 : 1
   const contextSignals = [...new Map((context.signals ?? []).map((item) => [item.id, item])).values()]
-  // Device context only amplifies an already suspicious conversation. Opening a bank,
-  // screen-share or remote-control app alone is never treated as fraud.
+  // App/screen context only amplifies suspicious speech. Caller verification and
+  // reputation are independent pre-answer signals and remain visible before STT.
+  const standaloneCallScore = contextSignals
+    .filter((item) => item.id === 'caller_reputation_high' || item.id === 'caller_verification_failed')
+    .reduce((maximum, item) => Math.max(maximum, item.weight), 0)
   const contextScore = evidence.length > 0 ? contextSignals.reduce((sum, item) => sum + item.weight, 0) : 0
-  const rawScore = Math.round((evidence.reduce((sum, item) => sum + item.score, 0) + comboBonus + contextScore) * shortTextPenalty)
-  const score = evidence.length === 0 ? 0 : Math.min(99, rawScore)
+  const conversationScore = Math.round((evidence.reduce((sum, item) => sum + item.score, 0) + comboBonus + contextScore) * shortTextPenalty)
+  const score = Math.min(99, Math.max(conversationScore, standaloneCallScore))
   const risk: Severity = score >= 85 ? 'critical' : score >= 65 ? 'high' : score >= 35 ? 'medium' : 'low'
   const uniqueStages = new Set(evidence.map((item) => item.stage)).size
   const stageSpreadBonus = uniqueStages >= 3 ? 15 : uniqueStages >= 2 ? 8 : 0
-  const confidence = evidence.length === 0 ? 0 : Math.min(98, Math.round((matchedTerms * 7 + evidence.length * 9 + Math.min(wordCount, 45) + stageSpreadBonus) * shortTextPenalty))
+  const confidence = evidence.length === 0
+    ? (standaloneCallScore > 0 ? Math.min(95, Math.max(40, standaloneCallScore)) : 0)
+    : Math.min(98, Math.round((matchedTerms * 7 + evidence.length * 9 + Math.min(wordCount, 45) + stageSpreadBonus) * shortTextPenalty))
   const verdict =
     risk === 'critical'
       ? 'Immediate scam intervention'
@@ -1008,7 +1018,7 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
         ? 'Pause and verify before any payment, code sharing, or app installation.'
         : 'Continue only through official channels and keep monitoring.'
   const escalationReasons = buildEscalationReasons(evidence, comboBonus)
-  if (evidence.length > 0 && contextSignals.length > 0) escalationReasons.unshift(`Device context: ${contextSignals.map((item) => item.label).join(', ')}.`)
+  if (contextSignals.length > 0 && (evidence.length > 0 || standaloneCallScore > 0)) escalationReasons.unshift(`Context: ${contextSignals.map((item) => item.label).join(', ')}.`)
   const responseChecklist = buildResponseChecklist(risk, evidence, contextSignals)
   const stageCoverage = buildStageCoverage(evidence)
   const scheme = classifyScheme(evidence)

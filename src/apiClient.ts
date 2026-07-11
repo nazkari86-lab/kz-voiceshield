@@ -29,6 +29,9 @@ export type CaseSyncResult = {
 }
 
 const apiBaseUrl = (import.meta.env.VITE_VOICESHIELD_API_URL ?? '').replace(/\/+$/u, '')
+const apiToken = import.meta.env.VITE_VOICESHIELD_API_TOKEN ?? ''
+const audioPollIntervalMs = 1_000
+const audioPollAttempts = 120
 
 const clampScore = (value: unknown, fallback: number) => {
   const score = typeof value === 'number' && Number.isFinite(value) ? value : fallback
@@ -53,9 +56,26 @@ const normalizeMl = (value: unknown): MlAssessment | undefined => {
 
 const requestJson = async <T>(path: string, init: RequestInit): Promise<T> => {
   if (!apiBaseUrl) throw new Error('Backend URL is not configured')
-  const response = await fetch(`${apiBaseUrl}${path}`, init)
-  if (!response.ok) throw new Error(`Backend request failed: ${response.status}`)
+  const headers = new Headers(init.headers)
+  if (apiToken) headers.set('Authorization', `Bearer ${apiToken}`)
+  const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => undefined) as { detail?: string } | undefined
+    throw new Error(payload?.detail ?? `Backend request failed: ${response.status}`)
+  }
   return response.json() as Promise<T>
+}
+
+const wait = (milliseconds: number) => new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds))
+
+const pollAudioJob = async (jobId: string): Promise<Record<string, unknown>> => {
+  for (let attempt = 0; attempt < audioPollAttempts; attempt += 1) {
+    const response = await requestJson<Record<string, unknown>>(`/audio-jobs/${encodeURIComponent(jobId)}`, { method: 'GET' })
+    if (response.status === 'completed') return response
+    if (response.status === 'failed') throw new Error(typeof response.error === 'string' ? response.error : 'Backend transcription failed')
+    await wait(audioPollIntervalMs)
+  }
+  throw new Error('Backend transcription timed out')
 }
 
 export const isBackendConfigured = () => Boolean(apiBaseUrl)
@@ -80,7 +100,13 @@ export const analyzeTranscriptWithBackend = async (transcript: string, ruleAnaly
 export const transcribeAudioWithBackend = async (file: File): Promise<BackendTranscriptResult> => {
   const body = new FormData()
   body.append('audio', file)
-  const response = await requestJson<Record<string, unknown>>('/transcribe-audio', { body, method: 'POST' })
+  const accepted = await requestJson<Record<string, unknown>>('/transcribe-audio', { body, method: 'POST' })
+  const jobId = typeof accepted.jobId === 'string' ? accepted.jobId : undefined
+  const response = typeof accepted.transcript === 'string'
+    ? accepted
+    : jobId
+      ? await pollAudioJob(jobId)
+      : accepted
   return {
     transcript: typeof response.transcript === 'string' ? response.transcript : '',
     transcriptConfidence: clampScore(response.transcriptConfidence ?? response.confidence, 0),

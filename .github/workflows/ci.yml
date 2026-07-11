@@ -21,6 +21,13 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
       - name: Install
         run: npm ci
 
@@ -38,6 +45,15 @@ jobs:
 
       - name: Validate ML dataset gate
         run: python3 -m unittest discover -s ml/tests
+
+      - name: Install backend dependencies
+        run: python3 -m pip install -r backend/requirements-dev.txt
+
+      - name: Test backend API
+        run: python3 -m pytest backend/tests
+
+      - name: Audit backend dependencies
+        run: python3 -m pip_audit -r backend/requirements.txt
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium

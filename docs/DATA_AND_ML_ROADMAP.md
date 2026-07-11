@@ -63,7 +63,7 @@ per-language (ru/kz/mixed), noise/speakerphone robustness.
 ```bash
 python ml/synthesize.py --per-scheme 14 --safe 80 --out ml/artifacts/synthetic.jsonl
 python ml/adapters.py --source korccvi --in raw.jsonl --out ml/artifacts/korccvi.jsonl
-python ml/model_card.py ml/artifacts/*.jsonl --model-version 0.1.0-baseline \
+python ml/model_card.py ml/artifacts/*.jsonl --model-version 0.1.1-baseline \
     --out ml/artifacts/model_card.json --ts-out mobile/src/data/trainingDataSnapshot.ts
 python ml/train_baseline.py trusted.jsonl --output ml/artifacts/baseline   # needs real trusted data
 ```

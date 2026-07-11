@@ -113,18 +113,22 @@ jobs:
           echo "$DN" | grep -q "CN=KZ VoiceShield" \
             || { echo "::error::APK is NOT signed with the release key"; exit 1; }
 
-      - name: Publish signed APK to latest release
+      - name: Publish signed APK and AAB to matching release
         if: env.HAS_SIGNING == 'true' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RELEASE_TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)
-          if [ -z "$RELEASE_TAG" ]; then
-            echo "No release found — skipping upload."; exit 0
-          fi
           VERSION=$(grep -m1 versionName mobile/android/app/build.gradle | sed -E 's/.*"([^"]+)".*/\1/')
-          ASSET="kz-voiceshield-${VERSION}.apk"
-          cp mobile/android/app/build/outputs/apk/release/app-release.apk "$ASSET"
-          gh release upload "$RELEASE_TAG" "$ASSET" --clobber
-          echo "Uploaded release-signed $ASSET to $RELEASE_TAG"
+          RELEASE_TAG="web-v${VERSION}"
+          APK_ASSET="kz-voiceshield-${VERSION}.apk"
+          AAB_ASSET="kz-voiceshield-${VERSION}.aab"
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" \
+              --title "KZ VoiceShield v${VERSION}" \
+              --notes "Automated signed Android release for VoiceShield ${VERSION}."
+          fi
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk "$APK_ASSET"
+          cp mobile/android/app/build/outputs/bundle/release/app-release.aab "$AAB_ASSET"
+          gh release upload "$RELEASE_TAG" "$APK_ASSET" "$AAB_ASSET" --clobber
+          echo "Uploaded release-signed Android assets to $RELEASE_TAG"
         working-directory: ${{ github.workspace }}

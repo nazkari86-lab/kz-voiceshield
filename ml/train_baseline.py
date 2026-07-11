@@ -33,12 +33,13 @@ def _vectorize(train_texts, test_texts, kind: str):
             embedder.encode(train_texts, normalize_embeddings=True),
             embedder.encode(test_texts, normalize_embeddings=True),
             {"vectorizer": "sentence-transformers", "embeddingModel": EMBEDDING_MODEL},
+            embedder,
         )
     # Default: multilingual char n-gram TF-IDF (no torch; works offline for ru/kz/ko/zh).
     vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(1, 4), min_df=2, max_features=20000)
     train_vectors = vectorizer.fit_transform(train_texts)
     test_vectors = vectorizer.transform(test_texts)
-    return train_vectors, test_vectors, {"vectorizer": "tfidf-char-wb-1-4"}
+    return train_vectors, test_vectors, {"vectorizer": "tfidf-char-wb-1-4"}, vectorizer
 
 
 def main() -> None:
@@ -48,7 +49,7 @@ def main() -> None:
     parser.add_argument("--vectorizer", choices=["tfidf", "embeddings"], default="tfidf")
     parser.add_argument("--allow-untrusted", action="store_true",
                         help="Include synthetic/external (untrusted) rows — EXPERIMENTAL transfer training only")
-    parser.add_argument("--model-version", default="0.1.0-baseline")
+    parser.add_argument("--model-version", default="0.1.1-baseline")
     args = parser.parse_args()
 
     cases, rejected = load_many(args.datasets, require_trusted=not args.allow_untrusted)
@@ -60,7 +61,7 @@ def main() -> None:
         raise SystemExit(f"Need >=2 labels with >=5 examples each; got {label_counts}.")
 
     train, test = train_test_split(cases, test_size=0.2, random_state=42, stratify=[case.label for case in cases])
-    train_vectors, test_vectors, vec_meta = _vectorize(
+    train_vectors, test_vectors, vec_meta, vectorizer = _vectorize(
         [case.transcript for case in train], [case.transcript for case in test], args.vectorizer
     )
     classifier = LogisticRegression(max_iter=2000, class_weight="balanced", random_state=42)
@@ -100,7 +101,10 @@ def main() -> None:
     }
 
     args.output.mkdir(parents=True, exist_ok=True)
-    joblib.dump(classifier, args.output / "classifier.joblib")
+    joblib.dump(
+        {"classifier": classifier, "vectorizer": vectorizer, "modelVersion": args.model_version},
+        args.output / "classifier.joblib",
+    )
     (args.output / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     (args.output / "rejected.json").write_text(json.dumps(rejected[:200], ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({

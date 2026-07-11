@@ -13,6 +13,9 @@ dist-ssr
 coverage
 ml/.venv/
 ml/artifacts/
+backend/.venv/
+backend/data/
+backend/.env
 test-results/
 playwright-report/
 *.local

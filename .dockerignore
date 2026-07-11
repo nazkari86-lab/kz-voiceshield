@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+mobile
+dist
+coverage
+backend/.venv
+backend/data
+backend/.env
+ml/.venv
+ml/artifacts
+test-results
+playwright-report
+

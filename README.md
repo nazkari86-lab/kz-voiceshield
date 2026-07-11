@@ -51,7 +51,7 @@ Android Gradle builds require JDK 17. The checked-in Gradle wrapper lives in `mo
 - Privacy-preserving device context: the Android app observes package names and notification risk types only during an active session; it does not upload audio, expose OTP values, retain raw phone numbers, or retain bank-screen content.
 - Verified Whisper model download with a pinned size and SHA-256 digest, progress reporting, and corrupted-model cleanup.
 - Dataset provenance and reviewer trust state; untrusted imported cases are excluded from train/dev/test split exports.
-- Reproducible RU/KZ ML baseline pipeline in `ml/` using multilingual sentence embeddings and logistic regression, with duplicate/provenance gates and explicit rules-vs-ML disagreement output.
+- Reproducible multilingual transfer baseline in `ml/` using character TF-IDF and logistic regression, with an optional sentence-embedding mode, duplicate/provenance gates, and explicit rules-vs-ML disagreement output.
 - Live browser speech-to-text when supported by the browser.
 - Sample scenarios for bank takeover, AI voice family emergency, investment/crypto, delivery/customs, messenger takeover, victim-called setup, and safe calls.
 - Explainable scoring with matched terms and category-level advice.
@@ -65,7 +65,7 @@ Android Gradle builds require JDK 17. The checked-in Gradle wrapper lives in `mo
 - JSONL and CSV dataset exports for future ML/NLP training.
 - Dataset quality checks for label balance, duplicates, false-positive review, average length, and schema version.
 - Deterministic train/dev/test split export for baseline classifier experiments.
-- Optional backend adapter for server transcription and ML comparison without replacing local rule scoring.
+- Optional authenticated backend for queued server transcription, encrypted case sync, reviewer workflow/audit, and ML comparison without replacing local rule scoring.
 - `.jsonl` bulk import for previously reviewed transcripts.
 - Audio-file intake placeholder in local-only mode and `/transcribe-audio` upload when `VITE_VOICESHIELD_API_URL` is configured.
 - Safe-context handling so ordinary text and defensive warnings stay at zero risk.
@@ -119,17 +119,21 @@ The repository includes production-ready SPA fallbacks for both Vercel and Netli
 
 - `vercel.json` rewrites routes to `index.html`.
 - `netlify.toml` builds with `npm run build` and publishes `dist`.
-- `.env.example` reserves `VITE_VOICESHIELD_API_URL` for a future backend.
+- `.env.example` configures the optional backend URL and controlled-deployment token.
 
 ## Optional Backend Contract
 
 When `VITE_VOICESHIELD_API_URL` is set, the frontend keeps rule scoring local but can call:
 
 - `POST /analyze-transcript` with `{ transcript, ruleAnalysis }`, returning `{ ml }` or the ML object directly.
-- `POST /transcribe-audio` with multipart field `audio`, returning `{ transcript, transcriptConfidence, ml? }`.
+- `POST /transcribe-audio` with multipart field `audio`, returning `202` with `{ jobId, status: "queued" }`.
+- `GET /audio-jobs/:id` for queued transcription status and results.
 - `PUT /cases/:id` with the serialized case schema, returning `{ ok, remoteId?, syncedAt? }`.
+- `GET /cases`, `PATCH /cases/:id/workflow`, and `GET /audit-log` for reviewer/admin operations.
 
 The ML object is normalized as `{ verdict: "fraud" | "safe" | "needs_review", score, confidence, model, embeddingModel?, signals[] }`. The UI shows disagreements such as "rules high, ML low" instead of replacing the rule score.
+
+The server implementation and deployment notes are in [`backend/README.md`](backend/README.md). Static browser tokens are only for local or controlled testing; an internet-facing deployment requires OIDC/SSO and short-lived tokens.
 
 ## CI
 
@@ -139,10 +143,10 @@ GitHub Actions runs dependency audits, lint, unit tests, production builds, Play
 
 This is an MVP, not a final fraud-detection engine. The next production steps are:
 
-- add real audio upload transcription through a backend service;
-- add encrypted server-side case storage when multi-user review is needed;
-- add ML/NLP scoring on top of the current explainable rules;
-- add real reviewer accounts, roles, SSO, and secure evidence storage;
+- deploy server Whisper or another approved STT provider and validate RU/KZ WER;
+- migrate encrypted SQLite storage to managed PostgreSQL/object storage for multi-instance use;
+- validate ML/NLP scoring on a real reviewer-labelled RU/KZ holdout;
+- replace controlled-deployment tokens with OIDC/SSO and short-lived sessions;
 - add official reporting/export formats for banks or consumer-protection teams.
 
 ## Tech Stack

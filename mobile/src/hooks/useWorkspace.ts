@@ -241,6 +241,9 @@ export function useWorkspace() {
       if (level >= 0.015) lastAudibleAtRef.current = Date.now()
       setAudioLevel(level)
     })
+    const audioErrorSub = audioEvents.addListener('VS_AUDIO_CAPTURE_ERROR', (event: { message?: string }) => {
+      if (event.message) setCaptureError(event.message)
+    })
     const notificationSub = notificationEvents.addListener('VS_NOTIFICATION_SIGNAL', (event: { signalId?: string }) => {
       if (!isListening) return
       const nextSignals = notificationSignalsFromId(event.signalId)
@@ -251,6 +254,7 @@ export function useWorkspace() {
       liveCaptionSub.remove()
       whisperSub.remove()
       levelSub.remove()
+      audioErrorSub.remove()
       notificationSub.remove()
       modelSub.remove()
     }
@@ -289,10 +293,11 @@ export function useWorkspace() {
       await WhisperModule.initialize(path, 'auto')
       setModelReady(true)
       setModelProgress(null)
-    } catch {
+    } catch (error) {
       setModelReady(false)
       setModelProgress(null)
       setCaptureError('Could not prepare the speech model. Check internet access and free storage.')
+      throw error
     }
   }, [])
 
@@ -306,13 +311,21 @@ export function useWorkspace() {
     }
     try {
       const accessibilityEnabled = await AccessibilityModule.isEnabled()
-      if (!accessibilityEnabled && !modelReady) await prepareWhisper()
+      if (!accessibilityEnabled) {
+        // A downloaded model is only a file. After an app restart, its native
+        // Whisper context must be recreated before audio chunks can be decoded.
+        const nativeModelReady = await WhisperModule.isInitialized()
+        if (!nativeModelReady) await prepareWhisper()
+        await WhisperModule.resetBuffer()
+      }
       await OverlayModule.show(!accessibilityEnabled)
       if (!accessibilityEnabled) {
         await AudioCaptureModule.startCapture()
         await WhisperModule.startStreaming()
         lastAudibleAtRef.current = Date.now()
-        setCaptureNotice('On-device Whisper is listening through the microphone. Turn on speakerphone so it can hear the caller; audio is not uploaded.')
+        setAudioLevel(0)
+        setSource('Whisper')
+        setCaptureNotice('Whisper is ready. Android cannot read internal call audio: turn on speakerphone so the microphone can hear the caller. Audio stays on this device.')
       } else {
         setCaptureNotice('Live Caption mode is active. Only approved system caption text is processed.')
       }
@@ -324,7 +337,7 @@ export function useWorkspace() {
       setIsListening(false)
       setCaptureError('Protection could not start. Enable microphone, overlay and accessibility permissions in setup.')
     }
-  }, [modelReady, prepareWhisper, privacyConsent])
+  }, [prepareWhisper, privacyConsent])
 
   const stopListening = useCallback(async () => {
     await AccessibilityModule.setProtectionActive(false).catch(() => undefined)

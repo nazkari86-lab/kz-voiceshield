@@ -49,6 +49,10 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
 
   @ReactMethod
   fun startStreaming(promise: Promise) {
+    if (whisper == null) {
+      promise.reject("WHISPER_NOT_READY", "Speech model is not initialized. Open Setup and prepare Whisper first.")
+      return
+    }
     streamJob?.cancel()
     streamJob = scope.launch {
       while (true) {
@@ -70,6 +74,7 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   }
 
   @ReactMethod fun stopStreaming(promise: Promise) { streamJob?.cancel(); streamJob = null; promise.resolve(null) }
+  @ReactMethod fun isInitialized(promise: Promise) { promise.resolve(whisper != null) }
   @ReactMethod fun resetBuffer(promise: Promise) { whisper?.reset(); lastTranscript = ""; promise.resolve(null) }
   @ReactMethod fun getBufferSize(promise: Promise) { promise.resolve(whisper?.bufferSize() ?: 0) }
 

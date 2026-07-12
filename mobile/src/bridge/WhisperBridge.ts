@@ -2,6 +2,7 @@ import { NativeEventEmitter, NativeModules } from 'react-native'
 
 type WhisperNativeModule = {
   initialize(modelPath: string, language: string): Promise<boolean>
+  isInitialized(): Promise<boolean>
   startStreaming(): Promise<void>
   stopStreaming(): Promise<void>
   resetBuffer(): Promise<void>

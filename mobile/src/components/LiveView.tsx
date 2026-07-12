@@ -76,7 +76,7 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
         <Text style={styles.verdict}>{analysis.verdict}</Text>
         <Text style={styles.next}>{analysis.nextAction}</Text>
         <Text style={styles.session}>{callStatus}</Text>
-        {isListening && (
+      {isListening && (
           <View style={styles.levelTrack}>
             <View style={[styles.levelFill, { width: `${Math.min(100, Math.round(audioLevel * 100))}%` }]} />
           </View>
@@ -121,7 +121,7 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
         </View>
       )}
 
-      <Text style={styles.transcriptLabel}>LIVE TRANSCRIPT</Text>
+      <View style={styles.transcriptHeading}><Text style={styles.transcriptLabel}>LIVE TRANSCRIPT</Text>{isListening && source === 'Whisper' ? <Text style={styles.transcriptState}>{audioLevel >= 0.015 ? 'MICROPHONE HEARS AUDIO' : 'WAITING FOR SPEAKER AUDIO'}</Text> : null}</View>
       <TextInput
         multiline
         value={transcript}
@@ -185,6 +185,8 @@ const styles = StyleSheet.create({
   actionNumber: { backgroundColor: colors.brand, borderRadius: 12, color: '#fff', fontSize: 12, fontWeight: '900', height: 24, lineHeight: 24, textAlign: 'center', width: 24 },
   actionText: { color: colors.ink, flex: 1, fontSize: 13, lineHeight: 19 },
   transcriptLabel: { color: colors.sub, fontSize: 10, fontWeight: '900', letterSpacing: 1, marginBottom: 6 },
+  transcriptHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  transcriptState: { color: colors.brandDark, fontSize: 9, fontWeight: '900', letterSpacing: 0.5, marginBottom: 6 },
   input: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, marginBottom: 12, minHeight: 150, padding: 14, textAlignVertical: 'top' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   primary: { backgroundColor: colors.brand, borderRadius: 8, flexGrow: 1, paddingHorizontal: 16, paddingVertical: 13 },

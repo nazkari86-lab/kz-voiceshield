@@ -21,6 +21,7 @@ class MainPackage : ReactPackage {
       ShareIntentModule(reactContext),
       ImageScanModule(reactContext),
       TrainingVoiceModule(reactContext),
+      VoiceMessageModule(reactContext),
     )
   }
 

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { StyleSheet, Text, TextInput, View } from 'react-native'
 import type { TrustedContact } from '@hooks/useWorkspace'
 import { colors } from '../theme'
+import { MotionPressable } from './MotionPressable'
+import { SectionHeader } from './ui'
 
 type Props = {
   contact: TrustedContact | null
@@ -32,21 +34,22 @@ export function FamilyView({ contact, privacyConsent, onSave, onClear, onCall, o
   }
 
   if (!privacyConsent) {
-    return <Text style={styles.notice}>Accept the privacy notice in Setup before storing a trusted contact.</Text>
+    return <View style={styles.locked}><Text style={styles.lockedEyebrow}>SETUP REQUIRED</Text><Text style={styles.lockedTitle}>Trusted contact is locked</Text><Text style={styles.lockedCopy}>Accept the privacy notice in Setup before storing a trusted contact.</Text></View>
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Trusted family contact</Text>
-      <Text style={styles.copy}>VoiceShield never contacts this person automatically. Calls and warning summaries always require your action.</Text>
-      <TextInput value={name} onChangeText={setName} placeholder="Name" placeholderTextColor={colors.muted} style={styles.input} />
-      <TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Phone number" placeholderTextColor={colors.muted} style={styles.input} />
+      <View style={styles.hero}><Text style={styles.heroEyebrow}>TRUSTED CIRCLE</Text><Text style={styles.heroTitle}>A second person for critical moments</Text><Text style={styles.heroCopy}>VoiceShield never contacts anyone automatically. Every call and warning is always under your control.</Text></View>
+      {contact ? <View style={styles.savedCard}><View style={styles.avatar}><Text style={styles.avatarText}>{contact.name.slice(0, 1).toUpperCase()}</Text></View><View style={styles.savedBody}><Text style={styles.savedEyebrow}>SAVED CONTACT</Text><Text style={styles.savedName}>{contact.name}</Text><Text style={styles.savedPhone}>{contact.phone}</Text></View><View style={styles.encrypted}><Text style={styles.encryptedText}>PRIVATE</Text></View></View> : null}
+      <SectionHeader eyebrow={contact ? 'UPDATE CONTACT' : 'ADD CONTACT'} title={contact ? 'Keep details current' : 'Choose someone you trust'} detail="This contact appears only when you decide to call or send a risk summary." />
+      <Text style={styles.fieldLabel}>FULL NAME</Text><TextInput value={name} onChangeText={setName} placeholder="Name" placeholderTextColor={colors.muted} style={styles.input} />
+      <Text style={styles.fieldLabel}>PHONE NUMBER</Text><TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Phone number" placeholderTextColor={colors.muted} style={styles.input} />
       <View style={styles.row}>
-        <Pressable style={styles.primary} onPress={() => { void save() }}><Text style={styles.primaryText}>Save contact</Text></Pressable>
-        {contact && <Pressable style={styles.secondary} onPress={() => { void onCall() }}><Text style={styles.secondaryText}>Call {contact.name}</Text></Pressable>}
-        {contact && <Pressable style={styles.secondary} onPress={() => { void onShareAlert() }}><Text style={styles.secondaryText}>Share risk alert</Text></Pressable>}
+        <MotionPressable style={styles.primary} onPress={() => { void save() }}><Text style={styles.primaryText}>{contact ? 'Update contact' : 'Save contact'}</Text></MotionPressable>
+        {contact && <MotionPressable style={styles.secondary} onPress={() => { void onCall() }}><Text style={styles.secondaryText}>Call now</Text></MotionPressable>}
+        {contact && <MotionPressable style={styles.secondary} onPress={() => { void onShareAlert() }}><Text style={styles.secondaryText}>Share alert</Text></MotionPressable>}
       </View>
-      {contact && <Pressable style={styles.danger} onPress={() => { void onClear() }}><Text style={styles.dangerText}>Remove trusted contact</Text></Pressable>}
+      {contact && <MotionPressable style={styles.danger} onPress={() => { void onClear() }}><Text style={styles.dangerText}>Remove trusted contact</Text></MotionPressable>}
       {status ? <Text style={styles.status}>{status}</Text> : null}
     </View>
   )
@@ -54,8 +57,9 @@ export function FamilyView({ contact, privacyConsent, onSave, onClear, onCall, o
 
 const styles = StyleSheet.create({
   container: { gap: 11 },
-  title: { color: colors.ink, fontSize: 22, fontWeight: '900' },
-  copy: { color: colors.sub, fontSize: 13, lineHeight: 19 },
+  hero: { backgroundColor: colors.brandDark, borderRadius: 8, gap: 6, padding: 18 }, heroEyebrow: { color: '#9ce1c1', fontSize: 10, fontWeight: '900', letterSpacing: 1 }, heroTitle: { color: '#fff', fontSize: 22, fontWeight: '900' }, heroCopy: { color: '#d7eee2', fontSize: 13, lineHeight: 19 },
+  savedCard: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 11, padding: 14 }, avatar: { alignItems: 'center', backgroundColor: colors.softBrand, borderRadius: 8, height: 42, justifyContent: 'center', width: 42 }, avatarText: { color: colors.brandDark, fontSize: 18, fontWeight: '900' }, savedBody: { flex: 1 }, savedEyebrow: { color: colors.muted, fontSize: 10, fontWeight: '900', letterSpacing: 0.7 }, savedName: { color: colors.ink, fontSize: 16, fontWeight: '900', marginTop: 2 }, savedPhone: { color: colors.sub, fontSize: 12, marginTop: 1 }, encrypted: { backgroundColor: colors.chipBg, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 }, encryptedText: { color: colors.brandDark, fontSize: 9, fontWeight: '900', letterSpacing: 0.6 },
+  fieldLabel: { color: colors.sub, fontSize: 10, fontWeight: '900', letterSpacing: 0.8, marginBottom: -5 },
   input: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, paddingHorizontal: 13, paddingVertical: 12 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   primary: { backgroundColor: colors.brand, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 11 },
@@ -65,5 +69,5 @@ const styles = StyleSheet.create({
   danger: { alignSelf: 'flex-start', paddingVertical: 8 },
   dangerText: { color: '#dc2626', fontWeight: '800' },
   status: { color: colors.sub, fontSize: 12 },
-  notice: { backgroundColor: '#fff7ed', borderRadius: 8, color: '#9a3412', fontSize: 13, lineHeight: 19, padding: 14 },
+  locked: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 5, padding: 16 }, lockedEyebrow: { color: colors.brand, fontSize: 10, fontWeight: '900', letterSpacing: 1 }, lockedTitle: { color: colors.ink, fontSize: 17, fontWeight: '900' }, lockedCopy: { color: colors.sub, fontSize: 13, lineHeight: 19 },
 })

@@ -39,6 +39,16 @@ export function SectionTitle({ children }: { children: React.ReactNode }) {
   return <Text style={ui.sectionTitle}>{children}</Text>
 }
 
+export function SectionHeader({ eyebrow, title, detail }: { eyebrow: string; title: string; detail?: string }) {
+  return (
+    <View style={ui.sectionHeader}>
+      <Text style={ui.eyebrow}>{eyebrow}</Text>
+      <Text style={ui.sectionHeading}>{title}</Text>
+      {detail ? <Text style={ui.sectionDetail}>{detail}</Text> : null}
+    </View>
+  )
+}
+
 export function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <View style={ui.empty}>
@@ -62,6 +72,10 @@ export const ui = StyleSheet.create({
   metricValue: { color: colors.ink, fontSize: 20, fontWeight: '900' },
   metricLabel: { color: colors.sub, fontSize: 11 },
   sectionTitle: { color: colors.ink, fontSize: 15, fontWeight: '900', marginBottom: 6, marginTop: 2 },
+  sectionHeader: { gap: 4, marginBottom: 10 },
+  eyebrow: { color: colors.brand, fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  sectionHeading: { color: colors.ink, fontSize: 21, fontWeight: '900' },
+  sectionDetail: { color: colors.sub, fontSize: 13, lineHeight: 19 },
   empty: { alignItems: 'center', backgroundColor: colors.chipBg, borderRadius: 14, gap: 4, padding: 20 },
   emptyTitle: { color: colors.ink, fontSize: 15, fontWeight: '800' },
   emptySub: { color: colors.sub, fontSize: 12, textAlign: 'center' },

@@ -17,6 +17,7 @@ struct VsWhisperHandle {
   std::string lastTranscript;
   std::vector<int16_t> pcmBuffer;
   std::mutex bufferMutex;
+  std::mutex inferenceMutex;
 };
 
 namespace {
@@ -102,6 +103,7 @@ Java_kz_voiceshield_WhisperContext_nativeTranscribe(JNIEnv *env, jobject, jlong 
   std::string transcript;
 #if VS_HAS_WHISPER_CPP
   if (handle->ctx != nullptr && !pcmBuffer.empty()) {
+    std::lock_guard<std::mutex> inferenceLock(handle->inferenceMutex);
     std::vector<float> pcmf32;
     pcmf32.reserve(pcmBuffer.size());
     for (const int16_t sample : pcmBuffer) {
@@ -123,6 +125,42 @@ Java_kz_voiceshield_WhisperContext_nativeTranscribe(JNIEnv *env, jobject, jlong 
         text += whisper_full_get_segment_text(handle->ctx, i);
       }
       transcript = text;
+    }
+  }
+#endif
+  handle->lastTranscript = transcript;
+  return env->NewStringUTF(transcript.c_str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_kz_voiceshield_WhisperContext_nativeTranscribePcm(JNIEnv *env, jobject, jlong ptr, jshortArray pcm) {
+  auto *handle = reinterpret_cast<VsWhisperHandle *>(ptr);
+  if (handle == nullptr) return env->NewStringUTF("");
+  const jsize len = env->GetArrayLength(pcm);
+  std::vector<int16_t> samples(static_cast<size_t>(len));
+  env->GetShortArrayRegion(pcm, 0, len, reinterpret_cast<jshort *>(samples.data()));
+  std::string transcript;
+#if VS_HAS_WHISPER_CPP
+  if (handle->ctx != nullptr && !samples.empty()) {
+    // whisper_context is not safe for concurrent whisper_full calls. Live
+    // capture can keep buffering while this lock serializes inference only.
+    std::lock_guard<std::mutex> inferenceLock(handle->inferenceMutex);
+    std::vector<float> pcmf32;
+    pcmf32.reserve(samples.size());
+    for (const int16_t s : samples) {
+      pcmf32.push_back(static_cast<float>(s) / 32768.0f);
+    }
+    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
+    params.print_progress = false;
+    params.print_realtime = false;
+    params.print_timestamps = false;
+    params.translate = false;
+    params.language = handle->language.c_str();
+    params.n_threads = handle->threads;
+    params.beam_search.beam_size = handle->beamSize;
+    if (whisper_full(handle->ctx, params, pcmf32.data(), static_cast<int>(pcmf32.size())) == 0) {
+      const int segments = whisper_full_n_segments(handle->ctx);
+      for (int i = 0; i < segments; ++i) transcript += whisper_full_get_segment_text(handle->ctx, i);
     }
   }
 #endif

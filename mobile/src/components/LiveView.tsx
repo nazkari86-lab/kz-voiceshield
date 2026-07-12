@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Animated, Easing, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Animated, Easing, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { Analysis } from '@scoring'
 import { colors, riskColor } from '../theme'
 import { Card, RiskBadge } from './ui'
+import { MotionPressable } from './MotionPressable'
 
 type Props = {
   analysis: Analysis
@@ -96,20 +97,16 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
         <View style={styles.pauseCard}>
           <Text style={styles.pauseTitle}>{pauseRemaining > 0 ? `Pause active: ${pauseRemaining}s` : 'Take a 30-second pause'}</Text>
           <Text style={styles.pauseCopy}>End the call. Do not share codes or approve payments.</Text>
-          <Pressable style={styles.pauseButton} onPress={() => setPauseRemaining(30)}>
-            <Text style={styles.pauseButtonText}>{pauseRemaining > 0 ? 'Restart pause' : 'Start pause'}</Text>
-          </Pressable>
+          <MotionPressable style={styles.pauseButton} onPress={() => setPauseRemaining(30)}><Text style={styles.pauseButtonText}>{pauseRemaining > 0 ? 'Restart pause' : 'Start pause'}</Text></MotionPressable>
           {trustedContactName && (
-            <Pressable style={styles.trustedButton} onPress={onCallTrusted}>
-              <Text style={styles.trustedButtonText}>Call {trustedContactName}</Text>
-            </Pressable>
+            <MotionPressable style={styles.trustedButton} onPress={onCallTrusted}><Text style={styles.trustedButtonText}>Call {trustedContactName}</Text></MotionPressable>
           )}
         </View>
       )}
 
       <View style={styles.quickGrid}>
-        <Pressable style={styles.quickAction} onPress={onOpenEmergency}><Text style={styles.quickIcon}>!</Text><View><Text style={styles.quickTitle}>I shared data</Text><Text style={styles.quickCopy}>Immediate recovery plan</Text></View></Pressable>
-        <Pressable style={styles.quickAction} onPress={onOpenSimulator}><Text style={styles.quickIcon}>+</Text><View><Text style={styles.quickTitle}>Practice</Text><Text style={styles.quickCopy}>Learn scam patterns</Text></View></Pressable>
+        <MotionPressable style={styles.quickAction} onPress={onOpenEmergency}><Text style={styles.quickIcon}>!</Text><View><Text style={styles.quickTitle}>I shared data</Text><Text style={styles.quickCopy}>Immediate recovery plan</Text></View></MotionPressable>
+        <MotionPressable style={styles.quickAction} onPress={onOpenSimulator}><Text style={styles.quickIcon}>+</Text><View><Text style={styles.quickTitle}>Practice</Text><Text style={styles.quickCopy}>Learn scam patterns</Text></View></MotionPressable>
       </View>
 
       {analysis.responseChecklist.length > 0 && (
@@ -135,11 +132,9 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
       />
 
       <View style={styles.actions}>
-        <Pressable style={[styles.primary, isListening && styles.stop]} onPress={onToggleListening}>
-          <Text style={styles.primaryText}>{isListening ? 'Stop' : 'Start protection'}</Text>
-        </Pressable>
-        <Pressable style={styles.secondary} onPress={onSave}><Text style={styles.secondaryText}>Save case</Text></Pressable>
-        <Pressable style={styles.secondary} onPress={onExportReport}><Text style={styles.secondaryText}>Share report</Text></Pressable>
+        <MotionPressable style={[styles.primary, isListening && styles.stop]} onPress={onToggleListening}><Text style={styles.primaryText}>{isListening ? 'Stop' : 'Start protection'}</Text></MotionPressable>
+        <MotionPressable style={styles.secondary} onPress={onSave}><Text style={styles.secondaryText}>Save case</Text></MotionPressable>
+        <MotionPressable style={styles.secondary} onPress={onExportReport}><Text style={styles.secondaryText}>Share report</Text></MotionPressable>
       </View>
 
       {analysis.responseChecklist.slice(3).map((item) => <Text key={item} style={styles.check}>• {item}</Text>)}

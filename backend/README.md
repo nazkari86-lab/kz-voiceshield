@@ -36,6 +36,10 @@ SSO and exchange the user session for short-lived API tokens.
 - Uploads are allowlisted by media type and size-limited.
 - The service refuses to start without an encryption key and token map.
 - The experimental transfer model returns `503` when no valid model bundle is configured.
+- `GET /readyz` reports database reachability, model availability, STT configuration,
+  audio retention, and max upload size for container/load-balancer health checks.
+- Reviewer workflow updates can include `expectedUpdatedAt`; stale versions return
+  `409` instead of silently overwriting another reviewer.
 
 For real deployment, store the encryption key and tokens in a cloud secret manager,
 use managed PostgreSQL/object storage, terminate TLS at the ingress, enable backups,
@@ -56,8 +60,25 @@ the status is `completed` or `failed`. The web adapter does this automatically.
 The built-in worker is process-local: interrupted jobs are marked failed on restart.
 Use Redis/Celery, SQS, or another durable queue before running multiple API instances.
 
+## Reviewer workflow API
+
+Reviewers and admins can list cases with `GET /cases`, read one case with
+`GET /cases/{caseId}`, and update workflow state with `PATCH /cases/{caseId}/workflow`.
+To prevent lost updates in a shared review queue, pass the case's current
+`updatedAt` as `expectedUpdatedAt`:
+
+```json
+{
+  "status": "reviewing",
+  "assignedTo": "reviewer-2",
+  "expectedUpdatedAt": "2026-07-11T10:00:00Z"
+}
+```
+
+If another reviewer changed the case first, the API returns `409`.
+
 ## Tests
 
 ```bash
-backend/.venv/bin/pytest backend/tests
+backend/.venv/bin/python -m pytest backend/tests
 ```

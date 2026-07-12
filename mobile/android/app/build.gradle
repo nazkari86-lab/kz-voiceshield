@@ -29,8 +29,8 @@ android {
         applicationId "kz.voiceshield"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 9
-        versionName "0.7.0"
+        versionCode 11
+        versionName "0.9.0"
 
         externalNativeBuild {
             cmake {
@@ -80,6 +80,10 @@ dependencies {
     implementation("com.facebook.react:react-android")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // On-device screenshot OCR and QR extraction. Bundled models keep the
+    // scanner available without a network connection after APK install.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
     testImplementation("junit:junit:4.13.2")
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

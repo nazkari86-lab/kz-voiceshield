@@ -18,6 +18,9 @@ class MainPackage : ReactPackage {
       SecureStorageModule(reactContext),
       DeviceSettingsModule(reactContext),
       NotificationAccessModule(reactContext),
+      ShareIntentModule(reactContext),
+      ImageScanModule(reactContext),
+      TrainingVoiceModule(reactContext),
     )
   }
 

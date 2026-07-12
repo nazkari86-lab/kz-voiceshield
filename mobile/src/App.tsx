@@ -19,10 +19,13 @@ import { VerifyView } from './components/VerifyView'
 import { ModelView } from './components/ModelView'
 import { NumberShieldView } from './components/NumberShieldView'
 import { ScamToolsView } from './components/ScamToolsView'
+import { EmergencyView } from './components/EmergencyView'
+import { ScreenMotion } from './components/ScreenMotion'
+import { ShareIntentModule, shareIntentEvents } from './bridge/ShareIntentBridge'
 
 type Tab =
   | 'live' | 'review' | 'evidence' | 'timeline' | 'threats'
-  | 'chain' | 'simulator' | 'cases' | 'operations' | 'dataset' | 'playbook' | 'family' | 'verify' | 'number' | 'tools' | 'model' | 'setup'
+  | 'chain' | 'simulator' | 'emergency' | 'cases' | 'operations' | 'dataset' | 'playbook' | 'family' | 'verify' | 'number' | 'tools' | 'model' | 'setup'
 
 const TABS: Array<[Tab, string]> = [
   ['live', 'Live'],
@@ -32,6 +35,7 @@ const TABS: Array<[Tab, string]> = [
   ['threats', 'Threat Lab'],
   ['chain', 'Attack Chain'],
   ['simulator', 'Simulator'],
+  ['emergency', 'Emergency'],
   ['cases', 'Cases'],
   ['operations', 'Operations'],
   ['dataset', 'Dataset'],
@@ -44,23 +48,44 @@ const TABS: Array<[Tab, string]> = [
   ['setup', 'Setup'],
 ]
 
+const tabMeta: Record<Tab, { label: string; group: string }> = {
+  live: { label: 'Live shield', group: 'Protect' }, review: { label: 'Review', group: 'Investigate' }, evidence: { label: 'Evidence', group: 'Investigate' }, timeline: { label: 'Timeline', group: 'Investigate' }, threats: { label: 'Threat lab', group: 'Learn' },
+  chain: { label: 'Attack chain', group: 'Learn' }, simulator: { label: 'Simulator', group: 'Learn' }, emergency: { label: 'Emergency', group: 'Recover' }, cases: { label: 'Cases', group: 'Workspace' }, operations: { label: 'Operations', group: 'Workspace' },
+  dataset: { label: 'Dataset', group: 'Workspace' }, playbook: { label: 'Playbook', group: 'Learn' }, family: { label: 'Family', group: 'Protect' }, verify: { label: 'Verify', group: 'Protect' }, number: { label: 'Number shield', group: 'Protect' },
+  tools: { label: 'Scam tools', group: 'Investigate' }, model: { label: 'Data & model', group: 'Workspace' }, setup: { label: 'Setup', group: 'Workspace' },
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>('live')
+  const [sharedText, setSharedText] = useState('')
   const w = useWorkspace()
 
   useEffect(() => {
     if (w.hydrated && !w.privacyConsent) setTab('setup')
   }, [w.hydrated, w.privacyConsent])
 
+  useEffect(() => {
+    const accept = (text?: string | null) => {
+      if (!text) return
+      setSharedText(text)
+      setTab('tools')
+    }
+    const subscription = shareIntentEvents.addListener('VS_SHARED_TEXT', (event: { text?: string }) => accept(event.text))
+    void ShareIntentModule?.consumePendingText?.().then(accept).catch(() => undefined)
+    return () => subscription.remove()
+  }, [])
+
   return (
     <SafeAreaView style={styles.shell}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.title}>KZ VoiceShield</Text>
-          <Text style={styles.subtitle}>On-device RU/KZ call fraud protection</Text>
+          <Text style={styles.eyebrow}>{tabMeta[tab].group.toUpperCase()}</Text>
+          <Text style={styles.title}>{tabMeta[tab].label}</Text>
+          <Text style={styles.subtitle}>KZ VoiceShield · private on-device protection</Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: riskColor[w.analysis.risk] }]}>
-          <Text style={styles.badgeText}>{w.analysis.score}</Text>
+        <View style={[styles.badge, { borderColor: riskColor[w.analysis.risk] }]}>
+          <Text style={[styles.badgeText, { color: riskColor[w.analysis.risk] }]}>{w.analysis.score}</Text>
+          <Text style={styles.badgeLabel}>RISK</Text>
         </View>
       </View>
 
@@ -75,6 +100,7 @@ export default function App() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScreenMotion screenKey={tab}>
         {tab === 'live' && (
           <LiveView
             analysis={w.analysis}
@@ -92,6 +118,8 @@ export default function App() {
             onSave={w.saveCurrentCase}
             onExportReport={w.exportReport}
             onCallTrusted={() => { void w.callTrustedContact() }}
+            onOpenEmergency={() => setTab('emergency')}
+            onOpenSimulator={() => setTab('simulator')}
           />
         )}
         {tab === 'review' && <ReviewView analysis={w.analysis} timelineLength={w.timeline.length} highSignals={w.highSignals} />}
@@ -99,9 +127,8 @@ export default function App() {
         {tab === 'timeline' && <TimelineView timeline={w.timeline} />}
         {tab === 'threats' && <ThreatsView />}
         {tab === 'chain' && <AttackChainView analysis={w.analysis} />}
-        {tab === 'simulator' && (
-          <SimulatorView onLoadScenario={(key, label) => { w.loadSample(key, label); setTab('review') }} />
-        )}
+        {tab === 'simulator' && <SimulatorView />}
+        {tab === 'emergency' && <EmergencyView trustedContactName={w.trustedContact?.name} onCallTrusted={() => { void w.callTrustedContact() }} onOpenVerify={() => setTab('verify')} />}
         {tab === 'cases' && (
           <CasesView
             cases={w.cases}
@@ -156,7 +183,7 @@ export default function App() {
           />
         )}
         {tab === 'tools' && (
-          <ScamToolsView onAnalyzeAsCall={(text) => {
+          <ScamToolsView initialText={sharedText} onAnalyzeAsCall={(text) => {
             w.setTranscript(text)
             w.setFileName('manual-scam-check.txt')
             setTab('review')
@@ -178,6 +205,7 @@ export default function App() {
             onDeleteAllData={w.deleteAllLocalData}
           />
         )}
+        </ScreenMotion>
       </ScrollView>
     </SafeAreaView>
   )
@@ -185,16 +213,18 @@ export default function App() {
 
 const styles = StyleSheet.create({
   shell: { backgroundColor: colors.bg, flex: 1 },
-  header: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14 },
+  header: { alignItems: 'center', backgroundColor: colors.card, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 15 },
   headerText: { flex: 1 },
-  title: { color: colors.ink, fontSize: 22, fontWeight: '900' },
-  subtitle: { color: colors.sub, fontSize: 12, marginTop: 2 },
-  badge: { alignItems: 'center', borderRadius: 16, height: 54, justifyContent: 'center', width: 54 },
-  badgeText: { color: '#fff', fontSize: 20, fontWeight: '900' },
-  tabs: { gap: 8, paddingHorizontal: 14, paddingBottom: 8 },
-  tab: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 999, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8 },
+  eyebrow: { color: colors.brand, fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
+  title: { color: colors.ink, fontSize: 24, fontWeight: '900', marginTop: 1 },
+  subtitle: { color: colors.sub, fontSize: 11, marginTop: 2 },
+  badge: { alignItems: 'center', backgroundColor: colors.softBrand, borderRadius: 8, borderWidth: 2, height: 54, justifyContent: 'center', width: 58 },
+  badgeText: { fontSize: 21, fontWeight: '900', lineHeight: 24 },
+  badgeLabel: { color: colors.sub, fontSize: 8, fontWeight: '900', letterSpacing: 1 },
+  tabs: { gap: 7, paddingHorizontal: 14, paddingVertical: 10 },
+  tab: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8 },
   tabActive: { backgroundColor: colors.brand, borderColor: colors.brand },
-  tabText: { color: '#334155', fontSize: 12, fontWeight: '800' },
+  tabText: { color: colors.sub, fontSize: 12, fontWeight: '800' },
   tabTextActive: { color: '#fff' },
   content: { padding: 16, paddingBottom: 40 },
 })

@@ -5,9 +5,9 @@
 
 [Privacy policy](PRIVACY.md)
 
-KZ VoiceShield is a browser-based anti-scam call review workspace for Kazakh and Russian conversations.
+KZ VoiceShield is a local-first anti-scam call review workspace for Kazakh and Russian conversations.
 
-It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. The current version runs fully in the browser and uses transparent rule-based detection, which makes it suitable for demos, early user testing, and dataset design before adding server-side speech or ML models.
+It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. Version 0.9.0 is a private-beta system: the web and Android apps can run locally, and the optional FastAPI backend supports authenticated case sync, reviewer workflow, audit logging, queued audio transcription, and experimental ML comparison. It is still not a production anti-fraud platform until public deployment, real RU/KZ validation, durable storage/queues, and production identity are in place.
 
 ## Core Workflow
 
@@ -62,6 +62,7 @@ Android Gradle builds require JDK 17. The checked-in Gradle wrapper lives in `mo
 - Local case library stored in browser `localStorage`.
 - Analyst labels and notes for dataset review.
 - Reviewer workflow with statuses, assignees, audit log, decision history, incident timeline, and escalation flags.
+- Backend reviewer workflow supports single-case retrieval and optimistic locking through `expectedUpdatedAt` on workflow patches.
 - Evidence bundle export for handoff to bank fraud teams, internal supervisors, or incident responders.
 - Operations dashboard for escalation queue, bank-contact queue, status counts, stale cases, and backend sync state.
 - JSONL and CSV dataset exports for future ML/NLP training.
@@ -71,7 +72,7 @@ Android Gradle builds require JDK 17. The checked-in Gradle wrapper lives in `mo
 - `.jsonl` bulk import for previously reviewed transcripts.
 - Audio-file intake placeholder in local-only mode and `/transcribe-audio` upload when `VITE_VOICESHIELD_API_URL` is configured.
 - Safe-context handling so ordinary text and defensive warnings stay at zero risk.
-- Local-first MVP with no backend and no transcript upload to a server.
+- Local-first private-beta mode with no required backend and no transcript upload unless the operator configures the optional API.
 
 ## Threat Coverage
 
@@ -131,11 +132,13 @@ When `VITE_VOICESHIELD_API_URL` is set, the frontend keeps rule scoring local bu
 - `POST /transcribe-audio` with multipart field `audio`, returning `202` with `{ jobId, status: "queued" }`.
 - `GET /audio-jobs/:id` for queued transcription status and results.
 - `PUT /cases/:id` with the serialized case schema, returning `{ ok, remoteId?, syncedAt? }`.
-- `GET /cases`, `PATCH /cases/:id/workflow`, and `GET /audit-log` for reviewer/admin operations.
+- `GET /cases`, `GET /cases/:id`, `PATCH /cases/:id/workflow`, and `GET /audit-log` for reviewer/admin operations.
+- `GET /readyz` for deploy health checks, including database status, model availability, STT configuration, audio retention, and upload limit.
 
 The ML object is normalized as `{ verdict: "fraud" | "safe" | "needs_review", score, confidence, model, embeddingModel?, signals[] }`. The UI shows disagreements such as "rules high, ML low" instead of replacing the rule score.
 
 The server implementation and deployment notes are in [`backend/README.md`](backend/README.md). Static browser tokens are only for local or controlled testing; an internet-facing deployment requires OIDC/SSO and short-lived tokens.
+The remaining production-pilot work is tracked in [`docs/PRODUCTION_PILOT_CHECKLIST.md`](docs/PRODUCTION_PILOT_CHECKLIST.md).
 
 ## CI
 
@@ -143,12 +146,15 @@ GitHub Actions runs dependency audits, lint, unit tests, production builds, Play
 
 ## Product Notes
 
-This is an MVP, not a final fraud-detection engine. The next production steps are:
+This is a private beta, not a final fraud-detection engine. The next production steps are:
 
-- deploy server Whisper or another approved STT provider and validate RU/KZ WER;
-- migrate encrypted SQLite storage to managed PostgreSQL/object storage for multi-instance use;
+- deploy the web app and backend publicly with HTTPS, domain, CORS, and secrets configured;
+- deploy server Whisper or another approved STT provider and validate RU/KZ WER on real calls;
+- migrate encrypted SQLite storage to managed PostgreSQL, object storage, and a durable audio queue for multi-instance use;
 - validate ML/NLP scoring on a real reviewer-labelled RU/KZ holdout;
 - replace controlled-deployment tokens with OIDC/SSO and short-lived sessions;
+- run Play Console Internal Testing on physical Xiaomi/Samsung devices;
+- secure a bank, operator, contact-center, or consumer-protection pilot partner;
 - add official reporting/export formats for banks or consumer-protection teams.
 
 ## Tech Stack

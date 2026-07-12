@@ -85,6 +85,7 @@ export function useWorkspace() {
   const [trustedContact, setTrustedContact] = useState<TrustedContact | null>(null)
   const [autoDeleteTranscript, setAutoDeleteTranscript] = useState(true)
   const criticalAlertedRef = useRef(false)
+  const lastAudibleAtRef = useRef(Date.now())
 
   // ---- saved cases ----
   const [cases, setCases] = useState<SavedCase[]>([])
@@ -235,7 +236,11 @@ export function useWorkspace() {
       setSource('Whisper')
       setTranscript((current) => `${current} ${event.text}`.trim())
     })
-    const levelSub = audioEvents.addListener('VS_AUDIO_LEVEL', (event: { level?: number }) => setAudioLevel(event.level ?? 0))
+    const levelSub = audioEvents.addListener('VS_AUDIO_LEVEL', (event: { level?: number }) => {
+      const level = event.level ?? 0
+      if (level >= 0.015) lastAudibleAtRef.current = Date.now()
+      setAudioLevel(level)
+    })
     const notificationSub = notificationEvents.addListener('VS_NOTIFICATION_SIGNAL', (event: { signalId?: string }) => {
       if (!isListening) return
       const nextSignals = notificationSignalsFromId(event.signalId)
@@ -250,6 +255,17 @@ export function useWorkspace() {
       modelSub.remove()
     }
   }, [isListening])
+
+  useEffect(() => {
+    if (!isListening || source !== 'Whisper') return undefined
+    lastAudibleAtRef.current = Date.now()
+    const timer = setInterval(() => {
+      if (Date.now() - lastAudibleAtRef.current > 8000) {
+        setCaptureNotice('No clear caller audio detected. Turn on speakerphone, raise call volume, or enable Android Live Caption.')
+      }
+    }, 2000)
+    return () => clearInterval(timer)
+  }, [isListening, source])
 
   useEffect(() => {
     void OverlayModule.updateRisk(analysis.score, analysis.risk, source).catch(() => undefined)
@@ -295,7 +311,8 @@ export function useWorkspace() {
       if (!accessibilityEnabled) {
         await AudioCaptureModule.startCapture()
         await WhisperModule.startStreaming()
-        setCaptureNotice('Microphone fallback is active. Android may not expose the remote caller audio on this device.')
+        lastAudibleAtRef.current = Date.now()
+        setCaptureNotice('On-device Whisper is listening through the microphone. Turn on speakerphone so it can hear the caller; audio is not uploaded.')
       } else {
         setCaptureNotice('Live Caption mode is active. Only approved system caption text is processed.')
       }

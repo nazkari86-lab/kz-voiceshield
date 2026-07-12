@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import React, { useEffect, useRef, useState } from 'react'
+import { Animated, Easing, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { Analysis } from '@scoring'
 import { colors, riskColor } from '../theme'
 import { Card, RiskBadge } from './ui'
@@ -20,10 +20,14 @@ type Props = {
   onSave: () => void
   onExportReport: () => void
   onCallTrusted: () => void
+  onOpenEmergency: () => void
+  onOpenSimulator: () => void
 }
 
-export function LiveView({ analysis, transcript, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted }: Props) {
+export function LiveView({ analysis, transcript, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator }: Props) {
   const [pauseRemaining, setPauseRemaining] = useState(0)
+  const signalScale = useRef(new Animated.Value(1)).current
+  const scoreFill = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
     if (pauseRemaining <= 0) return undefined
@@ -31,16 +35,42 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
     return () => clearTimeout(timeout)
   }, [pauseRemaining])
 
+  useEffect(() => {
+    Animated.timing(scoreFill, { duration: 480, easing: Easing.out(Easing.cubic), toValue: analysis.score / 100, useNativeDriver: false }).start()
+  }, [analysis.score, scoreFill])
+
+  useEffect(() => {
+    if (!isListening) {
+      signalScale.setValue(1)
+      return undefined
+    }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(signalScale, { duration: 750, toValue: 1.1, useNativeDriver: true }),
+      Animated.timing(signalScale, { duration: 750, toValue: 1, useNativeDriver: true }),
+    ]))
+    loop.start()
+    return () => loop.stop()
+  }, [isListening, signalScale])
+
   const needsPause = analysis.risk === 'critical' || analysis.risk === 'high'
 
   return (
-    <View>
+    <View style={styles.screen}>
+      <View style={styles.statusBar}>
+        <Animated.View style={[styles.liveDot, isListening && { transform: [{ scale: signalScale }] }, { backgroundColor: isListening ? colors.accent : colors.muted }]} />
+        <Text style={styles.statusText}>{isListening ? 'LIVE PROTECTION ACTIVE' : 'PROTECTION STANDBY'}</Text>
+        <Text style={styles.statusSource}>{source}</Text>
+      </View>
       <Card tone={analysis.risk}>
         <View style={styles.topline}>
           <RiskBadge risk={analysis.risk} />
-          <Text style={styles.source}>{source}</Text>
+          <Text style={styles.source}>{analysis.evidence.length} signals</Text>
         </View>
-        <Text style={[styles.score, { color: riskColor[analysis.risk] }]}>{analysis.score}<Text style={styles.scoreMax}>/100</Text></Text>
+        <View style={styles.scoreRow}>
+          <Text style={[styles.score, { color: riskColor[analysis.risk] }]}>{analysis.score}<Text style={styles.scoreMax}>/100</Text></Text>
+          <View style={[styles.riskOrb, { borderColor: riskColor[analysis.risk] }]}><Text style={[styles.riskOrbText, { color: riskColor[analysis.risk] }]}>{analysis.risk.toUpperCase()}</Text></View>
+        </View>
+        <View style={styles.scoreTrack}><Animated.View style={[styles.scoreFill, { backgroundColor: riskColor[analysis.risk], width: scoreFill.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]} /></View>
         <Text style={styles.scheme}>{analysis.schemeLabel}</Text>
         <Text style={styles.verdict}>{analysis.verdict}</Text>
         <Text style={styles.next}>{analysis.nextAction}</Text>
@@ -77,11 +107,29 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
         </View>
       )}
 
+      <View style={styles.quickGrid}>
+        <Pressable style={styles.quickAction} onPress={onOpenEmergency}><Text style={styles.quickIcon}>!</Text><View><Text style={styles.quickTitle}>I shared data</Text><Text style={styles.quickCopy}>Immediate recovery plan</Text></View></Pressable>
+        <Pressable style={styles.quickAction} onPress={onOpenSimulator}><Text style={styles.quickIcon}>+</Text><View><Text style={styles.quickTitle}>Practice</Text><Text style={styles.quickCopy}>Learn scam patterns</Text></View></Pressable>
+      </View>
+
+      {analysis.responseChecklist.length > 0 && (
+        <View style={styles.actionCard}>
+          <Text style={styles.actionTitle}>Do this now</Text>
+          {analysis.responseChecklist.slice(0, 3).map((item, index) => (
+            <View key={item} style={styles.actionRow}>
+              <Text style={styles.actionNumber}>{index + 1}</Text>
+              <Text style={styles.actionText}>{item}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <Text style={styles.transcriptLabel}>LIVE TRANSCRIPT</Text>
       <TextInput
         multiline
         value={transcript}
         onChangeText={onChangeTranscript}
-        placeholder="Live transcript appears here — or paste/type a call to analyse"
+        placeholder="Live transcript will appear here. You can also paste a conversation."
         placeholderTextColor={colors.muted}
         style={styles.input}
       />
@@ -94,21 +142,31 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
         <Pressable style={styles.secondary} onPress={onExportReport}><Text style={styles.secondaryText}>Share report</Text></Pressable>
       </View>
 
-      {analysis.responseChecklist.map((item) => <Text key={item} style={styles.check}>• {item}</Text>)}
+      {analysis.responseChecklist.slice(3).map((item) => <Text key={item} style={styles.check}>• {item}</Text>)}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  screen: { gap: 0 },
+  statusBar: { alignItems: 'center', flexDirection: 'row', gap: 7, marginBottom: 10 },
+  liveDot: { borderRadius: 5, height: 10, width: 10 },
+  statusText: { color: colors.sub, flex: 1, fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  statusSource: { color: colors.muted, fontSize: 10, fontWeight: '800' },
   topline: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   source: { color: colors.sub, fontSize: 12, fontWeight: '700' },
-  score: { fontSize: 46, fontWeight: '900' },
+  scoreRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  score: { fontSize: 54, fontWeight: '900', letterSpacing: -1 },
   scoreMax: { color: colors.muted, fontSize: 18, fontWeight: '800' },
-  scheme: { color: colors.ink, fontSize: 15, fontWeight: '900' },
+  riskOrb: { borderRadius: 8, borderWidth: 1.5, paddingHorizontal: 9, paddingVertical: 6 },
+  riskOrbText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  scoreTrack: { backgroundColor: colors.chipBg, borderRadius: 4, height: 7, overflow: 'hidden' },
+  scoreFill: { borderRadius: 4, height: 7 },
+  scheme: { color: colors.ink, fontSize: 17, fontWeight: '900', marginTop: 4 },
   verdict: { color: colors.ink, fontSize: 15, fontWeight: '800' },
   next: { color: colors.sub, fontSize: 13, lineHeight: 19 },
   session: { color: colors.muted, fontSize: 11 },
-  levelTrack: { backgroundColor: colors.chipBg, borderRadius: 999, height: 6, overflow: 'hidden' },
+  levelTrack: { backgroundColor: colors.chipBg, borderRadius: 4, height: 6, overflow: 'hidden' },
   levelFill: { backgroundColor: colors.brand, height: 6 },
   error: { backgroundColor: '#fee2e2', borderColor: '#fecaca', borderRadius: 12, borderWidth: 1, color: '#991b1b', fontSize: 13, lineHeight: 19, marginBottom: 12, padding: 12 },
   notice: { backgroundColor: '#fff7ed', borderColor: '#fdba74', borderRadius: 8, borderWidth: 1, color: '#9a3412', fontSize: 13, lineHeight: 19, marginBottom: 12, padding: 12 },
@@ -121,12 +179,23 @@ const styles = StyleSheet.create({
   pauseButtonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   trustedButton: { alignSelf: 'flex-start', borderColor: '#c2410c', borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10 },
   trustedButtonText: { color: '#9a3412', fontSize: 13, fontWeight: '900' },
-  input: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 14, borderWidth: 1, color: colors.ink, marginBottom: 12, minHeight: 150, padding: 14, textAlignVertical: 'top' },
+  quickGrid: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  quickAction: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flex: 1, flexDirection: 'row', gap: 9, padding: 12 },
+  quickIcon: { backgroundColor: colors.softBrand, borderRadius: 14, color: colors.brandDark, fontSize: 18, fontWeight: '900', height: 28, lineHeight: 28, textAlign: 'center', width: 28 },
+  quickTitle: { color: colors.ink, fontSize: 12, fontWeight: '900' },
+  quickCopy: { color: colors.sub, fontSize: 10, marginTop: 1 },
+  actionCard: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 10, marginBottom: 12, padding: 14 },
+  actionTitle: { color: colors.ink, fontSize: 15, fontWeight: '900' },
+  actionRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 10 },
+  actionNumber: { backgroundColor: colors.brand, borderRadius: 12, color: '#fff', fontSize: 12, fontWeight: '900', height: 24, lineHeight: 24, textAlign: 'center', width: 24 },
+  actionText: { color: colors.ink, flex: 1, fontSize: 13, lineHeight: 19 },
+  transcriptLabel: { color: colors.sub, fontSize: 10, fontWeight: '900', letterSpacing: 1, marginBottom: 6 },
+  input: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, marginBottom: 12, minHeight: 150, padding: 14, textAlignVertical: 'top' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  primary: { backgroundColor: colors.brand, borderRadius: 12, flexGrow: 1, paddingHorizontal: 16, paddingVertical: 13 },
-  stop: { backgroundColor: '#ef4444' },
+  primary: { backgroundColor: colors.brand, borderRadius: 8, flexGrow: 1, paddingHorizontal: 16, paddingVertical: 13 },
+  stop: { backgroundColor: colors.accent },
   primaryText: { color: '#fff', fontWeight: '900', textAlign: 'center' },
-  secondary: { borderColor: colors.border, borderRadius: 12, borderWidth: 1, flexGrow: 1, paddingHorizontal: 12, paddingVertical: 13 },
+  secondary: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexGrow: 1, paddingHorizontal: 12, paddingVertical: 13 },
   secondaryText: { color: colors.ink, fontWeight: '800', textAlign: 'center' },
   check: { color: '#334155', fontSize: 13, lineHeight: 20 },
 })

@@ -17,6 +17,7 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private var whisper: WhisperContext? = null
   private var streamJob: Job? = null
+  private var lastTranscript = ""
 
   init { AppRegistry.whisperModule = this }
 
@@ -31,6 +32,7 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
       try {
         whisper?.close()
         whisper = WhisperContext(modelPath, language)
+        lastTranscript = ""
         promise.resolve(true)
       } catch (e: UnsatisfiedLinkError) {
         // whisper.so not bundled or ABI mismatch
@@ -50,13 +52,16 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     streamJob?.cancel()
     streamJob = scope.launch {
       while (true) {
-        delay(4000)
+        delay(3000)
         val context = whisper ?: continue
-        if (context.bufferSize() >= 16000) {
+        if (context.bufferSize() >= 32000) {
+          val startedAt = System.currentTimeMillis()
           val text = context.transcribe().trim()
-          if (text.isEmpty()) continue
+          if (text.isEmpty() || text == lastTranscript) continue
+          lastTranscript = text
           val payload = Arguments.createMap()
           payload.putString("text", text)
+          payload.putDouble("latencyMs", (System.currentTimeMillis() - startedAt).toDouble())
           AppRegistry.sendEvent("VS_WHISPER_TRANSCRIPT", payload)
         }
       }
@@ -65,7 +70,7 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   }
 
   @ReactMethod fun stopStreaming(promise: Promise) { streamJob?.cancel(); streamJob = null; promise.resolve(null) }
-  @ReactMethod fun resetBuffer(promise: Promise) { whisper?.reset(); promise.resolve(null) }
+  @ReactMethod fun resetBuffer(promise: Promise) { whisper?.reset(); lastTranscript = ""; promise.resolve(null) }
   @ReactMethod fun getBufferSize(promise: Promise) { promise.resolve(whisper?.bufferSize() ?: 0) }
 
   override fun invalidate() {

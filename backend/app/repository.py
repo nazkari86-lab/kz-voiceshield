@@ -13,6 +13,10 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+class CaseVersionConflict(RuntimeError):
+    pass
+
+
 class Repository:
     def __init__(self, path: Path, cipher: PayloadCipher) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -71,6 +75,11 @@ class Repository:
     def close(self) -> None:
         self._connection.close()
 
+    def health_check(self) -> bool:
+        with self._lock:
+            row = self._connection.execute("SELECT 1 AS ok").fetchone()
+        return bool(row and row["ok"] == 1)
+
     def audit(self, actor: str, action: str, detail: dict[str, Any], case_id: str | None = None) -> None:
         with self._lock, self._connection:
             self._connection.execute(
@@ -111,9 +120,14 @@ class Repository:
         return [self._cipher.decrypt_json(row["payload"]) for row in rows]
 
     def patch_case(self, case_id: str, patch: dict[str, Any], actor: str) -> dict[str, Any] | None:
-        payload = self.get_case(case_id)
-        if payload is None:
+        expected_updated_at = patch.pop("expectedUpdatedAt", None)
+        with self._lock:
+            row = self._connection.execute("SELECT payload FROM cases WHERE id = ?", (case_id,)).fetchone()
+        if row is None:
             return None
+        payload = self._cipher.decrypt_json(row["payload"])
+        if expected_updated_at and payload.get("updatedAt") != expected_updated_at:
+            raise CaseVersionConflict("Case was updated by another reviewer")
         if patch.get("status") is not None:
             payload["status"] = patch["status"]
         if patch.get("assignedTo") is not None:

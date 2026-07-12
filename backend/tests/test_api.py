@@ -66,7 +66,18 @@ def case_payload(case_id: str = "case-1") -> dict:
 
 def test_health_is_public_and_auth_is_required(api):
     client, _ = api
-    assert client.get("/health").json() == {"ok": True, "version": "0.7.0", "mlAvailable": True}
+    assert client.get("/health").json() == {"ok": True, "version": "0.9.0", "mlAvailable": True}
+    readiness = client.get("/readyz")
+    assert readiness.status_code == 200
+    assert readiness.json() == {
+        "ok": True,
+        "version": "0.9.0",
+        "database": "ok",
+        "mlAvailable": True,
+        "serverSttConfigured": True,
+        "retainAudio": False,
+        "maxAudioBytes": 64,
+    }
     assert client.post("/analyze-transcript", json={"transcript": "Назовите код"}).status_code == 401
 
 
@@ -100,10 +111,19 @@ def test_case_storage_is_encrypted_and_role_guarded(api):
 def test_reviewer_updates_workflow_and_reads_audit(api):
     client, _ = api
     client.put("/cases/case-1", headers=auth("analyst-token"), json=case_payload())
+    loaded = client.get("/cases/case-1", headers=auth("reviewer-token"))
+    assert loaded.status_code == 200
+    assert loaded.json()["id"] == "case-1"
     updated = client.patch(
         "/cases/case-1/workflow",
         headers=auth("reviewer-token"),
-        json={"status": "escalated", "assignedTo": "Team A", "evidenceBundleReady": True, "decision": "Escalate"},
+        json={
+            "status": "escalated",
+            "assignedTo": "Team A",
+            "evidenceBundleReady": True,
+            "decision": "Escalate",
+            "expectedUpdatedAt": loaded.json().get("updatedAt"),
+        },
     )
     assert updated.status_code == 200
     assert updated.json()["status"] == "escalated"
@@ -119,6 +139,28 @@ def test_reviewer_updates_workflow_and_reads_audit(api):
     preserved = client.get("/cases?status=escalated", headers=auth("reviewer-token")).json()["items"][0]
     assert preserved["status"] == "escalated"
     assert preserved["assignedTo"] == "Team A"
+
+
+def test_workflow_patch_rejects_stale_reviewer_version(api):
+    client, _ = api
+    client.put("/cases/case-1", headers=auth("analyst-token"), json={**case_payload(), "updatedAt": "2026-07-11T00:00:00Z"})
+    current = client.get("/cases/case-1", headers=auth("reviewer-token")).json()
+    assert current["updatedAt"] == "2026-07-11T00:00:00Z"
+
+    first = client.patch(
+        "/cases/case-1/workflow",
+        headers=auth("reviewer-token"),
+        json={"status": "reviewing", "expectedUpdatedAt": "2026-07-11T00:00:00Z"},
+    )
+    assert first.status_code == 200
+
+    stale = client.patch(
+        "/cases/case-1/workflow",
+        headers=auth("reviewer-token"),
+        json={"status": "closed", "expectedUpdatedAt": "2026-07-11T00:00:00Z"},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"] == "Case was updated by another reviewer"
 
 
 def test_audio_job_completes_without_retaining_audio(api):

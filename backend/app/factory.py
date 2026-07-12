@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import Principal, Settings
 from .ml_service import ModelService, ModelUnavailable
 from .models import AudioJobResponse, CasePayload, TranscriptRequest, WorkflowPatch
-from .repository import Repository
+from .repository import CaseVersionConflict, Repository
 from .security import PayloadCipher, authenticate, require_roles
 from .transcription import Transcriber, transcriber_from_env
 
@@ -37,7 +37,7 @@ def create_app(
         yield
         repository.close()
 
-    app = FastAPI(title="KZ VoiceShield API", version="0.7.0", lifespan=lifespan)
+    app = FastAPI(title="KZ VoiceShield API", version="0.9.0", lifespan=lifespan)
     app.state.settings = resolved_settings
     app.state.repository = repository
     app.state.model_service = resolved_model
@@ -47,13 +47,26 @@ def create_app(
             CORSMiddleware,
             allow_credentials=False,
             allow_headers=["Authorization", "Content-Type"],
-            allow_methods=["GET", "POST", "PUT", "PATCH"],
+            allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
             allow_origins=list(resolved_settings.cors_origins),
         )
 
     @app.get("/health")
     def health() -> dict[str, Any]:
         return {"ok": True, "version": app.version, "mlAvailable": resolved_model.available}
+
+    @app.get("/readyz")
+    def readiness() -> dict[str, Any]:
+        database_ok = repository.health_check()
+        return {
+            "ok": database_ok,
+            "version": app.version,
+            "database": "ok" if database_ok else "failed",
+            "mlAvailable": resolved_model.available,
+            "serverSttConfigured": resolved_transcriber.__class__.__name__ != "DisabledTranscriber",
+            "retainAudio": resolved_settings.retain_audio,
+            "maxAudioBytes": resolved_settings.max_audio_bytes,
+        }
 
     @app.post("/analyze-transcript")
     def analyze_transcript(
@@ -127,6 +140,13 @@ def create_app(
         items = repository.list_cases(case_status, limit)
         return {"items": items, "count": len(items)}
 
+    @app.get("/cases/{case_id}")
+    def get_case(case_id: str, _: Principal = Depends(require_roles("reviewer", "admin"))) -> dict[str, Any]:
+        item = repository.get_case(case_id)
+        if item is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+        return item
+
     @app.patch("/cases/{case_id}/workflow")
     def patch_workflow(
         case_id: str,
@@ -134,7 +154,10 @@ def create_app(
         principal: Principal = Depends(require_roles("reviewer", "admin")),
     ) -> dict[str, Any]:
         patch = body.model_dump(exclude_none=True)
-        updated = repository.patch_case(case_id, patch, principal.user_id)
+        try:
+            updated = repository.patch_case(case_id, patch, principal.user_id)
+        except CaseVersionConflict as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         if updated is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
         return updated

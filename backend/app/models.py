@@ -40,6 +40,7 @@ class WorkflowPatch(BaseModel):
     evidenceBundleReady: bool | None = None
     customerCallbackNeeded: bool | None = None
     decision: str | None = Field(default=None, max_length=2_000)
+    expectedUpdatedAt: str | None = None
 
 
 class AudioJobResponse(BaseModel):

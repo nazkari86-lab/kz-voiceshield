@@ -1,12 +1,39 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { analyzeScamContent } from '../scamTools'
 import { colors, riskColor, riskLabel } from '../theme'
+import { ImageScanModule } from '../bridge/ImageScanBridge'
 
-export function ScamToolsView({ onAnalyzeAsCall }: { onAnalyzeAsCall: (text: string) => void }) {
-  const [text, setText] = useState('')
+export function ScamToolsView({ initialText, onAnalyzeAsCall }: { initialText?: string; onAnalyzeAsCall: (text: string) => void }) {
+  const [text, setText] = useState(initialText ?? '')
   const [checked, setChecked] = useState(false)
+  const [scanStatus, setScanStatus] = useState('')
   const result = useMemo(() => analyzeScamContent(checked ? text : ''), [checked, text])
+
+  useEffect(() => {
+    if (!initialText) return
+    setText(initialText)
+    setChecked(true)
+  }, [initialText])
+
+  const scanImage = async () => {
+    if (!ImageScanModule) {
+      setScanStatus('Image scanning is available in the Android app.')
+      return
+    }
+    setScanStatus('Reading image on this device…')
+    try {
+      const result = await ImageScanModule.pickImageAndScan()
+      const qr = result.qrValues.map((value) => `QR: ${value}`).join('\n')
+      const combined = [qr, result.text].filter(Boolean).join('\n')
+      setText(combined)
+      setChecked(true)
+      setScanStatus(combined ? 'Image scanned locally. Review the extracted content below.' : 'No QR code or readable text was found in this image.')
+    } catch (error) {
+      const code = error instanceof Error ? error.message : ''
+      if (!code.includes('CANCELLED')) setScanStatus('Could not scan this image. Try a clearer screenshot.')
+    }
+  }
 
   return (
     <View style={styles.container}>
@@ -26,6 +53,8 @@ export function ScamToolsView({ onAnalyzeAsCall }: { onAnalyzeAsCall: (text: str
         <Pressable onPress={() => setChecked(true)} style={styles.primary}><Text style={styles.primaryText}>Check safely</Text></Pressable>
         <Pressable onPress={() => onAnalyzeAsCall(text)} style={styles.secondary}><Text style={styles.secondaryText}>Open in call analysis</Text></Pressable>
       </View>
+      <Pressable onPress={() => { void scanImage() }} style={styles.imageButton}><Text style={styles.imageButtonText}>Scan QR or screenshot</Text></Pressable>
+      {scanStatus ? <Text style={styles.scanStatus}>{scanStatus}</Text> : null}
 
       {checked && (
         <View style={[styles.result, { borderLeftColor: riskColor[result.risk] }]}>
@@ -41,8 +70,8 @@ export function ScamToolsView({ onAnalyzeAsCall }: { onAnalyzeAsCall: (text: str
       )}
 
       <View style={styles.limitations}>
-        <Text style={styles.limitTitle}>Not yet verified automatically</Text>
-        <Text style={styles.limitText}>Screenshots and QR codes need on-device OCR/scanning. APK reputation needs a signed malware-intelligence provider. VoiceShield does not claim these checks without those engines.</Text>
+        <Text style={styles.limitTitle}>Local image scanning</Text>
+        <Text style={styles.limitText}>QR codes and visible Latin/Cyrillic text are extracted on-device. APK reputation still needs a signed malware-intelligence provider.</Text>
       </View>
     </View>
   )
@@ -58,6 +87,9 @@ const styles = StyleSheet.create({
   primaryText: { color: '#fff', fontWeight: '900' },
   secondary: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 15, paddingVertical: 11 },
   secondaryText: { color: colors.ink, fontWeight: '800' },
+  imageButton: { alignSelf: 'flex-start', borderColor: colors.brand, borderRadius: 8, borderWidth: 1, paddingHorizontal: 15, paddingVertical: 11 },
+  imageButtonText: { color: colors.brandDark, fontWeight: '900' },
+  scanStatus: { color: colors.sub, fontSize: 12, lineHeight: 18 },
   result: { backgroundColor: colors.card, borderColor: colors.border, borderLeftWidth: 5, borderRadius: 8, borderWidth: 1, gap: 8, padding: 14 },
   heading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   resultTitle: { color: colors.ink, fontSize: 17, fontWeight: '900' },
@@ -70,4 +102,3 @@ const styles = StyleSheet.create({
   limitTitle: { color: colors.ink, fontSize: 13, fontWeight: '900' },
   limitText: { color: colors.sub, fontSize: 12, lineHeight: 18 },
 })
-

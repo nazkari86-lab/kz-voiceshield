@@ -1,5 +1,6 @@
 package kz.voiceshield
 
+import android.app.Activity
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
@@ -11,8 +12,22 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.ActivityEventListener
+import com.facebook.react.bridge.BaseActivityEventListener
 
 class CallScreeningModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
+  private var rolePromise: Promise? = null
+  private val roleListener: ActivityEventListener = object : BaseActivityEventListener() {
+    override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+      if (requestCode != CALL_SCREENING_ROLE_REQUEST) return
+      val promise = rolePromise ?: return
+      rolePromise = null
+      val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
+      promise.resolve(roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING))
+    }
+  }
+
+  init { context.addActivityEventListener(roleListener) }
   override fun getName(): String = "CallScreeningModule"
 
   @ReactMethod fun addListener(eventName: String) = Unit
@@ -39,11 +54,34 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
       promise.resolve(false)
       return
     }
+    if (rolePromise != null) {
+      promise.reject("ROLE_REQUEST_BUSY", "A call screening role request is already open")
+      return
+    }
+    val activity = currentActivity
+    if (activity == null) {
+      promise.reject("ACTIVITY_UNAVAILABLE", "Open VoiceShield before requesting the call screening role")
+      return
+    }
     val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
+    if (roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) {
+      promise.resolve(true)
+      return
+    }
     val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING)
-    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    context.startActivity(intent)
-    promise.resolve(true)
+    rolePromise = promise
+    activity.startActivityForResult(intent, CALL_SCREENING_ROLE_REQUEST)
+  }
+
+  override fun invalidate() {
+    rolePromise?.reject("ROLE_REQUEST_CANCELLED", "Call screening role request was cancelled")
+    rolePromise = null
+    context.removeActivityEventListener(roleListener)
+    super.invalidate()
+  }
+
+  companion object {
+    private const val CALL_SCREENING_ROLE_REQUEST = 4110
   }
 
   @ReactMethod

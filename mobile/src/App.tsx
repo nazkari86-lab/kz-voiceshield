@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SetupScreen } from '@screens/SetupScreen'
 import { OnboardingScreen } from '@screens/OnboardingScreen'
@@ -92,11 +93,13 @@ const ONBOARDING_KEY = 'voiceshield.onboarding-done.v1'
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <I18nProvider>
-        <AppContent />
-      </I18nProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <I18nProvider>
+          <AppContent />
+        </I18nProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   )
 }
 
@@ -207,7 +210,7 @@ function AppContent() {
   }
 
   return (
-    <SafeAreaView style={{ backgroundColor: colors.bg, flex: 1 }}>
+    <SafeAreaView edges={['top', 'bottom']} style={{ backgroundColor: colors.bg, flex: 1 }}>
       <View style={{ alignItems: 'center', backgroundColor: colors.brandDark, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 17 }}>
         <View style={styles.headerText}>
           <Text style={styles.brand}>KZ VOICESHIELD</Text>

@@ -149,7 +149,7 @@ export function SetupScreen({
       <Step label="Accessibility Live Caption" status={status.accessibility} disabled={!privacyConsent} onPress={() => AccessibilityModule.openSettings()} />
       <Step label="Open Android caption settings" status={status.accessibility} disabled={!privacyConsent} onPress={() => DeviceSettings.openCaptionSettings()} />
       <Step label="Risk overlay" status={status.overlay} disabled={!privacyConsent} onPress={() => OverlayModule.openOverlaySettings()} />
-      <Step label="Call screening role" status={status.callRole} disabled={!privacyConsent} onPress={() => { void CallModule.requestRole() }} />
+      <Step label="Call screening role" status={status.callRole} disabled={!privacyConsent} onPress={() => { void CallModule.requestRole().then(refresh).catch(() => refresh()) }} />
       <Step label="Microphone fallback" status={status.microphone} disabled={!privacyConsent} onPress={() => { void requestMicrophone() }} />
       <Step label="Protection notification" status={status.notifications} disabled={!privacyConsent} onPress={() => { void requestNotifications() }} />
       <Step label="OTP notification type detection" status={status.notificationAccess} disabled={!privacyConsent} onPress={() => NotificationAccess.openSettings()} />

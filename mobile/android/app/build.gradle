@@ -29,8 +29,8 @@ android {
         applicationId "kz.voiceshield"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 16
-        versionName "1.0.2"
+        versionCode 17
+        versionName "1.0.3"
 
         externalNativeBuild {
             cmake {

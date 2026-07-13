@@ -25,9 +25,10 @@ type Props = {
   onCallTrusted: () => void
   onOpenEmergency: () => void
   onOpenSimulator: () => void
+  onUseMicrophoneFallback: () => void
 }
 
-export function LiveView({ analysis, transcript, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator }: Props) {
+export function LiveView({ analysis, transcript, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onUseMicrophoneFallback }: Props) {
   const [pauseRemaining, setPauseRemaining] = useState(0)
   const signalScale = useRef(new Animated.Value(1)).current
   const scoreFill = useRef(new Animated.Value(0)).current
@@ -85,6 +86,12 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
 
       {error && <Text style={styles.error}>{error}</Text>}
       {notice && <Text style={styles.notice}>{notice}</Text>}
+      {isListening && source === 'Live Caption' && (
+        <MotionPressable style={styles.fallbackButton} onPress={onUseMicrophoneFallback}>
+          <Text style={styles.fallbackTitle}>No caption text?</Text>
+          <Text style={styles.fallbackCopy}>Use microphone + speakerphone instead</Text>
+        </MotionPressable>
+      )}
       {storageError && <Text style={styles.error}>{storageError}</Text>}
       {callbackWarning && (
         <View style={styles.callbackBanner}>
@@ -171,6 +178,9 @@ const styles = StyleSheet.create({
   levelFill: { backgroundColor: colors.brand, height: 6 },
   error: { backgroundColor: '#fee2e2', borderColor: '#fecaca', borderRadius: 12, borderWidth: 1, color: '#991b1b', fontSize: 13, lineHeight: 19, marginBottom: 12, padding: 12 },
   notice: { backgroundColor: '#fff7ed', borderColor: '#fdba74', borderRadius: 8, borderWidth: 1, color: '#9a3412', fontSize: 13, lineHeight: 19, marginBottom: 12, padding: 12 },
+  fallbackButton: { backgroundColor: colors.softBrand, borderColor: colors.brand, borderRadius: 8, borderWidth: 1, marginBottom: 12, padding: 12 },
+  fallbackTitle: { color: colors.brandDark, fontSize: 13, fontWeight: '900' },
+  fallbackCopy: { color: colors.sub, fontSize: 12, marginTop: 2 },
   signalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   signal: { backgroundColor: '#fff7ed', borderColor: '#fed7aa', borderRadius: 999, borderWidth: 1, color: '#9a3412', fontSize: 12, fontWeight: '800', paddingHorizontal: 10, paddingVertical: 6 },
   pauseCard: { backgroundColor: '#fff7ed', borderColor: '#fb923c', borderRadius: 14, borderWidth: 1, gap: 7, marginBottom: 12, padding: 14 },

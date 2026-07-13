@@ -54,6 +54,15 @@ class VoiceMessageModule(private val context: ReactApplicationContext) : ReactCo
 
   @ReactMethod
   fun pickAndTranscribe(language: String, promise: Promise) {
+    openAudioPicker(language, false, promise)
+  }
+
+  @ReactMethod
+  fun pickCallRecordingAndTranscribe(language: String, promise: Promise) {
+    openAudioPicker(language, true, promise)
+  }
+
+  private fun openAudioPicker(language: String, callRecording: Boolean, promise: Promise) {
     if (pendingPromise != null) {
       promise.reject("VOICE_MSG_BUSY", "A transcription is already running")
       return
@@ -69,6 +78,7 @@ class VoiceMessageModule(private val context: ReactApplicationContext) : ReactCo
       addCategory(Intent.CATEGORY_OPENABLE)
       type = "audio/*"
       putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("audio/*", "application/ogg", "application/octet-stream"))
+      putExtra(Intent.EXTRA_TITLE, if (callRecording) "Select Xiaomi call recording" else "Select voice message")
     }
     activity.startActivityForResult(intent, PICK_AUDIO_REQUEST)
   }
@@ -97,8 +107,11 @@ class VoiceMessageModule(private val context: ReactApplicationContext) : ReactCo
     }
     scope.launch {
       try {
-        val modelFile = File(context.filesDir, "models/ggml-small.bin")
-        if (!modelFile.exists()) {
+        val modelsDir = File(context.filesDir, "models")
+        val modelFile = listOf("ggml-small.bin", "ggml-tiny.bin")
+          .map { File(modelsDir, it) }
+          .firstOrNull { it.isFile && it.length() > 1_000_000L }
+        if (modelFile == null) {
           promise.reject("MODEL_NOT_FOUND", "Download the Whisper model in Setup before transcribing voice messages.")
           return@launch
         }

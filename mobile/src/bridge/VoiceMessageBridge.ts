@@ -8,6 +8,7 @@ export type VoiceMessageResult = {
 
 type VoiceMessageNativeModule = {
   pickAndTranscribe(language: string): Promise<VoiceMessageResult>
+  pickCallRecordingAndTranscribe(language: string): Promise<VoiceMessageResult>
   transcribePendingAudio(language: string): Promise<VoiceMessageResult | null>
   consumePendingAudio(): Promise<boolean>
 }

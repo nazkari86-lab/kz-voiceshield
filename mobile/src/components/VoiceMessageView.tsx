@@ -46,7 +46,7 @@ export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCa
 
   useEffect(() => () => { stopTimer() }, [stopTimer])
 
-  const transcribe = useCallback(async (source: 'pick' | 'pending') => {
+  const transcribe = useCallback(async (source: 'pick' | 'call-recording' | 'pending') => {
     if (!VoiceMessageModule) {
       setPhase({ kind: 'error', message: 'Voice message transcription is available in the Android app.' })
       return
@@ -55,12 +55,14 @@ export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCa
       setPhase({ kind: 'error', message: 'Download the Whisper model in Setup to enable voice message transcription.' })
       return
     }
-    setPhase(source === 'pick' ? { kind: 'picking' } : { kind: 'transcribing', elapsed: 0 })
+    setPhase(source === 'pending' ? { kind: 'transcribing', elapsed: 0 } : { kind: 'picking' })
     if (source === 'pending') startTimer()
     try {
       const result = source === 'pick'
         ? await VoiceMessageModule.pickAndTranscribe('ru')
-        : await VoiceMessageModule.transcribePendingAudio('ru')
+        : source === 'call-recording'
+          ? await VoiceMessageModule.pickCallRecordingAndTranscribe('ru')
+          : await VoiceMessageModule.transcribePendingAudio('ru')
       stopTimer()
       onClearSharedAudio()
       if (!result) { setPhase({ kind: 'idle' }); return }
@@ -161,11 +163,18 @@ export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCa
       )}
 
       {isIdle && (
-        <MotionPressable
-          style={[styles.pickBtn, !modelReady && styles.pickBtnDisabled]}
-          onPress={() => { if (modelReady) void transcribe('pick') }}
-          disabled={!modelReady}
-        ><Text style={styles.pickBtnEyebrow}>SELECT AUDIO FILE</Text><Text style={styles.pickBtnText}>Pick voice message</Text><Text style={styles.pickBtnCopy}>OGG, M4A, MP3 or WAV</Text></MotionPressable>
+        <View style={styles.pickerStack}>
+          <MotionPressable
+            style={[styles.pickBtn, !modelReady && styles.pickBtnDisabled]}
+            onPress={() => { if (modelReady) void transcribe('call-recording') }}
+            disabled={!modelReady}
+          ><Text style={styles.pickBtnEyebrow}>XIAOMI / HYPEROS</Text><Text style={styles.pickBtnText}>Analyze call recording</Text><Text style={styles.pickBtnCopy}>Choose MIUI / sound_recorder / call_rec</Text></MotionPressable>
+          <MotionPressable
+            style={[styles.fileBtn, !modelReady && styles.fileBtnDisabled]}
+            onPress={() => { if (modelReady) void transcribe('pick') }}
+            disabled={!modelReady}
+          ><Text style={styles.fileBtnText}>Pick voice message</Text><Text style={styles.fileBtnCopy}>OGG, M4A, MP3 or WAV</Text></MotionPressable>
+        </View>
       )}
 
       {!modelReady && isIdle && (
@@ -230,8 +239,13 @@ const styles = StyleSheet.create({
   secondaryText: { color: colors.ink, fontWeight: '800' },
 
   pickBtn: { backgroundColor: colors.brand, borderRadius: 8, gap: 2, paddingHorizontal: 17, paddingVertical: 14 },
+  pickerStack: { gap: 8 },
   pickBtnDisabled: { backgroundColor: colors.muted },
   pickBtnEyebrow: { color: '#bce9d4', fontSize: 10, fontWeight: '900', letterSpacing: 0.8 }, pickBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' }, pickBtnCopy: { color: '#ddf5e8', fontSize: 11 },
+  fileBtn: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 2, paddingHorizontal: 17, paddingVertical: 13 },
+  fileBtnDisabled: { opacity: 0.55 },
+  fileBtnText: { color: colors.ink, fontSize: 14, fontWeight: '900' },
+  fileBtnCopy: { color: colors.sub, fontSize: 11 },
 
   modelHint: { backgroundColor: colors.softBrand, borderRadius: 8, padding: 12 },
   modelHintText: { color: colors.brandDark, fontSize: 12, lineHeight: 18 },

@@ -427,6 +427,7 @@ export function useWorkspace() {
         setSource('Whisper')
         setCaptureNotice('Whisper is ready. Android cannot read internal call audio: turn on speakerphone so the microphone can hear the caller. Audio stays on this device.')
       } else {
+        setSource('Live Caption')
         setCaptureNotice('Live Caption mode is active. Only approved system caption text is processed.')
       }
       await AccessibilityModule.setProtectionActive(true)
@@ -439,6 +440,24 @@ export function useWorkspace() {
       setCaptureError('Protection could not start. Enable microphone, overlay and accessibility permissions in setup.')
     }
   }, [prepareWhisper, privacyConsent])
+
+  const switchToMicrophoneFallback = useCallback(async () => {
+    setCaptureError(null)
+    try {
+      const nativeModelReady = await WhisperModule.isInitialized()
+      if (!nativeModelReady) await prepareWhisper()
+      await WhisperModule.resetBuffer()
+      await AudioCaptureModule.startCapture()
+      await WhisperModule.startStreaming()
+      lastAudibleAtRef.current = Date.now()
+      setAudioLevel(0)
+      setSource('Whisper')
+      setCaptureNotice('Microphone fallback is active. Turn on speakerphone and raise call volume so VoiceShield can hear the caller.')
+      await OverlayModule.show(true)
+    } catch {
+      setCaptureError('Microphone fallback could not start. Check the microphone permission and Whisper model in Setup.')
+    }
+  }, [prepareWhisper])
 
   const stopListening = useCallback(async () => {
     // Record fingerprint before stopping for cross-call memory
@@ -705,7 +724,7 @@ export function useWorkspace() {
     source,
     // capture
     isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript,
-    startListening, stopListening, prepareWhisper,
+    startListening, stopListening, prepareWhisper, switchToMicrophoneFallback,
     modelSizePref, updateModelSize,
     repeatBonusData, llmAutoAnalysis, captureCompleteness,
     // computed

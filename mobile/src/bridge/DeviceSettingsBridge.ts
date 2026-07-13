@@ -10,6 +10,10 @@ type DeviceSettingsNativeModule = {
   getDeviceInfo(): Promise<DeviceInfo>
   isIgnoringBatteryOptimizations(): Promise<boolean>
   openBatteryOptimizationSettings(): void
+  requestBatteryOptimizationExemption(): void
+  openCaptionSettings(): void
+  openDefaultAppsSettings(): void
+  openAutostartSettings(): void
   openAppSettings(): void
 }
 

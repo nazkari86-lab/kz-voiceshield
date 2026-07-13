@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- READ_SMS removed: Play Store restricted permission requires special declaration.
          SMS scanning feature is disabled in this build until Play Store approval is obtained.
          To re-enable: add permission back + submit SMS Use Case declaration to Google Play. -->

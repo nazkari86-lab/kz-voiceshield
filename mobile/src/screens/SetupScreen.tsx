@@ -147,12 +147,20 @@ export function SetupScreen({
       {storageError && <Text style={styles.error}>{storageError}</Text>}
       <Text style={styles.section}>Required protection access</Text>
       <Step label="Accessibility Live Caption" status={status.accessibility} disabled={!privacyConsent} onPress={() => AccessibilityModule.openSettings()} />
+      <Step label="Open Android caption settings" status={status.accessibility} disabled={!privacyConsent} onPress={() => DeviceSettings.openCaptionSettings()} />
       <Step label="Risk overlay" status={status.overlay} disabled={!privacyConsent} onPress={() => OverlayModule.openOverlaySettings()} />
       <Step label="Call screening role" status={status.callRole} disabled={!privacyConsent} onPress={() => { void CallModule.requestRole() }} />
       <Step label="Microphone fallback" status={status.microphone} disabled={!privacyConsent} onPress={() => { void requestMicrophone() }} />
       <Step label="Protection notification" status={status.notifications} disabled={!privacyConsent} onPress={() => { void requestNotifications() }} />
       <Step label="OTP notification type detection" status={status.notificationAccess} disabled={!privacyConsent} onPress={() => NotificationAccess.openSettings()} />
-      <Step label="Battery optimization exemption" status={status.battery} disabled={!privacyConsent} onPress={() => DeviceSettings.openBatteryOptimizationSettings()} />
+      <Step label="Battery optimization exemption" status={status.battery} disabled={!privacyConsent} onPress={() => DeviceSettings.requestBatteryOptimizationExemption()} />
+      {device?.manufacturer.toLowerCase().includes('xiaomi') || device?.manufacturer.toLowerCase().includes('redmi') ? (
+        <Step label="Xiaomi/HyperOS autostart" status={false} disabled={!privacyConsent} onPress={() => DeviceSettings.openAutostartSettings()} />
+      ) : null}
+
+      <Text style={styles.section}>Optional phone integration</Text>
+      <Text style={styles.copy}>Call screening can warn about numbers before answer. Default-phone settings do not grant access to call audio, but are available for device diagnostics.</Text>
+      <Step label="Open default phone apps" status={status.callRole} disabled={!privacyConsent} onPress={() => DeviceSettings.openDefaultAppsSettings()} />
 
       <Text style={styles.section}>On-device speech model</Text>
       <Text style={styles.copy}>Choose model size then tap to download. Tiny (~75 MB) is faster with slightly lower accuracy. Small (~488 MB) is more accurate for RU/KZ. If Live Caption is available, download is optional.</Text>

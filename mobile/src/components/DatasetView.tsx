@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { DatasetQuality } from '@scoring'
 import { colors } from '../theme'
@@ -21,6 +21,7 @@ type Props = {
 export function DatasetView({ quality, caseCount, labelledCount, datasetStageTotals, donationConsent, onSetDonation, onDonate, onExportJsonl, onExportCsv, onExportSplit, onClear }: Props) {
   const disabled = caseCount === 0
   const canDonate = donationConsent && labelledCount > 0
+  const [confirmClear, setConfirmClear] = useState(false)
   return (
     <View>
       <SectionTitle>Improve protection (opt-in)</SectionTitle>
@@ -50,7 +51,14 @@ export function DatasetView({ quality, caseCount, labelledCount, datasetStageTot
         <Pressable style={[styles.ghost, disabled && styles.off]} disabled={disabled} onPress={onExportJsonl}><Text style={styles.ghostText}>Share JSONL</Text></Pressable>
         <Pressable style={[styles.ghost, disabled && styles.off]} disabled={disabled} onPress={onExportCsv}><Text style={styles.ghostText}>Share CSV</Text></Pressable>
         <Pressable style={[styles.ghost, disabled && styles.off]} disabled={disabled} onPress={onExportSplit}><Text style={styles.ghostText}>Share split</Text></Pressable>
-        <Pressable style={[styles.danger, disabled && styles.off]} disabled={disabled} onPress={onClear}><Text style={styles.dangerText}>Clear</Text></Pressable>
+        {confirmClear ? (
+          <>
+            <Pressable style={[styles.dangerFill, disabled && styles.off]} disabled={disabled} onPress={() => { onClear(); setConfirmClear(false) }}><Text style={styles.dangerFillText}>Confirm clear</Text></Pressable>
+            <Pressable style={styles.cancel} onPress={() => setConfirmClear(false)}><Text style={styles.cancelText}>Cancel</Text></Pressable>
+          </>
+        ) : (
+          <Pressable style={[styles.danger, disabled && styles.off]} disabled={disabled} onPress={() => setConfirmClear(true)}><Text style={styles.dangerText}>Clear</Text></Pressable>
+        )}
       </View>
 
       <View style={ui.row}>
@@ -94,6 +102,10 @@ const styles = StyleSheet.create({
   ghostText: { color: colors.brand, fontSize: 12, fontWeight: '800' },
   danger: { borderColor: '#ef4444', borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7 },
   dangerText: { color: '#ef4444', fontSize: 12, fontWeight: '800' },
+  dangerFill: { backgroundColor: '#dc2626', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  dangerFillText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  cancel: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7 },
+  cancelText: { color: colors.sub, fontSize: 12, fontWeight: '800' },
   off: { opacity: 0.4 },
   donateBody: { color: '#334155', fontSize: 13, lineHeight: 19, marginBottom: 4 },
   toggle: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7 },

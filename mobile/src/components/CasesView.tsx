@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { CaseLabel, CaseStatus, SavedCase, WorkflowFlags } from '@scoring'
 import { labelText, statusText } from '@scoring'
@@ -21,6 +21,8 @@ type Props = {
 }
 
 export function CasesView({ cases, onSaveCurrent, onLoadCase, onUpdateLabel, onUpdateStatus, onToggleFlag, onExportBundle, onDeleteCase }: Props) {
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+
   return (
     <View>
       <View style={styles.actions}>
@@ -61,7 +63,14 @@ export function CasesView({ cases, onSaveCurrent, onLoadCase, onUpdateLabel, onU
 
             <View style={styles.toolRow}>
               <Pressable style={styles.ghost} onPress={() => onExportBundle(item)}><Text style={styles.ghostText}>Share bundle</Text></Pressable>
-              <Pressable style={styles.danger} onPress={() => onDeleteCase(item.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
+              {pendingDeleteId === item.id ? (
+                <>
+                  <Pressable style={styles.dangerFill} onPress={() => { onDeleteCase(item.id); setPendingDeleteId(null) }}><Text style={styles.dangerFillText}>Confirm delete</Text></Pressable>
+                  <Pressable style={styles.cancel} onPress={() => setPendingDeleteId(null)}><Text style={styles.cancelText}>Cancel</Text></Pressable>
+                </>
+              ) : (
+                <Pressable style={styles.danger} onPress={() => setPendingDeleteId(item.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
+              )}
             </View>
 
             <Text style={styles.audit}>{item.auditLog.length} audit events · updated {new Date(item.updatedAt).toLocaleString()}</Text>
@@ -92,5 +101,9 @@ const styles = StyleSheet.create({
   ghostText: { color: colors.brand, fontSize: 12, fontWeight: '800' },
   danger: { borderColor: '#ef4444', borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
   dangerText: { color: '#ef4444', fontSize: 12, fontWeight: '800' },
+  dangerFill: { backgroundColor: '#dc2626', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  dangerFillText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  cancel: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
+  cancelText: { color: colors.sub, fontSize: 12, fontWeight: '800' },
   audit: { color: colors.muted, fontSize: 11 },
 })

@@ -29,8 +29,8 @@ android {
         applicationId "kz.voiceshield"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 13
-        versionName "0.9.6"
+        versionCode 14
+        versionName "1.0.0"
 
         externalNativeBuild {
             cmake {
@@ -84,6 +84,8 @@ dependencies {
     // scanner available without a network connection after APK install.
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    // On-device LLM inference (Gemma 3 1B IT INT4 via MediaPipe)
+    implementation("com.google.mediapipe:tasks-genai:0.10.14")
     testImplementation("junit:junit:4.13.2")
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Animated, Easing, StyleSheet, Text, TextInput, View } from 'react-native'
+import { WaveformView } from './WaveformView'
 import type { Analysis } from '@scoring'
 import { colors, riskColor } from '../theme'
 import { Card, RiskBadge } from './ui'
@@ -16,6 +17,7 @@ type Props = {
   callStatus: string
   storageError: string | null
   trustedContactName?: string
+  callbackWarning?: string | null
   onChangeTranscript: (text: string) => void
   onToggleListening: () => void
   onSave: () => void
@@ -25,7 +27,7 @@ type Props = {
   onOpenSimulator: () => void
 }
 
-export function LiveView({ analysis, transcript, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator }: Props) {
+export function LiveView({ analysis, transcript, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator }: Props) {
   const [pauseRemaining, setPauseRemaining] = useState(0)
   const signalScale = useRef(new Animated.Value(1)).current
   const scoreFill = useRef(new Animated.Value(0)).current
@@ -77,15 +79,19 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
         <Text style={styles.next}>{analysis.nextAction}</Text>
         <Text style={styles.session}>{callStatus}</Text>
       {isListening && (
-          <View style={styles.levelTrack}>
-            <View style={[styles.levelFill, { width: `${Math.min(100, Math.round(audioLevel * 100))}%` }]} />
-          </View>
+          <WaveformView audioLevel={audioLevel} isActive={isListening} height={32} barCount={40} />
         )}
       </Card>
 
       {error && <Text style={styles.error}>{error}</Text>}
       {notice && <Text style={styles.notice}>{notice}</Text>}
       {storageError && <Text style={styles.error}>{storageError}</Text>}
+      {callbackWarning && (
+        <View style={styles.callbackBanner}>
+          <Text style={styles.callbackIcon}>📞</Text>
+          <Text style={styles.callbackText}>{callbackWarning}</Text>
+        </View>
+      )}
 
       {analysis.contextSignals.length > 0 && (
         <View style={styles.signalRow}>
@@ -195,4 +201,7 @@ const styles = StyleSheet.create({
   secondary: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexGrow: 1, paddingHorizontal: 12, paddingVertical: 13 },
   secondaryText: { color: colors.ink, fontWeight: '800', textAlign: 'center' },
   check: { color: '#334155', fontSize: 13, lineHeight: 20 },
+  callbackBanner: { alignItems: 'center', backgroundColor: '#fef3c7', borderColor: '#fbbf24', borderRadius: 10, borderWidth: 1, flexDirection: 'row', gap: 8, marginBottom: 12, padding: 12 },
+  callbackIcon: { fontSize: 18 },
+  callbackText: { color: '#92400e', flex: 1, fontSize: 13, fontWeight: '700', lineHeight: 18 },
 })

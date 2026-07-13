@@ -1,0 +1,36 @@
+import type { I18nKeys } from './ru'
+
+export const kz: I18nKeys = {
+  app: { name: 'KZ VoiceShield', tagline: 'Алаяқтықтан қорғау' },
+  nav: { live: 'Қорғау', scan: 'Сканер', learn: 'Оқу', cases: 'Іс', more: 'Көбірек' },
+  live: {
+    active: 'ҚОРҒАНЫС ҚОСУЛЫ',
+    standby: 'КҮТУ РЕЖИМІ',
+    start: 'Қорғанысты қосу',
+    stop: 'Тоқтату',
+    saveCase: 'Істі сақтау',
+    shareReport: 'Есеп',
+    transcript: 'ТРАНСКРИПТ',
+    waitAudio: 'ДЫБЫС КҮТІЛУДЕ',
+    hearsAudio: 'МИКРОФОН ЕСТИДІ',
+    pauseTitle: '30 секундтық үзіліс алыңыз',
+    pauseCopy: 'Қоңырауды аяқтаңыз. Кодтарды жіберіп, төлемдерді растамаңыз.',
+    startPause: 'Үзіліс бастау',
+    restartPause: 'Үзілісті қайта бастау',
+  },
+  risk: { critical: 'Өте қауіпті', high: 'Қауіпті', medium: 'Тексеру', low: 'Қауіпсіз' },
+  setup: {
+    title: 'Баптаулар',
+    theme: 'Тақырып',
+    themeAuto: 'Авто', themeLight: 'Ашық', themeDark: 'Қараңғы',
+    language: 'Тіл',
+    download: 'Модельді жүктеу',
+    deleteAll: 'Барлық деректерді жою',
+    confirmDelete: 'Жоюды растау',
+    cancel: 'Бас тарту',
+  },
+  llm: { title: 'VoiceShield AI', notLoaded: 'Нейрожелі жүктелмеген', loadModel: 'Модельді жүктеу' },
+  sms: { title: 'SMS-сканер', scan: 'Сканерлеу' },
+  history: { title: 'Қоңырау тарихы', clear: 'Тазалау', empty: 'Сақталған қоңыраулар жоқ' },
+  stats: { title: 'Статистика' },
+}

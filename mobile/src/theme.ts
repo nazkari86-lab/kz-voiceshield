@@ -1,7 +1,8 @@
 import type { Severity } from '@scoring'
 
-// Shared palette so every screen reads as one system.
-export const colors = {
+export type AppColors = typeof lightColors
+
+export const lightColors = {
   bg: '#f3f7f4',
   card: '#ffffff',
   border: '#d6e2da',
@@ -15,6 +16,24 @@ export const colors = {
   softBrand: '#dff1e8',
   softDanger: '#fde9e4',
 }
+
+export const darkColors: AppColors = {
+  bg: '#0d1a15',
+  card: '#152219',
+  border: '#1e3329',
+  ink: '#d6ede3',
+  sub: '#8ab8a4',
+  muted: '#5a8172',
+  brand: '#1fa876',
+  brandDark: '#29d698',
+  accent: '#f47c60',
+  chipBg: '#1a2e24',
+  softBrand: '#1a3328',
+  softDanger: '#2a1a18',
+}
+
+// Default export for backward-compatibility — overridden by ThemeContext at runtime
+export const colors = lightColors
 
 export const riskColor: Record<Severity, string> = {
   critical: '#9f2339',

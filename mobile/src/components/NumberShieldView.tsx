@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react'
 import { Pressable, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native'
 import { CallModule } from '@bridge/CallModule'
 import type { PhoneAssessment, PhoneProtectionConfig } from '@bridge/CallModule'
+import { checkScamNumber } from '../data/scamNumbers'
+import type { ScamEntry } from '../data/scamNumbers'
 import { colors } from '../theme'
 
 const defaultConfig: PhoneProtectionConfig = {
@@ -37,6 +39,7 @@ export function NumberShieldView({
 }) {
   const [number, setNumber] = useState('')
   const [assessment, setAssessment] = useState<PhoneAssessment | null>(null)
+  const [scamMatch, setScamMatch] = useState<ScamEntry | null>(null)
   const [config, setConfig] = useState<PhoneProtectionConfig>(defaultConfig)
   const [backup, setBackup] = useState('')
   const [status, setStatus] = useState('Local reputation is ready')
@@ -97,13 +100,21 @@ export function NumberShieldView({
           value={number}
         />
         <View style={styles.row}>
-          <Action label="Check" tone="primary" onPress={() => { void run(() => CallModule.evaluateNumber(number), 'Number checked locally') }} />
+          <Action label="Check" tone="primary" onPress={() => { setScamMatch(checkScamNumber(number)); void run(() => CallModule.evaluateNumber(number), 'Number checked locally') }} />
           <Action label="Trust" onPress={() => { void run(() => CallModule.setNumberDisposition(number, 'trusted'), 'Added to trusted list') }} />
           <Action label="Block" tone="danger" onPress={() => { void run(() => CallModule.setNumberDisposition(number, 'blocked'), 'Added to block list') }} />
           <Action label="Neutral" onPress={() => { void run(() => CallModule.setNumberDisposition(number, 'neutral'), 'Local disposition removed') }} />
           <Action label="Report spam" tone="danger" onPress={() => { void run(() => CallModule.reportNumber(number, 'user_reported_spam'), 'Local complaint recorded') }} />
         </View>
       </View>
+
+      {scamMatch && (
+        <View style={[styles.panel, styles.scamAlert]}>
+          <Text style={styles.scamTitle}>{scamMatch.risk === 'critical' ? 'CRITICAL' : scamMatch.risk === 'high' ? 'HIGH RISK' : 'CAUTION'} — Pattern match</Text>
+          <Text style={styles.scamReason}>{scamMatch.reason}</Text>
+          <Text style={styles.scamSource}>Source: {scamMatch.source} · {scamMatch.verifiedAt}</Text>
+        </View>
+      )}
 
       {assessment && (
         <View style={[styles.panel, assessment.score >= 65 && styles.risky]}>
@@ -171,4 +182,8 @@ const styles = StyleSheet.create({
   setting: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 52, paddingHorizontal: 13 },
   settingLabel: { color: colors.ink, flex: 1, fontSize: 13, fontWeight: '800', paddingRight: 8 },
   status: { color: colors.sub, fontSize: 12, lineHeight: 18 },
+  scamAlert: { borderColor: '#dc2626', borderLeftWidth: 4, borderWidth: 1 },
+  scamTitle: { color: '#991b1b', fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
+  scamReason: { color: colors.ink, fontSize: 13, lineHeight: 19 },
+  scamSource: { color: colors.muted, fontSize: 11 },
 })

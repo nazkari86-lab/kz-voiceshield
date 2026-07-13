@@ -1,21 +1,30 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { AppState, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { AppState, Linking, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { AccessibilityModule } from '@bridge/AccessibilityBridge'
 import { CallModule } from '@bridge/CallModule'
 import { DeviceSettings } from '@bridge/DeviceSettingsBridge'
 import type { DeviceInfo } from '@bridge/DeviceSettingsBridge'
 import { OverlayModule } from '@bridge/OverlayBridge'
 import { NotificationAccess } from '@bridge/NotificationAccessBridge'
+import { GEMMA_MODEL_URL, GEMMA_MODEL_SIZE_MB } from '../bridge/LLMBridge'
+import { useTheme } from '../ThemeContext'
+import { useI18n } from '../I18nContext'
+import type { Language } from '../I18nContext'
 import { colors } from '../theme'
+
+type ModelSize = 'tiny' | 'small'
 
 type Props = {
   modelReady: boolean
   modelProgress: number | null
+  modelSizePref: ModelSize
   privacyConsent: boolean
   storageError: string | null
   callStatus: string
   caseCount: number
   onPrepareWhisper: () => void
+  onImportWhisper: () => void
+  onSetModelSize: (size: ModelSize) => Promise<void>
   onAcceptPrivacy: () => Promise<void>
   onDeclinePrivacy: () => Promise<void>
   onDeleteAllData: () => Promise<void>
@@ -34,15 +43,21 @@ const Step = ({ label, status, disabled, onPress }: { label: string; status: boo
 export function SetupScreen({
   modelReady,
   modelProgress,
+  modelSizePref,
   privacyConsent,
   storageError,
   callStatus,
   caseCount,
   onPrepareWhisper,
+  onImportWhisper,
+  onSetModelSize,
   onAcceptPrivacy,
   onDeclinePrivacy,
   onDeleteAllData,
 }: Props) {
+  const { colors: themeColors, mode: themeMode, setMode: setThemeMode } = useTheme()
+  const { lang, setLang } = useI18n()
+
   const [status, setStatus] = useState<Status>(emptyStatus)
   const [device, setDevice] = useState<DeviceInfo | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -98,6 +113,37 @@ export function SetupScreen({
         </View>
       </View>
 
+      <View style={styles.prefSection}>
+        <Text style={styles.section}>Внешний вид</Text>
+        <View style={styles.toggleRow}>
+          {(['auto', 'light', 'dark'] as const).map((m) => (
+            <Pressable
+              key={m}
+              style={[styles.toggleChip, themeMode === m && styles.toggleChipActive]}
+              onPress={() => setThemeMode(m)}
+            >
+              <Text style={[styles.toggleText, themeMode === m && styles.toggleTextActive]}>
+                {m === 'auto' ? 'Авто' : m === 'light' ? 'Светлая' : 'Тёмная'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={[styles.section, { marginTop: 10 }]}>Язык / Тіл</Text>
+        <View style={styles.toggleRow}>
+          {(['ru', 'kz'] as Language[]).map((l) => (
+            <Pressable
+              key={l}
+              style={[styles.toggleChip, lang === l && styles.toggleChipActive]}
+              onPress={() => setLang(l)}
+            >
+              <Text style={[styles.toggleText, lang === l && styles.toggleTextActive]}>
+                {l === 'ru' ? 'Русский' : 'Қазақша'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
       {storageError && <Text style={styles.error}>{storageError}</Text>}
       <Text style={styles.section}>Required protection access</Text>
       <Step label="Accessibility Live Caption" status={status.accessibility} disabled={!privacyConsent} onPress={() => AccessibilityModule.openSettings()} />
@@ -109,8 +155,28 @@ export function SetupScreen({
       <Step label="Battery optimization exemption" status={status.battery} disabled={!privacyConsent} onPress={() => DeviceSettings.openBatteryOptimizationSettings()} />
 
       <Text style={styles.section}>On-device speech model</Text>
-      <Text style={styles.copy}>Verified Whisper small model: approximately 488 MB. If Live Caption is available, the download is optional.</Text>
-      <Step label={modelProgress === null ? 'Whisper RU/KZ model' : `Downloading Whisper: ${modelProgress}%`} status={modelReady} disabled={!privacyConsent || modelProgress !== null} onPress={onPrepareWhisper} />
+      <Text style={styles.copy}>Choose model size then tap to download. Tiny (~75 MB) is faster with slightly lower accuracy. Small (~488 MB) is more accurate for RU/KZ. If Live Caption is available, download is optional.</Text>
+      <View style={styles.modelToggle}>
+        <Pressable style={[styles.modelOption, modelSizePref === 'tiny' && styles.modelOptionActive]} onPress={() => { void onSetModelSize('tiny') }}>
+          <Text style={[styles.modelOptionText, modelSizePref === 'tiny' && styles.modelOptionTextActive]}>Tiny — Fast</Text>
+          <Text style={[styles.modelOptionSub, modelSizePref === 'tiny' && styles.modelOptionSubActive]}>~75 MB · 1.5s latency</Text>
+        </Pressable>
+        <Pressable style={[styles.modelOption, modelSizePref === 'small' && styles.modelOptionActive]} onPress={() => { void onSetModelSize('small') }}>
+          <Text style={[styles.modelOptionText, modelSizePref === 'small' && styles.modelOptionTextActive]}>Small — Accurate</Text>
+          <Text style={[styles.modelOptionSub, modelSizePref === 'small' && styles.modelOptionSubActive]}>~488 MB · 3s latency</Text>
+        </Pressable>
+      </View>
+      <Step label={modelProgress === null ? `Download ${modelSizePref === 'tiny' ? 'Whisper Tiny' : 'Whisper Small'}` : `Downloading: ${modelProgress}%`} status={modelReady} disabled={!privacyConsent || modelProgress !== null} onPress={onPrepareWhisper} />
+      {modelSizePref === 'small' && <Step label="Import Whisper Small from Downloads" status={false} disabled={!privacyConsent || modelProgress !== null} onPress={onImportWhisper} />}
+
+      <View style={styles.gemmaSection}>
+        <Text style={styles.noticeTitle}>AI-ассистент (Gemma 3 1B IT)</Text>
+        <Text style={styles.copy}>Нейросеть ~{GEMMA_MODEL_SIZE_MB}МБ для анализа транскриптов прямо на устройстве. Требует скачивания один раз.</Text>
+        <Pressable style={styles.secondaryWide} onPress={() => { void Linking.openURL(GEMMA_MODEL_URL) }}>
+          <Text style={styles.secondaryText}>Скачать gemma-3-1b-it-int4.task (~{GEMMA_MODEL_SIZE_MB}МБ)</Text>
+        </Pressable>
+        <Text style={styles.gemmaCopy}>После скачивания поместите файл в Загрузки. Затем откройте «AI-ассистент» → «Загрузить модель».</Text>
+      </View>
 
       <View style={styles.localData}>
         <Text style={styles.noticeTitle}>Local data</Text>
@@ -157,5 +223,20 @@ const styles = StyleSheet.create({
   dangerOutline: { alignSelf: 'flex-start', borderColor: '#dc2626', borderRadius: 8, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 9 },
   dangerText: { color: '#dc2626', fontWeight: '900' },
   danger: { backgroundColor: '#dc2626', borderRadius: 8, paddingHorizontal: 13, paddingVertical: 10 },
+  modelToggle: { flexDirection: 'row', gap: 8 },
+  modelOption: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, flex: 1, gap: 2, padding: 12 },
+  modelOptionActive: { backgroundColor: colors.softBrand, borderColor: colors.brand },
+  modelOptionText: { color: colors.ink, fontSize: 13, fontWeight: '900' },
+  modelOptionTextActive: { color: colors.brandDark },
+  modelOptionSub: { color: colors.muted, fontSize: 11 },
+  modelOptionSubActive: { color: colors.sub },
   dangerButtonText: { color: '#fff', fontWeight: '900' },
+  gemmaSection: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 10, borderWidth: 1, gap: 8, marginBottom: 14, padding: 14 },
+  gemmaCopy: { color: colors.muted, fontSize: 11, lineHeight: 16 },
+  prefSection: { gap: 6 },
+  toggleRow: { flexDirection: 'row', gap: 8 },
+  toggleChip: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, flex: 1, padding: 10 },
+  toggleChipActive: { backgroundColor: colors.softBrand, borderColor: colors.brand },
+  toggleText: { color: colors.ink, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  toggleTextActive: { color: colors.brandDark, fontWeight: '900' },
 })

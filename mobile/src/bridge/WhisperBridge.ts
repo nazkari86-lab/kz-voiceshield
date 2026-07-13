@@ -14,6 +14,9 @@ type ModelDownloaderNativeModule = {
   downloadModel(url: string, fileName: string, expectedSha256: string, expectedSize: number): Promise<string>
   getVerifiedModelPath(fileName: string, expectedSha256: string, expectedSize: number): Promise<string | null>
   hasModel(fileName: string): Promise<boolean>
+  getModelPath(fileName: string): Promise<string | null>
+  importGemmaModel(): Promise<string>
+  importWhisperSmallModel(): Promise<string>
 }
 
 type AudioCaptureNativeModule = {

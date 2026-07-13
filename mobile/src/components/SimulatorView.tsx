@@ -75,7 +75,17 @@ export function SimulatorView() {
 
   if (scenario && step) {
     return <Animated.View style={[styles.container, { opacity: reveal, transform: [{ translateY: reveal.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }]}>
-      <View style={styles.header}><Text style={styles.title}>{scenario.title}</Text><Text style={styles.meta}>{scenario.language} · {scenario.difficulty} · {stepIndex + 1}/{scenario.steps.length}</Text></View>
+      <View style={styles.header}>
+        <View style={styles.headerRow}>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>{scenario.title}</Text>
+            <Text style={styles.meta}>{scenario.language} · {scenario.difficulty} · {stepIndex + 1}/{scenario.steps.length}</Text>
+          </View>
+          <Pressable style={styles.exit} onPress={() => { setScenarioId(null); setStepIndex(0); setAnswers([]); setFeedback('') }}>
+            <Text style={styles.exitText}>Exit</Text>
+          </Pressable>
+        </View>
+      </View>
       <View style={styles.call}><Text style={styles.caller}>Unknown caller</Text><Text style={styles.callText}>{step.caller}</Text></View>
       <Pressable style={styles.voiceButton} onPress={() => { void speakCaller() }}><Text style={styles.voiceButtonText}>Play caller voice</Text></Pressable>
       {voiceStatus ? <Text style={styles.voiceStatus}>{voiceStatus}</Text> : null}
@@ -96,6 +106,10 @@ export function SimulatorView() {
 const styles = StyleSheet.create({
   container: { gap: 11 },
   header: { gap: 3 },
+  headerRow: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between' },
+  headerText: { flex: 1, gap: 3 },
+  exit: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
+  exitText: { color: colors.sub, fontSize: 12, fontWeight: '800' },
   trainingHero: { backgroundColor: colors.brandDark, borderRadius: 8, gap: 7, marginBottom: 12, padding: 18 },
   kicker: { color: colors.brand, fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
   title: { color: colors.ink, fontSize: 23, fontWeight: '900' },

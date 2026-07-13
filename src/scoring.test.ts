@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeTranscript, buildEvidenceBundle, buildReport, callSignalsFromVerification, createWorkflowState, datasetQuality, datasetSchemaVersion, deviceSignalsFromPackage, exportCsv, exportJsonl, exportSplitJson, notificationSignalsFromId, redactSensitiveText, samples, sentenceTimeline } from './scoring'
+import { analyzeTranscript, buildEvidenceBundle, buildReport, callSignalsFromVerification, createWorkflowState, datasetQuality, datasetSchemaVersion, deviceSignalsFromId, deviceSignalsFromPackage, exportCsv, exportJsonl, exportSplitJson, notificationSignalsFromId, phoneReputationSignals, redactSensitiveText, samples, sentenceTimeline } from './scoring'
 import type { SavedCase } from './scoring'
 
 const savedCase = (transcript: string): SavedCase => {
@@ -96,6 +96,27 @@ describe('scam scoring — device context', () => {
   it('maps privacy-preserving call and notification context', () => {
     expect(callSignalsFromVerification('failed')[0]?.id).toBe('caller_verification_failed')
     expect(notificationSignalsFromId('otp_notification')[0]?.id).toBe('otp_notification')
+  })
+
+  it('covers every supported native signal mapping and rejects unknown values', () => {
+    expect(deviceSignalsFromId('remote_access_app_open')[0]?.weight).toBe(36)
+    expect(deviceSignalsFromId('screen_share_app_open')[0]?.weight).toBe(18)
+    expect(deviceSignalsFromId('bank_app_open')[0]?.weight).toBe(25)
+    expect(deviceSignalsFromId('unknown')).toEqual([])
+    expect(callSignalsFromVerification('unverified')[0]?.weight).toBe(8)
+    expect(callSignalsFromVerification('verified')).toEqual([])
+    expect(notificationSignalsFromId('bank_activity_notification')[0]?.weight).toBe(24)
+    expect(notificationSignalsFromId('unknown')).toEqual([])
+  })
+
+  it('uses phone reputation as a standalone pre-answer risk signal', () => {
+    expect(phoneReputationSignals(null)).toEqual([])
+    expect(phoneReputationSignals(64)).toEqual([])
+    expect(phoneReputationSignals(110)[0]?.weight).toBe(99)
+    const result = analyzeTranscript('', { signals: phoneReputationSignals(90) })
+    expect(result.score).toBe(90)
+    expect(result.risk).toBe('critical')
+    expect(result.confidence).toBe(90)
   })
 })
 

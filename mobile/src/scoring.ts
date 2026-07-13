@@ -35,6 +35,7 @@ export type RiskSignal = {
 
 export type RiskContext = {
   signals?: RiskSignal[]
+  captureCompleteness?: number  // 0–1; 1.0 = both sides heard, 0.4 = owner only
 }
 
 export type ScamScheme =
@@ -50,6 +51,19 @@ export type ScamScheme =
   | 'marketplace_scam'
   | 'messenger_takeover'
   | 'unclassified'
+
+export type DetectedIntent = {
+  id: 'request_otp' | 'request_transfer' | 'install_remote_app' | 'isolate_victim' | 'claim_authority' | 'request_sim_swap' | 'request_card_details'
+  probability: number
+  actor: 'caller' | 'user' | 'unknown'
+}
+
+export type EvidenceFamilyResult = {
+  id: string
+  label: string
+  strength: number
+  ruleIds: string[]
+}
 
 export type Analysis = {
   score: number
@@ -67,6 +81,14 @@ export type Analysis = {
   caseId: string
   verdict: string
   nextAction: string
+  // Extended output (v2)
+  fraudProbability: number
+  harmSeverity: number
+  schemeConfidence: number
+  captureCompleteness: number
+  intents: DetectedIntent[]
+  evidenceFamilies: EvidenceFamilyResult[]
+  protectiveContextApplied: boolean
 }
 
 export type WorkflowFlags = {
@@ -949,12 +971,11 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
       return { ...rule, score: Math.round((rule.weight + (rule.matches.length - 1) * 4) * severityBoost) }
     })
 
-  const protective = detectSafeContext(text) && !hasExplicitAction(text)
+  const protectiveCtx = detectSafeContext(text) && !hasExplicitAction(text)
   const actionable = initialEvidence.some((item) => ['safe-account', 'remote-access', 'urgency-isolation'].includes(item.id))
-  const evidence =
-    protective && !actionable
-      ? initialEvidence.filter((item) => !['bank-security', 'otp-code', 'messenger-takeover'].includes(item.id))
-      : initialEvidence
+  // Keep evidence intact — protective context reduces confidence, not evidence visibility
+  const evidence = initialEvidence
+  const protectiveContextApplied = protectiveCtx && !actionable
   const matchedTerms = evidence.reduce((total, item) => total + item.matches.length, 0)
   const has = (id: string) => evidence.some((item) => item.id === id)
   const comboBonus =
@@ -987,7 +1008,12 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
                             : has('pretexting') && has('safe-account')
                               ? 16
                               : 0
-  const shortTextPenalty = wordCount < 3 ? 0.25 : wordCount < 7 ? 0.65 : 1
+  // shortTextPenalty: short text reduces scheme confidence but NOT critical-action score.
+  // A 3-word command ("назовите код") is unambiguous — do not discount it.
+  const criticalActionIds = ['otp-code', 'safe-account', 'remote-access', 'sim-swap', 'urgency-isolation']
+  const hasCriticalAction = evidence.some((item) => criticalActionIds.includes(item.id))
+  const shortTextPenaltyFull = wordCount < 3 ? 0.25 : wordCount < 7 ? 0.65 : 1
+  const shortTextPenaltyScore = hasCriticalAction ? 1 : shortTextPenaltyFull
   const contextSignals = [...new Map((context.signals ?? []).map((item) => [item.id, item])).values()]
   // App/screen context only amplifies suspicious speech. Caller verification and
   // reputation are independent pre-answer signals and remain visible before STT.
@@ -995,14 +1021,17 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
     .filter((item) => item.id === 'caller_reputation_high' || item.id === 'caller_verification_failed')
     .reduce((maximum, item) => Math.max(maximum, item.weight), 0)
   const contextScore = evidence.length > 0 ? contextSignals.reduce((sum, item) => sum + item.weight, 0) : 0
-  const conversationScore = Math.round((evidence.reduce((sum, item) => sum + item.score, 0) + comboBonus + contextScore) * shortTextPenalty)
+  const rawConversationScore = evidence.reduce((sum, item) => sum + item.score, 0) + comboBonus + contextScore
+  // Protective context reduces score contribution for ambiguous banking phrases only
+  const protectiveDiscount = protectiveContextApplied ? 0.75 : 1
+  const conversationScore = Math.round(rawConversationScore * shortTextPenaltyScore * protectiveDiscount)
   const score = Math.min(99, Math.max(conversationScore, standaloneCallScore))
   const risk: Severity = score >= 85 ? 'critical' : score >= 65 ? 'high' : score >= 35 ? 'medium' : 'low'
   const uniqueStages = new Set(evidence.map((item) => item.stage)).size
   const stageSpreadBonus = uniqueStages >= 3 ? 15 : uniqueStages >= 2 ? 8 : 0
   const confidence = evidence.length === 0
     ? (standaloneCallScore > 0 ? Math.min(95, Math.max(40, standaloneCallScore)) : 0)
-    : Math.min(98, Math.round((matchedTerms * 7 + evidence.length * 9 + Math.min(wordCount, 45) + stageSpreadBonus) * shortTextPenalty))
+    : Math.min(98, Math.round((matchedTerms * 7 + evidence.length * 9 + Math.min(wordCount, 45) + stageSpreadBonus) * shortTextPenaltyFull))
   const verdict =
     risk === 'critical'
       ? 'Immediate scam intervention'
@@ -1023,7 +1052,61 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
   const stageCoverage = buildStageCoverage(evidence)
   const scheme = classifyScheme(evidence)
 
-  return { caseId: createCaseId(text), confidence, contextSignals, escalationReasons, evidence, matchedTerms, nextAction, responseChecklist, risk, scheme, schemeLabel: schemeLabels[scheme], score, stageCoverage, verdict, wordCount }
+  // --- Extended v2 fields ---
+  // fraudProbability: calibrated sigmoid from score
+  const fraudProbability = Math.round(1000 / (1 + Math.exp(-0.07 * (score - 48)))) / 1000
+
+  // harmSeverity: weighted by what actions were detected
+  const harmBase =
+    (has('safe-account') ? 40 : 0) +
+    (has('remote-access') ? 38 : 0) +
+    (has('otp-code') ? 30 : 0) +
+    (has('sim-swap') ? 35 : 0) +
+    (has('bank-security') ? 18 : 0) +
+    (has('law-enforcement') ? 20 : 0) +
+    (has('urgency-isolation') ? 12 : 0)
+  const harmSeverity = Math.min(100, harmBase)
+
+  // schemeConfidence: how certain the scheme classification is (always penalised by short text)
+  const schemeConfidence = evidence.length === 0 ? 0
+    : Math.min(0.98, (evidence.length * 0.12 + uniqueStages * 0.08) * shortTextPenaltyFull)
+
+  const captureCompleteness = Math.min(1, Math.max(0, context.captureCompleteness ?? 1))
+
+  // intents: map evidence IDs to structured intent objects
+  const intents: DetectedIntent[] = []
+  if (has('otp-code')) intents.push({ id: 'request_otp', probability: 0.90, actor: 'caller' })
+  if (has('safe-account')) intents.push({ id: 'request_transfer', probability: 0.92, actor: 'caller' })
+  if (has('remote-access')) intents.push({ id: 'install_remote_app', probability: 0.91, actor: 'caller' })
+  if (has('urgency-isolation')) intents.push({ id: 'isolate_victim', probability: 0.82, actor: 'caller' })
+  if (has('bank-security') || has('law-enforcement') || has('egov-benefits')) intents.push({ id: 'claim_authority', probability: 0.78, actor: 'caller' })
+  if (has('sim-swap')) intents.push({ id: 'request_sim_swap', probability: 0.89, actor: 'caller' })
+
+  // evidenceFamilies: group rules by semantic family
+  const FAMILY_MAP: Record<string, { label: string; ids: string[] }> = {
+    credential_extraction: { label: 'Credential extraction', ids: ['otp-code', 'bank-security', 'card-data'] },
+    financial_transfer: { label: 'Financial transfer demand', ids: ['safe-account', 'kaspi-qr'] },
+    identity_impersonation: { label: 'Identity impersonation', ids: ['bank-security', 'law-enforcement', 'egov-benefits'] },
+    remote_control: { label: 'Remote control takeover', ids: ['remote-access', 'messenger-takeover'] },
+    pressure_tactics: { label: 'Pressure & urgency', ids: ['urgency-isolation', 'urgency-timing'] },
+    multi_channel: { label: 'Multi-channel attack', ids: ['smishing-bridge', 'caller-id-spoof', 'pretexting'] },
+    social_engineering: { label: 'Social engineering', ids: ['ai-family', 'romance-work', 'job-scam', 'delivery-customs', 'marketplace'] },
+  }
+  const evidenceFamilies: EvidenceFamilyResult[] = Object.entries(FAMILY_MAP)
+    .map(([id, def]) => {
+      const matched = evidence.filter((e) => def.ids.includes(e.id))
+      if (matched.length === 0) return null
+      // family strength = 1 - Π(1 - signal_strength)
+      const strength = 1 - matched.reduce((prod, e) => prod * (1 - Math.min(0.95, e.score / 100)), 1)
+      return { id, label: def.label, strength: Math.round(strength * 100) / 100, ruleIds: matched.map((e) => e.id) }
+    })
+    .filter((f): f is EvidenceFamilyResult => f !== null)
+
+  return {
+    caseId: createCaseId(text), confidence, contextSignals, escalationReasons, evidence, matchedTerms,
+    nextAction, responseChecklist, risk, scheme, schemeLabel: schemeLabels[scheme], score, stageCoverage, verdict, wordCount,
+    fraudProbability, harmSeverity, schemeConfidence, captureCompleteness, intents, evidenceFamilies, protectiveContextApplied,
+  }
 }
 
 export const sentenceTimeline = (text: string) =>

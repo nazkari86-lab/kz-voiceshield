@@ -1,7 +1,11 @@
 package kz.voiceshield
 
+import android.app.Activity
+import android.content.Intent
+import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
@@ -14,6 +18,55 @@ import java.security.MessageDigest
 
 class ModelDownloader(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private val client = OkHttpClient()
+  private var importPromise: Promise? = null
+  private var importFileName: String? = null
+  private var importMinimumBytes = 0L
+  private var importMaximumBytes = 0L
+
+  private val importListener: ActivityEventListener = object : BaseActivityEventListener() {
+    override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+      if (requestCode != IMPORT_MODEL_REQUEST) return
+      val promise = importPromise ?: return
+      importPromise = null
+      if (resultCode != Activity.RESULT_OK || data?.data == null) {
+        promise.reject("MODEL_IMPORT_CANCELLED", "No model file was selected")
+        return
+      }
+      Thread {
+        try {
+          val destination = modelFile(requireNotNull(importFileName))
+          val temporary = File(destination.absolutePath + ".tmp")
+          temporary.delete()
+          context.contentResolver.openInputStream(data.data!!).use { input ->
+            requireNotNull(input) { "Could not open the selected model file" }
+            FileOutputStream(temporary).use { output ->
+              val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+              var total = 0L
+              while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                total += read
+                require(total <= importMaximumBytes) { "Selected model exceeds the device limit" }
+                output.write(buffer, 0, read)
+              }
+              output.fd.sync()
+              require(total >= importMinimumBytes) { "Selected file is too small to be a valid model" }
+            }
+          }
+          if (destination.exists()) require(destination.delete()) { "Could not replace the existing Gemma model" }
+          require(temporary.renameTo(destination)) { "Could not finalize the imported Gemma model" }
+          promise.resolve(destination.absolutePath)
+        } catch (error: Throwable) {
+          runCatching { modelFile(GEMMA_MODEL_FILE + ".tmp").delete() }
+          promise.reject("MODEL_IMPORT_FAILED", error)
+        } finally {
+          importFileName = null
+        }
+      }.start()
+    }
+  }
+
+  init { context.addActivityEventListener(importListener) }
   override fun getName(): String = "ModelDownloader"
 
   @ReactMethod fun addListener(eventName: String) = Unit
@@ -108,6 +161,54 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     }
   }
 
+  @ReactMethod
+  fun getModelPath(fileName: String, promise: Promise) {
+    try {
+      val file = modelFile(fileName)
+      promise.resolve(if (file.exists()) file.absolutePath else null)
+    } catch (error: Throwable) {
+      promise.reject("MODEL_PATH_INVALID", error)
+    }
+  }
+
+  @ReactMethod
+  fun importGemmaModel(promise: Promise) {
+    beginImport(GEMMA_MODEL_FILE, MIN_GEMMA_BYTES, MAX_MODEL_BYTES, promise)
+  }
+
+  @ReactMethod
+  fun importWhisperSmallModel(promise: Promise) {
+    beginImport(WHISPER_SMALL_FILE, WHISPER_SMALL_BYTES, WHISPER_SMALL_BYTES, promise)
+  }
+
+  private fun beginImport(fileName: String, minimumBytes: Long, maximumBytes: Long, promise: Promise) {
+    if (importPromise != null) {
+      promise.reject("MODEL_IMPORT_BUSY", "Another model import is already running")
+      return
+    }
+    val activity = currentActivity
+    if (activity == null) {
+      promise.reject("ACTIVITY_UNAVAILABLE", "Open the application before selecting a model file")
+      return
+    }
+    importPromise = promise
+    importFileName = fileName
+    importMinimumBytes = minimumBytes
+    importMaximumBytes = maximumBytes
+    activity.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+      addCategory(Intent.CATEGORY_OPENABLE)
+      type = "application/octet-stream"
+      putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/octet-stream", "application/x-tflite", "*/*"))
+    }, IMPORT_MODEL_REQUEST)
+  }
+
+  override fun invalidate() {
+    importPromise?.reject("MODEL_IMPORT_CANCELLED", "Model import was cancelled")
+    importPromise = null
+    context.removeActivityEventListener(importListener)
+    super.invalidate()
+  }
+
   private fun modelFile(fileName: String): File {
     require(fileName.matches(Regex("[A-Za-z0-9._-]{1,120}"))) { "Invalid model file name" }
     val dir = File(context.filesDir, "models").also { it.mkdirs() }
@@ -143,6 +244,11 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
   private fun ByteArray.toHex(): String = joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0') }
 
   companion object {
+    private const val IMPORT_MODEL_REQUEST = 4110
+    private const val GEMMA_MODEL_FILE = "gemma-3-1b-it-int4.task"
+    private const val MIN_GEMMA_BYTES = 300L * 1024L * 1024L
     private const val MAX_MODEL_BYTES = 700L * 1024L * 1024L
+    private const val WHISPER_SMALL_FILE = "ggml-small.bin"
+    private const val WHISPER_SMALL_BYTES = 487601967L
   }
 }

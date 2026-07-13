@@ -50,6 +50,7 @@ export function ScamToolsView({ initialText, onAnalyzeAsCall }: { initialText?: 
         placeholder="Paste SMS, WhatsApp, Telegram text or URL"
         placeholderTextColor={colors.muted}
         style={styles.input}
+        maxLength={20000}
         textAlignVertical="top"
         value={text}
       />

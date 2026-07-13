@@ -8,6 +8,14 @@ import { AudioCaptureModule, audioEvents, ModelDownloader, modelEvents, WhisperM
 import { OverlayModule } from '@bridge/OverlayBridge'
 import { notificationEvents } from '@bridge/NotificationAccessBridge'
 import { SecureStorage } from '@bridge/SecureStorageBridge'
+import { detectCallbackNumber } from '../utils/callbackDetector'
+import { analyzePressure } from '../utils/pressureAnalyzer'
+import { matchSemanticTemplates } from '../utils/semanticMatcher'
+import { getRepeatRiskBonus, recordCall } from '../utils/callMemory'
+import { saveTranscriptEntry } from '../utils/transcriptHistory'
+import { addFineTuneExample } from '../utils/fineTuneDataCollector'
+import { LLMModule, GEMMA_MODEL_FILE } from '../bridge/LLMBridge'
+import { buildPrompt, QUICK_QUESTIONS, SYSTEM_PROMPT } from '../utils/llmPrompts'
 import {
   analyzeTranscript,
   buildEvidenceBundle,
@@ -32,10 +40,27 @@ import type { CaseLabel, CaseStatus, RiskSignal, SavedCase, WorkflowFlags } from
 
 const validStatuses: CaseStatus[] = ['new', 'reviewing', 'escalated', 'closed']
 
-const modelFile = 'ggml-small.bin'
-const modelUrl = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin'
-const modelSha256 = '1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b'
-const modelSize = 487601967
+type ModelSize = 'tiny' | 'small'
+
+const MODEL_CONFIGS: Record<ModelSize, { file: string; url: string; sha256: string; size: number; label: string }> = {
+  tiny: {
+    file: 'ggml-tiny.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin',
+    // SHA256 from whisper.cpp/models/SHA256SUMS — update if HF file changes
+    sha256: 'be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21',
+    size: 75572464,
+    label: 'Whisper Tiny (fast, ~75 MB)',
+  },
+  small: {
+    file: 'ggml-small.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
+    sha256: '1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b',
+    size: 487601967,
+    label: 'Whisper Small (accurate, ~488 MB)',
+  },
+}
+
+const modelSizeKey = 'voiceshield.model-size.v1'
 const privacyConsentKey = 'voiceshield.privacy-consent.v1'
 const donationConsentKey = 'voiceshield.donation-consent.v1'
 const trustedContactKey = 'voiceshield.trusted-contact.v1'
@@ -70,6 +95,9 @@ export function useWorkspace() {
   const [reviewerName, setReviewerName] = useState('Fraud reviewer')
   const [source, setSource] = useState<'Live Caption' | 'Whisper' | 'Manual'>('Manual')
 
+  // ---- model size preference ----
+  const [modelSizePref, setModelSizePref] = useState<ModelSize>('small')
+
   // ---- live capture ----
   const [isListening, setIsListening] = useState(false)
   const [modelReady, setModelReady] = useState(false)
@@ -84,14 +112,29 @@ export function useWorkspace() {
   const [callStatus, setCallStatus] = useState('No active call context')
   const [trustedContact, setTrustedContact] = useState<TrustedContact | null>(null)
   const [autoDeleteTranscript, setAutoDeleteTranscript] = useState(true)
+  const [captureCompleteness, setCaptureCompleteness] = useState(1.0)
+  // Hysteresis: track displayed risk to avoid bouncing alerts
+  const lastAlertedRiskRef = useRef<string>('low')
+  const alertCooldownRef = useRef<number>(0)
+  // Dedup: last N chars from each source to prevent double-counting
+  const lastLiveCaptionRef = useRef('')
+  const lastWhisperRef = useRef('')
+  // Temporal signals: track when each signal was received for decay
+  const signalTimestampsRef = useRef<Map<string, number>>(new Map())
   const criticalAlertedRef = useRef(false)
   const lastAudibleAtRef = useRef(Date.now())
+  const sessionStartRef = useRef(Date.now())
 
   // ---- saved cases ----
   const [cases, setCases] = useState<SavedCase[]>([])
   const [hydrated, setHydrated] = useState(false)
+  const [repeatBonusData, setRepeatBonusData] = useState<{ bonus: number; reason: string } | null>(null)
+  const [llmAutoAnalysis, setLlmAutoAnalysis] = useState<string | null>(null)
 
-  const analysis = useMemo(() => analyzeTranscript(transcript, { signals: deviceSignals }), [deviceSignals, transcript])
+  const analysis = useMemo(() => analyzeTranscript(transcript, { signals: deviceSignals, captureCompleteness }), [deviceSignals, transcript, captureCompleteness])
+  const pressureAnalysis = useMemo(() => analyzePressure(transcript), [transcript])
+  const semanticMatches = useMemo(() => matchSemanticTemplates(transcript), [transcript])
+  const callbackInfo = useMemo(() => detectCallbackNumber(transcript), [transcript])
   const timeline = useMemo(() => sentenceTimeline(transcript), [transcript])
   const quality = useMemo(() => datasetQuality(cases), [cases])
   const highSignals = analysis.evidence.filter((item) => item.severity === 'critical' || item.severity === 'high').length
@@ -142,8 +185,10 @@ export function useWorkspace() {
       SecureStorage.getItem(trustedContactKey).catch(() => null),
       SecureStorage.getItem(donationConsentKey).catch(() => null),
       SecureStorage.getItem(autoDeleteTranscriptKey).catch(() => null),
+      AsyncStorage.getItem(modelSizeKey).catch(() => null),
     ])
-      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete]) => {
+      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete, storedModelSize]) => {
+        if (storedModelSize === 'tiny' || storedModelSize === 'small') setModelSizePref(storedModelSize)
         if (!active) return
         const stored = encryptedCases ?? legacyCases
         if (stored) {
@@ -181,7 +226,7 @@ export function useWorkspace() {
     return () => {
       active = false
     }
-  }, [])
+  }, [modelSizePref])
 
   useEffect(() => {
     if (!hydrated) return
@@ -227,12 +272,20 @@ export function useWorkspace() {
         }
       }
       if (event.text) {
+        const incoming = event.text.trim().toLowerCase().slice(-60)
+        // Dedup: skip if Whisper recently produced the same text
+        if (lastWhisperRef.current && incoming && lastWhisperRef.current.includes(incoming)) return
+        lastLiveCaptionRef.current = incoming
         setSource('Live Caption')
         setTranscript((current) => `${current} ${event.text}`.trim())
       }
     })
     const whisperSub = whisperEvents.addListener('VS_WHISPER_TRANSCRIPT', (event: { text?: string }) => {
       if (!event.text) return
+      const incoming = event.text.trim().toLowerCase().slice(-60)
+      // Dedup: skip if Live Caption recently produced the same text
+      if (lastLiveCaptionRef.current && incoming && lastLiveCaptionRef.current.includes(incoming)) return
+      lastWhisperRef.current = incoming
       setSource('Whisper')
       setTranscript((current) => `${current} ${event.text}`.trim())
     })
@@ -247,6 +300,8 @@ export function useWorkspace() {
     const notificationSub = notificationEvents.addListener('VS_NOTIFICATION_SIGNAL', (event: { signalId?: string }) => {
       if (!isListening) return
       const nextSignals = notificationSignalsFromId(event.signalId)
+      // Track timestamp for temporal decay
+      nextSignals.forEach((s) => signalTimestampsRef.current.set(s.id, Date.now()))
       setDeviceSignals((current) => [...new Map([...current, ...nextSignals].map((item) => [item.id, item])).values()])
     })
     const modelSub = modelEvents.addListener('VS_MODEL_DOWNLOAD_PROGRESS', (event: { progress?: number }) => setModelProgress(event.progress ?? null))
@@ -258,6 +313,21 @@ export function useWorkspace() {
       notificationSub.remove()
       modelSub.remove()
     }
+  }, [isListening])
+
+  // Expire OTP/notification signals after TTL (OTP: 120s, others: 300s)
+  useEffect(() => {
+    if (!isListening) return undefined
+    const timer = setInterval(() => {
+      const now = Date.now()
+      setDeviceSignals((current) => current.filter((signal) => {
+        const ts = signalTimestampsRef.current.get(signal.id)
+        if (!ts) return true
+        const ttl = signal.id === 'otp_notification' ? 120_000 : 300_000
+        return now - ts < ttl
+      }))
+    }, 15_000)
+    return () => clearInterval(timer)
   }, [isListening])
 
   useEffect(() => {
@@ -275,21 +345,51 @@ export function useWorkspace() {
     void OverlayModule.updateRisk(analysis.score, analysis.risk, source).catch(() => undefined)
   }, [analysis.risk, analysis.score, source])
 
+  // Hysteresis alert: vibrate only when risk level rises, with 60s cooldown per level
   useEffect(() => {
-    if (isListening && analysis.score >= 85 && !criticalAlertedRef.current) {
-      criticalAlertedRef.current = true
-      Vibration.vibrate([0, 300, 150, 300])
+    if (!isListening) {
+      lastAlertedRiskRef.current = 'low'
+      alertCooldownRef.current = 0
+      return
     }
-    if (!isListening || analysis.score < 65) criticalAlertedRef.current = false
-  }, [analysis.score, isListening])
+    const riskOrder = ['low', 'medium', 'high', 'critical']
+    const currentIdx = riskOrder.indexOf(analysis.risk)
+    const alertedIdx = riskOrder.indexOf(lastAlertedRiskRef.current)
+    const now = Date.now()
+    if (currentIdx > alertedIdx || (currentIdx === alertedIdx && now > alertCooldownRef.current)) {
+      if (analysis.risk === 'critical') Vibration.vibrate([0, 300, 150, 300])
+      else if (analysis.risk === 'high') Vibration.vibrate([0, 200])
+      lastAlertedRiskRef.current = analysis.risk
+      alertCooldownRef.current = now + 60_000
+    }
+    // Downgrade slowly: only clear alert state when risk has been low for a while
+    if (analysis.risk === 'low' && now > alertCooldownRef.current) {
+      lastAlertedRiskRef.current = 'low'
+    }
+  }, [analysis.risk, isListening])
+
+  // Update captureCompleteness based on active source
+  useEffect(() => {
+    if (!isListening) { setCaptureCompleteness(1.0); return }
+    // Live Caption reads both sides; Whisper/mic hears owner only (typically)
+    setCaptureCompleteness(source === 'Live Caption' ? 0.9 : source === 'Whisper' ? 0.45 : 1.0)
+  }, [source, isListening])
+
+  const updateModelSize = useCallback(async (size: ModelSize) => {
+    setModelSizePref(size)
+    await AsyncStorage.setItem(modelSizeKey, size)
+    // Reset model ready state — new model needs to be downloaded/verified
+    setModelReady(false)
+  }, [])
 
   const prepareWhisper = useCallback(async () => {
+    const cfg = MODEL_CONFIGS[modelSizePref]
     setCaptureError(null)
     setCaptureNotice(null)
     setModelProgress(0)
     try {
-      const existing = await ModelDownloader.getVerifiedModelPath(modelFile, modelSha256, modelSize)
-      const path = existing ?? (await ModelDownloader.downloadModel(modelUrl, modelFile, modelSha256, modelSize))
+      const existing = await ModelDownloader.getVerifiedModelPath(cfg.file, cfg.sha256, cfg.size)
+      const path = existing ?? (await ModelDownloader.downloadModel(cfg.url, cfg.file, cfg.sha256, cfg.size))
       await WhisperModule.initialize(path, 'auto')
       setModelReady(true)
       setModelProgress(null)
@@ -299,7 +399,7 @@ export function useWorkspace() {
       setCaptureError('Could not prepare the speech model. Check internet access and free storage.')
       throw error
     }
-  }, [])
+  }, [modelSizePref])
 
   const startListening = useCallback(async () => {
     setCaptureError(null)
@@ -330,6 +430,7 @@ export function useWorkspace() {
         setCaptureNotice('Live Caption mode is active. Only approved system caption text is processed.')
       }
       await AccessibilityModule.setProtectionActive(true)
+      sessionStartRef.current = Date.now()
       setIsListening(true)
     } catch {
       await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
@@ -340,6 +441,33 @@ export function useWorkspace() {
   }, [prepareWhisper, privacyConsent])
 
   const stopListening = useCallback(async () => {
+    // Record fingerprint before stopping for cross-call memory
+    const snap = analyzeTranscript(transcript, { signals: deviceSignals })
+    const durationSec = Math.round((Date.now() - sessionStartRef.current) / 1000)
+    if (snap.score >= 40) {
+      void recordCall({ matchedRuleIds: snap.evidence.map((e) => e.id), score: snap.score, schemeLabel: snap.schemeLabel })
+    }
+    if (transcript.trim().length > 0) {
+      void saveTranscriptEntry({ ts: sessionStartRef.current, transcript, score: snap.score, risk: snap.risk, schemeLabel: snap.schemeLabel, durationSec })
+    }
+    void getRepeatRiskBonus().then((data) => {
+      if (data.bonus > 0) setRepeatBonusData({ bonus: data.bonus, reason: data.reason ?? '' })
+    })
+    // Auto-collect fine-tune example from confirmed scam/safe sessions
+    const ftLabel = snap.risk === 'critical' || snap.risk === 'high' ? 'scam' : snap.risk === 'low' ? 'safe' : 'uncertain'
+    // labelSource='auto_rules' — weight 0.2; user must confirm before gold training
+    void addFineTuneExample(transcript, ftLabel, snap.schemeLabel, snap.score, 'auto_rules')
+    // Auto-run LLM analysis when risk is high/critical and LLM is loaded
+    if ((snap.risk === 'critical' || snap.risk === 'high') && transcript.trim().length > 30) {
+      void LLMModule?.isReady().then(ready => {
+        if (!ready) return
+        setLlmAutoAnalysis(null)
+        const q = QUICK_QUESTIONS[0]
+        if (!q) return
+        const prompt = buildPrompt(SYSTEM_PROMPT, q.prompt, transcript)
+        void LLMModule?.generateResponse(prompt).then(result => setLlmAutoAnalysis(result)).catch(() => undefined)
+      })
+    }
     await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
     await AudioCaptureModule.stopCapture().catch(() => undefined)
     await WhisperModule.stopStreaming().catch(() => undefined)
@@ -353,7 +481,7 @@ export function useWorkspace() {
       setFileName('manual-call.txt')
       setSource('Manual')
     }
-  }, [autoDeleteTranscript])
+  }, [autoDeleteTranscript, deviceSignals, transcript])
 
   useEffect(() => () => {
     void AccessibilityModule.setProtectionActive(false).catch(() => undefined)
@@ -440,7 +568,8 @@ export function useWorkspace() {
     await AudioCaptureModule.stopCapture().catch(() => undefined)
     await WhisperModule.stopStreaming().catch(() => undefined)
     await OverlayModule.hide().catch(() => undefined)
-    await ModelDownloader.deleteModel(modelFile).catch(() => undefined)
+    await ModelDownloader.deleteModel(MODEL_CONFIGS[modelSizePref].file).catch(() => undefined)
+    await ModelDownloader.deleteModel(MODEL_CONFIGS[modelSizePref === 'small' ? 'tiny' : 'small'].file).catch(() => undefined)
     await CallModule.clearProtectionData().catch(() => undefined)
     await AsyncStorage.removeItem(storageKey).catch(() => undefined)
     await SecureStorage.clear()
@@ -453,7 +582,7 @@ export function useWorkspace() {
     setStorageError(null)
     setTrustedContact(null)
     setCaptureNotice(null)
-  }, [])
+  }, [modelSizePref])
 
   const saveTrustedContact = useCallback(async (name: string, phone: string) => {
     const normalized: TrustedContact = {
@@ -577,8 +706,11 @@ export function useWorkspace() {
     // capture
     isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript,
     startListening, stopListening, prepareWhisper,
+    modelSizePref, updateModelSize,
+    repeatBonusData, llmAutoAnalysis, captureCompleteness,
     // computed
-    analysis, timeline, quality, datasetStageTotals, operations, highSignals, cases, hydrated,
+    analysis, pressureAnalysis, semanticMatches, callbackInfo,
+    timeline, quality, datasetStageTotals, operations, highSignals, cases, hydrated,
     // handlers
     loadSample, saveCurrentCase, loadCase, acceptPrivacy, declinePrivacy, deleteAllLocalData,
     saveTrustedContact, clearTrustedContact, callTrustedContact, shareTrustedAlert,

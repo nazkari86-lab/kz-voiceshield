@@ -1,8 +1,13 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SetupScreen } from '@screens/SetupScreen'
+import { OnboardingScreen } from '@screens/OnboardingScreen'
 import { useWorkspace } from '@hooks/useWorkspace'
-import { colors, riskColor } from './theme'
+import { LiveAlertModule } from './bridge/LiveAlertBridge'
+import { riskColor } from './theme'
+import { ThemeProvider, useTheme } from './ThemeContext'
+import { I18nProvider } from './I18nContext'
 import { AttackChainView } from './components/AttackChainView'
 import { CasesView } from './components/CasesView'
 import { DatasetView } from './components/DatasetView'
@@ -17,20 +22,25 @@ import { ThreatsView } from './components/ThreatsView'
 import { TimelineView } from './components/TimelineView'
 import { VerifyView } from './components/VerifyView'
 import { ModelView } from './components/ModelView'
+import { StatsView, recordSession } from './components/StatsView'
 import { NumberShieldView } from './components/NumberShieldView'
 import { ScamToolsView } from './components/ScamToolsView'
+import { SmsScannerView } from './components/SmsScannerView'
+import { TranscriptHistoryView } from './components/TranscriptHistoryView'
+import { LLMAssistantView } from './components/LLMAssistantView'
 import { EmergencyView } from './components/EmergencyView'
 import { ScreenMotion } from './components/ScreenMotion'
 import { VoiceMessageView } from './components/VoiceMessageView'
 import { MotionPressable } from './components/MotionPressable'
 import { ShareIntentModule, shareIntentEvents } from './bridge/ShareIntentBridge'
+import { ModelDownloader } from './bridge/WhisperBridge'
 import { VoiceMessageModule, voiceMessageEvents } from './bridge/VoiceMessageBridge'
 
 type Tab =
   | 'live' | 'review' | 'evidence' | 'timeline' | 'threats' | 'chain'
   | 'simulator' | 'emergency' | 'cases' | 'operations' | 'dataset'
   | 'playbook' | 'family' | 'verify' | 'number' | 'tools' | 'voiceMsg'
-  | 'model' | 'setup'
+  | 'model' | 'setup' | 'stats' | 'sms' | 'history' | 'llm'
 
 const primaryTabs: Array<[Tab, string, string]> = [
   ['live', 'Shield', 'LIVE'],
@@ -54,6 +64,10 @@ const toolTabs: Array<[Tab, string, string]> = [
   ['number', 'Number shield', 'Local call-safety controls'],
   ['verify', 'Verify', 'Official callback directory'],
   ['model', 'Data & model', 'Transparent detector details'],
+  ['stats', 'Statistics', 'Session and case analytics'],
+  ['sms', 'SMS scanner', 'Scan SMS for scam patterns'],
+  ['history', 'Call history', 'Transcript history and past calls'],
+  ['llm', 'AI assistant', 'Ask Gemma 3 1B about suspicious calls'],
   ['setup', 'Setup', 'Privacy, model and device access'],
 ]
 
@@ -67,20 +81,65 @@ const tabMeta: Record<Tab, { label: string; group: string }> = {
   family: { label: 'Family', group: 'Protect' }, verify: { label: 'Verify', group: 'Protect' },
   number: { label: 'Number shield', group: 'Protect' }, tools: { label: 'Scam tools', group: 'Investigate' },
   voiceMsg: { label: 'Voice message', group: 'Investigate' }, model: { label: 'Data & model', group: 'Workspace' },
+  stats: { label: 'Statistics', group: 'Workspace' },
+  sms: { label: 'SMS scanner', group: 'Protect' },
+  history: { label: 'Call history', group: 'Investigate' },
+  llm: { label: 'AI assistant', group: 'Investigate' },
   setup: { label: 'Setup', group: 'Workspace' },
 }
 
+const ONBOARDING_KEY = 'voiceshield.onboarding-done.v1'
+
 export default function App() {
+  return (
+    <ThemeProvider>
+      <I18nProvider>
+        <AppContent />
+      </I18nProvider>
+    </ThemeProvider>
+  )
+}
+
+function AppContent() {
+  const { colors, isDark } = useTheme()
   const [tab, setTab] = useState<Tab>('live')
   const [sharedText, setSharedText] = useState('')
   const [pendingSharedAudio, setPendingSharedAudio] = useState(false)
   const [hubOpen, setHubOpen] = useState(false)
+  const [onboardingDone, setOnboardingDone] = useState(true)
+  const lastAlertRiskRef = useRef<string>('')
   const w = useWorkspace()
   const selectTab = (next: Tab) => { setHubOpen(false); setTab(next) }
+
+  // Check if onboarding has been completed
+  useEffect(() => {
+    void AsyncStorage.getItem(ONBOARDING_KEY).then((value) => {
+      setOnboardingDone(value === 'done')
+    }).catch(() => setOnboardingDone(true))
+  }, [])
 
   useEffect(() => {
     if (w.hydrated && !w.privacyConsent) selectTab('setup')
   }, [w.hydrated, w.privacyConsent])
+
+  // Fire live alert notification when risk escalates to critical/high during active session
+  useEffect(() => {
+    if (!w.isListening) { lastAlertRiskRef.current = ''; return }
+    const risk = w.analysis.risk
+    const prev = lastAlertRiskRef.current
+    if ((risk === 'critical' || risk === 'high') && prev !== risk) {
+      LiveAlertModule?.showThreatAlert(risk, w.analysis.score, w.analysis.schemeLabel)
+    }
+    if (risk === 'low' || risk === 'medium') LiveAlertModule?.cancelAlert()
+    lastAlertRiskRef.current = risk
+  }, [w.isListening, w.analysis.risk, w.analysis.score, w.analysis.schemeLabel])
+
+  // Record session when listening starts
+  const prevListeningRef = useRef(false)
+  useEffect(() => {
+    if (w.isListening && !prevListeningRef.current) { void recordSession() }
+    prevListeningRef.current = w.isListening
+  }, [w.isListening])
 
   useEffect(() => {
     const accept = (text?: string | null) => {
@@ -112,8 +171,8 @@ export default function App() {
   const primaryActive = primaryTabs.some(([key]) => key === tab) && !hubOpen
   const content = (
     <>
-      {tab === 'live' && <LiveView analysis={w.analysis} transcript={w.transcript} source={w.source} isListening={w.isListening} audioLevel={w.audioLevel} error={w.captureError} notice={w.captureNotice} callStatus={w.callStatus} storageError={w.storageError} trustedContactName={w.trustedContact?.name} onChangeTranscript={w.setTranscript} onToggleListening={() => { void (w.isListening ? w.stopListening() : w.startListening()) }} onSave={w.saveCurrentCase} onExportReport={w.exportReport} onCallTrusted={() => { void w.callTrustedContact() }} onOpenEmergency={() => selectTab('emergency')} onOpenSimulator={() => selectTab('simulator')} />}
-      {tab === 'review' && <ReviewView analysis={w.analysis} timelineLength={w.timeline.length} highSignals={w.highSignals} />}
+      {tab === 'live' && <LiveView analysis={w.analysis} transcript={w.transcript} source={w.source} isListening={w.isListening} audioLevel={w.audioLevel} error={w.captureError} notice={w.captureNotice} callStatus={w.callStatus} storageError={w.storageError} trustedContactName={w.trustedContact?.name} callbackWarning={w.callbackInfo?.warning} onChangeTranscript={w.setTranscript} onToggleListening={() => { void (w.isListening ? w.stopListening() : w.startListening()) }} onSave={w.saveCurrentCase} onExportReport={w.exportReport} onCallTrusted={() => { void w.callTrustedContact() }} onOpenEmergency={() => selectTab('emergency')} onOpenSimulator={() => selectTab('simulator')} />}
+      {tab === 'review' && <ReviewView analysis={w.analysis} timelineLength={w.timeline.length} highSignals={w.highSignals} pressureAnalysis={w.pressureAnalysis} semanticMatches={w.semanticMatches} callbackInfo={w.callbackInfo} repeatBonus={w.repeatBonusData ?? undefined} llmAutoAnalysis={w.llmAutoAnalysis} captureCompleteness={w.captureCompleteness} />}
       {tab === 'evidence' && <EvidenceView analysis={w.analysis} />}
       {tab === 'timeline' && <TimelineView timeline={w.timeline} />}
       {tab === 'threats' && <ThreatsView />}
@@ -129,14 +188,27 @@ export default function App() {
       {tab === 'tools' && <ScamToolsView initialText={sharedText} onAnalyzeAsCall={(text) => { w.setTranscript(text); w.setFileName('manual-scam-check.txt'); selectTab('review') }} />}
       {tab === 'voiceMsg' && <VoiceMessageView modelReady={w.modelReady} pendingSharedAudio={pendingSharedAudio} onClearSharedAudio={() => setPendingSharedAudio(false)} onAnalyzeAsCall={(transcript) => { w.setTranscript(transcript); w.setFileName('voice-message.ogg'); selectTab('review') }} />}
       {tab === 'verify' && <VerifyView />}
+      {tab === 'stats' && <StatsView cases={w.cases} />}
+      {tab === 'sms' && <SmsScannerView />}
+      {tab === 'history' && <TranscriptHistoryView />}
+      {tab === 'llm' && <LLMAssistantView transcript={w.transcript} />}
       {tab === 'model' && <ModelView />}
-      {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
+      {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} modelSizePref={w.modelSizePref} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onImportWhisper={() => { void ModelDownloader.importWhisperSmallModel().then(() => w.prepareWhisper()) }} onSetModelSize={w.updateModelSize} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
     </>
   )
 
+  if (!onboardingDone) {
+    return (
+      <OnboardingScreen onDone={() => {
+        void AsyncStorage.setItem(ONBOARDING_KEY, 'done')
+        setOnboardingDone(true)
+      }} />
+    )
+  }
+
   return (
-    <SafeAreaView style={styles.shell}>
-      <View style={styles.header}>
+    <SafeAreaView style={{ backgroundColor: colors.bg, flex: 1 }}>
+      <View style={{ alignItems: 'center', backgroundColor: colors.brandDark, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 17 }}>
         <View style={styles.headerText}>
           <Text style={styles.brand}>KZ VOICESHIELD</Text>
           <Text style={styles.title}>{hubOpen ? 'Protection center' : tabMeta[tab].label}</Text>
@@ -145,17 +217,20 @@ export default function App() {
         <View style={[styles.badge, { backgroundColor: riskColor[w.analysis.risk] }]}><Text style={styles.badgeText}>{w.analysis.score}</Text><Text style={styles.badgeLabel}>RISK</Text></View>
       </View>
 
-      <View style={styles.navigation}>
-        {primaryTabs.map(([key, label, glyph]) => <Pressable key={key} onPress={() => selectTab(key)} style={[styles.navItem, !hubOpen && tab === key && styles.navItemActive]}><Text style={[styles.navGlyph, !hubOpen && tab === key && styles.navGlyphActive]}>{glyph}</Text><Text style={[styles.navText, !hubOpen && tab === key && styles.navTextActive]}>{label}</Text></Pressable>)}
-        <Pressable onPress={() => setHubOpen((current) => !current)} style={[styles.navItem, (!primaryActive || hubOpen) && styles.navItemActive]}><Text style={[styles.navGlyph, (!primaryActive || hubOpen) && styles.navGlyphActive]}>ALL</Text><Text style={[styles.navText, (!primaryActive || hubOpen) && styles.navTextActive]}>More</Text></Pressable>
+      <View style={{ backgroundColor: colors.card, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', gap: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
+        {primaryTabs.map(([key, label, glyph]) => {
+          const active = !hubOpen && tab === key
+          return <Pressable key={key} onPress={() => selectTab(key)} style={[styles.navItem, active && { backgroundColor: colors.softBrand }]}><Text style={[styles.navGlyph, { color: active ? colors.brandDark : colors.muted }]}>{glyph}</Text><Text style={[styles.navText, { color: active ? colors.brandDark : colors.sub, fontWeight: active ? '900' : '800' }]}>{label}</Text></Pressable>
+        })}
+        {(() => { const active = !primaryActive || hubOpen; return <Pressable onPress={() => setHubOpen((current) => !current)} style={[styles.navItem, active && { backgroundColor: colors.softBrand }]}><Text style={[styles.navGlyph, { color: active ? colors.brandDark : colors.muted }]}>ALL</Text><Text style={[styles.navText, { color: active ? colors.brandDark : colors.sub, fontWeight: active ? '900' : '800' }]}>More</Text></Pressable> })()}
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <ScreenMotion screenKey={hubOpen ? 'hub' : tab}>
           {hubOpen ? (
             <View>
-              <View style={styles.hubHero}><Text style={styles.hubEyebrow}>WORKSPACE</Text><Text style={styles.hubTitle}>Everything else, clearly organized.</Text><Text style={styles.hubCopy}>Choose a tool for investigation, recovery, reviewers or device setup.</Text></View>
-              <View style={styles.toolGrid}>{toolTabs.map(([key, label, copy]) => <MotionPressable key={key} onPress={() => selectTab(key)} style={styles.toolCard}><Text style={styles.toolGroup}>{tabMeta[key].group.toUpperCase()}</Text><Text style={styles.toolTitle}>{label}</Text><Text style={styles.toolCopy}>{copy}</Text><Text style={styles.toolArrow}>OPEN</Text></MotionPressable>)}</View>
+              <View style={{ backgroundColor: colors.brandDark, borderRadius: 8, gap: 7, marginBottom: 14, padding: 18 }}><Text style={styles.hubEyebrow}>WORKSPACE</Text><Text style={styles.hubTitle}>Everything else, clearly organized.</Text><Text style={styles.hubCopy}>Choose a tool for investigation, recovery, reviewers or device setup.</Text></View>
+              <View style={styles.toolGrid}>{toolTabs.map(([key, label, copy]) => <MotionPressable key={key} onPress={() => selectTab(key)} style={{ backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexBasis: '48%', flexGrow: 1, gap: 5, minHeight: 136, padding: 13 }}><Text style={{ color: colors.brand, fontSize: 9, fontWeight: '900', letterSpacing: 0.8 }}>{tabMeta[key].group.toUpperCase()}</Text><Text style={{ color: colors.ink, fontSize: 14, fontWeight: '900' }}>{label}</Text><Text style={{ color: colors.sub, fontSize: 11, lineHeight: 16 }}>{copy}</Text><Text style={{ color: colors.brandDark, fontSize: 9, fontWeight: '900', letterSpacing: 0.8, marginTop: 'auto' }}>OPEN</Text></MotionPressable>)}</View>
             </View>
           ) : content}
         </ScreenMotion>
@@ -165,8 +240,6 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  shell: { backgroundColor: colors.bg, flex: 1 },
-  header: { alignItems: 'center', backgroundColor: colors.brandDark, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 17 },
   headerText: { flex: 1 },
   brand: { color: '#8fe0bd', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
   title: { color: '#fff', fontSize: 25, fontWeight: '900', marginTop: 2 },
@@ -174,22 +247,12 @@ const styles = StyleSheet.create({
   badge: { alignItems: 'center', borderRadius: 8, height: 54, justifyContent: 'center', width: 58 },
   badgeText: { color: '#fff', fontSize: 21, fontWeight: '900', lineHeight: 24 },
   badgeLabel: { color: '#fff', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
-  navigation: { backgroundColor: colors.card, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', gap: 4, paddingHorizontal: 10, paddingVertical: 8 },
   navItem: { alignItems: 'center', borderRadius: 7, flex: 1, gap: 2, paddingVertical: 7 },
-  navItemActive: { backgroundColor: colors.softBrand },
-  navGlyph: { color: colors.muted, fontSize: 9, fontWeight: '900', letterSpacing: 0.4 },
-  navGlyphActive: { color: colors.brandDark },
-  navText: { color: colors.sub, fontSize: 10, fontWeight: '800' },
-  navTextActive: { color: colors.brandDark, fontWeight: '900' },
+  navGlyph: { fontSize: 9, fontWeight: '900', letterSpacing: 0.4 },
+  navText: { fontSize: 10, fontWeight: '800' },
   content: { padding: 16, paddingBottom: 36 },
-  hubHero: { backgroundColor: colors.brandDark, borderRadius: 8, gap: 7, marginBottom: 14, padding: 18 },
   hubEyebrow: { color: '#8fe0bd', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
   hubTitle: { color: '#fff', fontSize: 23, fontWeight: '900', lineHeight: 29 },
   hubCopy: { color: '#c1dfd0', fontSize: 13, lineHeight: 19 },
   toolGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  toolCard: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexBasis: '48%', flexGrow: 1, gap: 5, minHeight: 136, padding: 13 },
-  toolGroup: { color: colors.brand, fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
-  toolTitle: { color: colors.ink, fontSize: 14, fontWeight: '900' },
-  toolCopy: { color: colors.sub, fontSize: 11, lineHeight: 16 },
-  toolArrow: { color: colors.brandDark, fontSize: 9, fontWeight: '900', letterSpacing: 0.8, marginTop: 'auto' },
 })

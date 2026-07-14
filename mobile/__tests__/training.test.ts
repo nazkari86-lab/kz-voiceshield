@@ -1,4 +1,4 @@
-import { trainingScenarios, trainingScore } from '../src/training'
+import { dailyTrainingScenario, examScenarios, trainingScenarios, trainingScore } from '../src/training'
 import { recoveryPlans } from '../src/emergency'
 
 describe('training and recovery content', () => {
@@ -13,6 +13,12 @@ describe('training and recovery content', () => {
       expect(step.choices.some((choice) => choice.safe)).toBe(true)
       expect(step.choices.some((choice) => !choice.safe)).toBe(true)
     })
+  })
+
+  it('ships a substantial practice library with deterministic daily and exam modes', () => {
+    expect(trainingScenarios.length).toBeGreaterThanOrEqual(30)
+    expect(dailyTrainingScenario(new Date('2026-07-15T00:00:00Z'))).toBeTruthy()
+    expect(examScenarios(5, new Date('2026-07-15T00:00:00Z'))).toHaveLength(5)
   })
 
   it('provides complete recovery plans for every exposure type', () => {

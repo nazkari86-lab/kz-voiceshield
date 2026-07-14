@@ -2,7 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useEffect, useRef, useState } from 'react'
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 import { colors } from '../theme'
-import { trainingScenarios, trainingScore } from '../training'
+import { dailyTrainingScenario, examScenarios, scenarioSkill, trainingScenarios, trainingScore, trainingSkillLabels } from '../training'
+import type { TrainingSkill } from '../training'
 import { TrainingVoiceModule } from '../bridge/TrainingVoiceBridge'
 
 export function SimulatorView() {
@@ -13,6 +14,11 @@ export function SimulatorView() {
   const [bestScore, setBestScore] = useState(0)
   const [completedCount, setCompletedCount] = useState(0)
   const [voiceStatus, setVoiceStatus] = useState('')
+  const [selectedSkill, setSelectedSkill] = useState<TrainingSkill | 'all'>('all')
+  const [examQueue, setExamQueue] = useState<string[]>([])
+  const [examIndex, setExamIndex] = useState(0)
+  const [examScores, setExamScores] = useState<number[]>([])
+  const [examResult, setExamResult] = useState<number | null>(null)
   const reveal = useRef(new Animated.Value(0)).current
   const scenario = trainingScenarios.find((item) => item.id === scenarioId)
   const step = scenario?.steps[stepIndex]
@@ -32,7 +38,15 @@ export function SimulatorView() {
     Animated.timing(reveal, { duration: 260, toValue: 1, useNativeDriver: true }).start()
   }, [reveal, scenario, step])
 
-  const start = (id: string) => { setScenarioId(id); setStepIndex(0); setAnswers([]); setFeedback('') }
+  const start = (id: string) => { setScenarioId(id); setStepIndex(0); setAnswers([]); setFeedback(''); setVoiceStatus('') }
+  const startExam = () => {
+    const queue = examScenarios().map((item) => item.id)
+    setExamQueue(queue)
+    setExamIndex(0)
+    setExamScores([])
+    setExamResult(null)
+    start(queue[0]!)
+  }
   const choose = (safe: boolean, message: string) => {
     if (feedback) return
     setAnswers((current) => [...current, safe])
@@ -50,6 +64,19 @@ export function SimulatorView() {
         void AsyncStorage.setItem('voiceshield.training.v1', JSON.stringify({ bestScore: nextBest, completedCount: nextCount }))
         return nextCount
       })
+      if (examQueue.length > 0) {
+        const scores = [...examScores, score]
+        if (examIndex + 1 < examQueue.length) {
+          setExamScores(scores)
+          setExamIndex((current) => current + 1)
+          start(examQueue[examIndex + 1]!)
+          return
+        }
+        setExamResult(Math.round(scores.reduce((sum, item) => sum + item, 0) / scores.length))
+        setExamQueue([])
+        setScenarioId(null)
+        return
+      }
       setStepIndex(scenario.steps.length)
     }
   }
@@ -95,10 +122,19 @@ export function SimulatorView() {
     </Animated.View>
   }
 
+  if (examResult !== null) {
+    return <View style={styles.result}><Text style={styles.kicker}>EXAM COMPLETE</Text><Text style={styles.title}>Fraud recognition score</Text><Text style={styles.score}>{examResult}<Text style={styles.outOf}>/100</Text></Text><Text style={styles.copy}>{examResult >= 80 ? 'You recognised the main pressure patterns. Review any unsafe answers before a real call.' : 'Review the weak skill cards, then take another exam.'}</Text><Pressable style={styles.primary} onPress={startExam}><Text style={styles.primaryText}>New exam</Text></Pressable><Pressable style={styles.secondary} onPress={() => setExamResult(null)}><Text style={styles.secondaryText}>Back to training</Text></Pressable></View>
+  }
+
+  const daily = dailyTrainingScenario()
+  const visibleScenarios = selectedSkill === 'all' ? trainingScenarios : trainingScenarios.filter((item) => scenarioSkill(item) === selectedSkill)
   return (
     <View>
-      <View style={styles.trainingHero}><Text style={styles.kicker}>VOICE LAB</Text><Text style={styles.trainingHeroTitle}>Scam call training</Text><Text style={styles.heroHint}>Practice decisions under pressure. No real call or personal data is used.</Text><View style={styles.stats}><Text style={styles.stat}>{completedCount} sessions</Text><Text style={styles.stat}>{bestScore} best score</Text></View></View>
-      {trainingScenarios.map((item) => <Pressable key={item.id} style={styles.item} onPress={() => start(item.id)}><Text style={styles.label}>{item.title}</Text><Text style={styles.meta}>{item.language} · {item.difficulty} · {item.steps.length} decisions</Text></Pressable>)}
+      <View style={styles.trainingHero}><Text style={styles.kicker}>VOICE LAB</Text><Text style={styles.trainingHeroTitle}>Scam call training</Text><Text style={styles.heroHint}>Practice decisions under pressure. No real call or personal data is used.</Text><View style={styles.stats}><Text style={styles.stat}>{completedCount} sessions</Text><Text style={styles.stat}>{bestScore} best score</Text><Text style={styles.stat}>{trainingScenarios.length} scenarios</Text></View></View>
+      <View style={styles.modeRow}><Pressable style={styles.daily} onPress={() => start(daily.id)}><Text style={styles.modeKicker}>TODAY</Text><Text style={styles.modeTitle}>{daily.title}</Text><Text style={styles.modeCopy}>Daily practice</Text></Pressable><Pressable style={styles.exam} onPress={startExam}><Text style={styles.modeKicker}>EXAM</Text><Text style={styles.modeTitle}>5-case challenge</Text><Text style={styles.modeCopy}>Measure your skills</Text></Pressable></View>
+      <Text style={styles.filterTitle}>Practice by skill</Text>
+      <View style={styles.filters}><Pressable style={[styles.filter, selectedSkill === 'all' && styles.filterActive]} onPress={() => setSelectedSkill('all')}><Text style={[styles.filterText, selectedSkill === 'all' && styles.filterTextActive]}>All</Text></Pressable>{(Object.keys(trainingSkillLabels) as TrainingSkill[]).map((skill) => <Pressable key={skill} style={[styles.filter, selectedSkill === skill && styles.filterActive]} onPress={() => setSelectedSkill(skill)}><Text style={[styles.filterText, selectedSkill === skill && styles.filterTextActive]}>{trainingSkillLabels[skill]}</Text></Pressable>)}</View>
+      {visibleScenarios.map((item) => <Pressable key={item.id} style={styles.item} onPress={() => start(item.id)}><Text style={styles.label}>{item.title}</Text><Text style={styles.meta}>{item.language} · {item.difficulty} · {trainingSkillLabels[scenarioSkill(item)]} · {item.steps.length} decisions</Text></Pressable>)}
     </View>
   )
 }
@@ -118,6 +154,15 @@ const styles = StyleSheet.create({
   hint: { color: colors.sub, fontSize: 12, lineHeight: 18, marginBottom: 4 },
   heroHint: { color: '#d8ebe1', fontSize: 12, lineHeight: 18, marginBottom: 4 },
   stats: { flexDirection: 'row', gap: 8 }, stat: { backgroundColor: '#1e5948', borderRadius: 5, color: '#e8f7ef', fontSize: 11, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 5 },
+  modeRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  daily: { backgroundColor: '#e8f7ef', borderColor: '#88c5ad', borderRadius: 8, borderWidth: 1, flex: 1, gap: 4, padding: 13 },
+  exam: { backgroundColor: '#eef5ff', borderColor: '#a8c7f0', borderRadius: 8, borderWidth: 1, flex: 1, gap: 4, padding: 13 },
+  modeKicker: { color: colors.brandDark, fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  modeTitle: { color: colors.ink, fontSize: 13, fontWeight: '900' }, modeCopy: { color: colors.sub, fontSize: 11 },
+  filterTitle: { color: colors.ink, fontSize: 14, fontWeight: '900', marginBottom: 8 },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 14 },
+  filter: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 7 }, filterActive: { backgroundColor: colors.brand, borderColor: colors.brand },
+  filterText: { color: colors.sub, fontSize: 11, fontWeight: '800' }, filterTextActive: { color: '#fff' },
   item: { backgroundColor: colors.card, borderColor: colors.border, borderLeftColor: colors.brand, borderLeftWidth: 4, borderRadius: 8, borderWidth: 1, gap: 3, marginBottom: 10, padding: 14 },
   label: { color: colors.ink, fontSize: 15, fontWeight: '800' },
   meta: { color: colors.sub, fontSize: 12 },

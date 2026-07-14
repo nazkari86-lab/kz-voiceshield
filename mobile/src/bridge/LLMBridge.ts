@@ -19,8 +19,10 @@ export const llmEvents = LLMModule
 
 // Model file name used by ModelDownloader
 export const GEMMA_MODEL_FILE = 'gemma-3-1b-it-int4.task'
-// Access requires accepting the Gemma license in Hugging Face. The repository
-// provides LiteRT bundles compatible with MediaPipe LLM Inference on Android.
+export const GEMMA_MODEL_SHA256 = 'e3d981c01aeaaac69a84ffa0d4be13281b3176731063f1bea1c9fe6887bd9dee'
+export const GEMMA_MODEL_BYTES = 554_661_243
+// The verified release asset is downloaded directly by the Android app.
 export const GEMMA_MODEL_URL =
-  'https://huggingface.co/litert-community/Gemma3-1B-IT'
-export const GEMMA_MODEL_SIZE_MB = 670
+  'https://github.com/nazkari86-lab/kz-voiceshield/releases/download/gemma-v1.0.0/gemma3-1b-it-int4.task'
+export const GEMMA_TERMS_URL = 'https://ai.google.dev/gemma/terms'
+export const GEMMA_MODEL_SIZE_MB = 555

@@ -65,7 +65,7 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
             }
           }
           importExpectedSha256?.let { expected ->
-            require(verify(temporary, expected, importMinimumBytes)) { "Selected model SHA-256 does not match the verified FastConformer release" }
+            require(verify(temporary, expected, importMinimumBytes)) { "Selected model SHA-256 does not match the verified release" }
           }
           if (destination.exists()) require(destination.delete()) { "Could not replace the existing model" }
           require(temporary.renameTo(destination)) { "Could not finalize the imported model" }
@@ -217,7 +217,7 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
 
   @ReactMethod
   fun importGemmaModel(promise: Promise) {
-    beginImport(GEMMA_MODEL_FILE, MIN_GEMMA_BYTES, MAX_MODEL_BYTES, promise)
+    beginImport(GEMMA_MODEL_FILE, GEMMA_MODEL_BYTES, GEMMA_MODEL_BYTES, promise, GEMMA_MODEL_SHA256)
   }
 
   @ReactMethod
@@ -284,7 +284,8 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     require(uri.scheme == "https") { "Model URL must use HTTPS" }
     val isWhisperRelease = uri.host == "huggingface.co" && uri.path.startsWith("/ggerganov/whisper.cpp/resolve/")
     val isFastConformerRelease = uri.host == "github.com" && uri.path == "/nazkari86-lab/kz-voiceshield/releases/download/fastconformer-v1.1.0/$FASTCONFORMER_MODEL_FILE"
-    require(isWhisperRelease || isFastConformerRelease) { "Model URL is not an approved release artifact" }
+    val isGemmaRelease = uri.host == "github.com" && uri.path == "/nazkari86-lab/kz-voiceshield/releases/download/gemma-v1.0.0/$GEMMA_MODEL_FILE"
+    require(isWhisperRelease || isFastConformerRelease || isGemmaRelease) { "Model URL is not an approved release artifact" }
   }
 
   private fun validateExpectation(expectedSha256: String, expectedSize: Long) {
@@ -311,7 +312,8 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
   companion object {
     private const val IMPORT_MODEL_REQUEST = 4110
     private const val GEMMA_MODEL_FILE = "gemma-3-1b-it-int4.task"
-    private const val MIN_GEMMA_BYTES = 300L * 1024L * 1024L
+    private const val GEMMA_MODEL_BYTES = 554661243L
+    private const val GEMMA_MODEL_SHA256 = "e3d981c01aeaaac69a84ffa0d4be13281b3176731063f1bea1c9fe6887bd9dee"
     private const val MAX_MODEL_BYTES = 2L * 1024L * 1024L * 1024L
     const val PREFS_NAME = "voice_shield_models"
     const val ACTIVE_WHISPER_MODEL = "active_whisper_model"

@@ -29,8 +29,8 @@ android {
         applicationId "kz.voiceshield"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 22
-        versionName "1.3.0"
+        versionCode 23
+        versionName "1.3.1"
 
         // Pilot distribution targets physical Android phones. Keeping the
         // release to ARM avoids shipping emulator-only native runtimes.

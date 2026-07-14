@@ -1,0 +1,9 @@
+{
+  "id": "gemma3-1b-it-int4",
+  "file": "gemma3-1b-it-int4.task",
+  "source": "litert-community/Gemma3-1B-IT",
+  "sha256": "e3d981c01aeaaac69a84ffa0d4be13281b3176731063f1bea1c9fe6887bd9dee",
+  "sizeBytes": 554661243,
+  "license": "Gemma Terms of Use",
+  "termsUrl": "https://ai.google.dev/gemma/terms"
+}

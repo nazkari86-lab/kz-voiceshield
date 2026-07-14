@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
-  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
+  ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native'
-import { llmEvents, LLMModule, GEMMA_MODEL_FILE, GEMMA_MODEL_SIZE_MB } from '../bridge/LLMBridge'
-import { ModelDownloader } from '../bridge/WhisperBridge'
+import {
+  llmEvents, LLMModule, GEMMA_MODEL_BYTES, GEMMA_MODEL_FILE, GEMMA_MODEL_SHA256,
+  GEMMA_MODEL_SIZE_MB, GEMMA_MODEL_URL, GEMMA_TERMS_URL,
+} from '../bridge/LLMBridge'
+import { modelEvents, ModelDownloader } from '../bridge/WhisperBridge'
 import { buildPrompt, QUICK_QUESTIONS, SYSTEM_PROMPT } from '../utils/llmPrompts'
 import { colors } from '../theme'
 import { Card, SectionTitle } from './ui'
@@ -12,6 +16,7 @@ import { Card, SectionTitle } from './ui'
 type ChatMessage = { role: 'user' | 'assistant'; text: string; streaming?: boolean }
 
 type Props = { transcript: string; modelBasePath?: string }
+const GEMMA_TERMS_ACCEPTED_KEY = 'voiceshield.gemma.terms.v1'
 
 export function LLMAssistantView({ transcript, modelBasePath }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -21,14 +26,28 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
   const [loadingModel, setLoadingModel] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [modelPath, setModelPath] = useState<string | null>(modelBasePath ?? null)
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null)
   const scrollRef = useRef<ScrollView>(null)
   const currentTokensRef = useRef('')
 
   // Check model readiness on mount
   useEffect(() => {
     void LLMModule?.isReady().then(setModelReady).catch(() => setModelReady(false))
-    if (!modelBasePath) void ModelDownloader.getModelPath(GEMMA_MODEL_FILE).then(setModelPath).catch(() => undefined)
+    void AsyncStorage.getItem(GEMMA_TERMS_ACCEPTED_KEY).then(value => setTermsAccepted(value === 'accepted')).catch(() => undefined)
+    if (!modelBasePath) {
+      void ModelDownloader.getVerifiedModelPath(GEMMA_MODEL_FILE, GEMMA_MODEL_SHA256, GEMMA_MODEL_BYTES)
+        .then(setModelPath)
+        .catch(() => undefined)
+    }
   }, [modelBasePath])
+
+  useEffect(() => {
+    const progressSub = modelEvents.addListener('VS_MODEL_DOWNLOAD_PROGRESS', (payload: { progress?: number }) => {
+      setDownloadProgress(payload.progress ?? null)
+    })
+    return () => progressSub.remove()
+  }, [])
 
   // Streaming token listener
   useEffect(() => {
@@ -91,6 +110,40 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     }
   }, [])
 
+  const downloadModel = useCallback(async () => {
+    if (!termsAccepted) {
+      setLoadError('Подтвердите принятие условий Gemma перед загрузкой модели.')
+      return
+    }
+    setLoadingModel(true)
+    setLoadError(null)
+    setDownloadProgress(0)
+    try {
+      const path = await ModelDownloader.downloadModel(
+        GEMMA_MODEL_URL,
+        GEMMA_MODEL_FILE,
+        GEMMA_MODEL_SHA256,
+        GEMMA_MODEL_BYTES,
+      )
+      setModelPath(path)
+      if (!LLMModule) throw new Error('LLM module not available on this build')
+      await LLMModule.loadModel(path, 1024)
+      setModelReady(true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось скачать модель Gemma'
+      setLoadError(message)
+    } finally {
+      setLoadingModel(false)
+      setDownloadProgress(null)
+    }
+  }, [termsAccepted])
+
+  const acceptTerms = useCallback(async () => {
+    const nextValue = !termsAccepted
+    setTermsAccepted(nextValue)
+    await AsyncStorage.setItem(GEMMA_TERMS_ACCEPTED_KEY, nextValue ? 'accepted' : 'declined')
+  }, [termsAccepted])
+
   const send = useCallback(async (text: string) => {
     if (!text.trim() || generating || !modelReady) return
     const userMsg: ChatMessage = { role: 'user', text: text.trim() }
@@ -131,22 +184,29 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
             Модель Gemma 3 1B IT (~{GEMMA_MODEL_SIZE_MB}МБ) анализирует транскрипты звонков прямо на устройстве.
             Данные не покидают телефон.
           </Text>
-          <Text style={styles.setupSteps}>
-            1. Скачайте модель через Setup → «Загрузить Gemma 3 1B»{'\n'}
-            2. Нажмите «Импортировать из Загрузок» и выберите .task файл
-          </Text>
+          <Text style={styles.setupSteps}>Загрузка происходит прямо в приложении. Файл проверяется по точному размеру и SHA-256 перед запуском.</Text>
+          <TouchableOpacity style={styles.termsRow} onPress={() => { void acceptTerms() }} disabled={loadingModel}>
+            <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
+              {termsAccepted && <Text style={styles.checkboxMark}>✓</Text>}
+            </View>
+            <Text style={styles.termsText}>Я принимаю условия использования Gemma</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => { void Linking.openURL(GEMMA_TERMS_URL) }} disabled={loadingModel}>
+            <Text style={styles.termsLink}>Открыть условия Gemma</Text>
+          </TouchableOpacity>
           {loadError && <Text style={styles.error}>{loadError}</Text>}
           <TouchableOpacity
             style={[styles.loadBtn, loadingModel && styles.loadBtnDisabled]}
-            onPress={loadModel}
+            onPress={modelPath ? loadModel : downloadModel}
             disabled={loadingModel}
           >
             {loadingModel
               ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.loadBtnText}>Загрузить модель</Text>}
+              : <Text style={styles.loadBtnText}>{modelPath ? 'Запустить AI assistant' : `Скачать AI assistant (${GEMMA_MODEL_SIZE_MB} МБ)`}</Text>}
           </TouchableOpacity>
+          {downloadProgress !== null && <Text style={styles.progressText}>Загрузка: {downloadProgress}%</Text>}
           <TouchableOpacity style={[styles.importBtn, loadingModel && styles.loadBtnDisabled]} onPress={importModel} disabled={loadingModel}>
-            <Text style={styles.importBtnText}>Импортировать из Загрузок</Text>
+            <Text style={styles.importBtnText}>Уже скачан файл? Импортировать</Text>
           </TouchableOpacity>
         </Card>
       </View>
@@ -236,10 +296,17 @@ const styles = StyleSheet.create({
   setupTitle: { color: colors.ink, fontSize: 16, fontWeight: '800', marginBottom: 6 },
   setupText: { color: colors.sub, fontSize: 13, lineHeight: 20, marginBottom: 10 },
   setupSteps: { backgroundColor: colors.chipBg, borderRadius: 8, color: colors.ink, fontSize: 12, lineHeight: 20, marginBottom: 12, padding: 10 },
+  termsRow: { alignItems: 'center', flexDirection: 'row', gap: 9, marginBottom: 5 },
+  checkbox: { alignItems: 'center', borderColor: colors.muted, borderRadius: 4, borderWidth: 1, height: 20, justifyContent: 'center', width: 20 },
+  checkboxChecked: { backgroundColor: colors.brand, borderColor: colors.brand },
+  checkboxMark: { color: '#fff', fontSize: 14, fontWeight: '900' },
+  termsText: { color: colors.ink, flex: 1, fontSize: 12, fontWeight: '700' },
+  termsLink: { color: colors.brandDark, fontSize: 12, fontWeight: '800', marginBottom: 10, textDecorationLine: 'underline' },
   error: { backgroundColor: '#fee2e2', borderRadius: 6, color: '#991b1b', fontSize: 12, marginBottom: 8, padding: 8 },
   loadBtn: { alignItems: 'center', backgroundColor: colors.brand, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 13 },
   loadBtnDisabled: { opacity: 0.5 },
   loadBtnText: { color: '#fff', fontWeight: '800' },
+  progressText: { color: colors.brandDark, fontSize: 12, fontWeight: '800', marginTop: 8, textAlign: 'center' },
   importBtn: { alignItems: 'center', borderColor: colors.brand, borderRadius: 10, borderWidth: 1, marginTop: 8, paddingHorizontal: 20, paddingVertical: 12 },
   importBtnText: { color: colors.brandDark, fontWeight: '800' },
   contextBanner: { backgroundColor: colors.chipBg, borderRadius: 8, marginBottom: 10, padding: 10 },

@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { AppState, Linking, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { AppState, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { AccessibilityModule } from '@bridge/AccessibilityBridge'
 import { CallModule } from '@bridge/CallModule'
 import { DeviceSettings } from '@bridge/DeviceSettingsBridge'
 import type { DeviceInfo } from '@bridge/DeviceSettingsBridge'
 import { OverlayModule } from '@bridge/OverlayBridge'
 import { NotificationAccess } from '@bridge/NotificationAccessBridge'
-import { GEMMA_MODEL_URL, GEMMA_MODEL_SIZE_MB } from '../bridge/LLMBridge'
+import { GEMMA_MODEL_SIZE_MB } from '../bridge/LLMBridge'
 import { useTheme } from '../ThemeContext'
 import { useI18n } from '../I18nContext'
 import type { Language } from '../I18nContext'
@@ -194,10 +194,7 @@ export function SetupScreen({
       <View style={styles.gemmaSection}>
         <Text style={styles.noticeTitle}>AI-ассистент (Gemma 3 1B IT)</Text>
         <Text style={styles.copy}>Нейросеть ~{GEMMA_MODEL_SIZE_MB}МБ для анализа транскриптов прямо на устройстве. Требует скачивания один раз.</Text>
-        <Pressable style={styles.secondaryWide} onPress={() => { void Linking.openURL(GEMMA_MODEL_URL) }}>
-          <Text style={styles.secondaryText}>Скачать gemma-3-1b-it-int4.task (~{GEMMA_MODEL_SIZE_MB}МБ)</Text>
-        </Pressable>
-        <Text style={styles.gemmaCopy}>После скачивания поместите файл в Загрузки. Затем откройте «AI-ассистент» → «Загрузить модель».</Text>
+        <Text style={styles.gemmaCopy}>Откройте вкладку «AI assistant», примите условия Gemma и нажмите «Скачать AI assistant». Модель загрузится и подключится автоматически, без браузера и файлового менеджера.</Text>
       </View>
 
       <View style={styles.localData}>

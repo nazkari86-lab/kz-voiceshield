@@ -67,7 +67,7 @@ const toolTabs: Array<[Tab, string, string]> = [
   ['stats', 'Statistics', 'Session and case analytics'],
   ['sms', 'SMS scanner', 'Scan SMS for scam patterns'],
   ['history', 'Call history', 'Transcript history and past calls'],
-  ['llm', 'AI assistant', 'Ask Gemma 3 1B about suspicious calls'],
+  ['llm', 'AI assistant', 'Ask an on-device AI about suspicious calls'],
   ['setup', 'Setup', 'Privacy, model and device access'],
 ]
 

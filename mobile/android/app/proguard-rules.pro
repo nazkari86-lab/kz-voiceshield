@@ -3,6 +3,7 @@
 -keep class okhttp3.** { *; }
 -keep class okio.** { *; }
 -keep class kotlinx.coroutines.** { *; }
+-keep class com.rnllama.** { *; }
 -keepclasseswithmembernames class * {
     native <methods>;
 }

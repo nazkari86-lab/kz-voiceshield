@@ -10,7 +10,7 @@ import java.io.File
 
 /**
  * On-device LLM inference using MediaPipe Tasks GenAI 0.10.14.
- * Model: Gemma 3 1B IT INT4 (~670MB .task file)
+ * Model: Gemma 3 1B IT INT4 (~555MB .task file)
  *
  * MediaPipe 0.10.14 API: generateResponseAsync(prompt) fires result through
  * the ProgressListener set once on LlmInferenceOptions at loadModel time.

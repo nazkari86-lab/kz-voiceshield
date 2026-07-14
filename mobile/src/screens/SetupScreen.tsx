@@ -194,7 +194,7 @@ export function SetupScreen({
       <View style={styles.gemmaSection}>
         <Text style={styles.noticeTitle}>AI-ассистент (Gemma 3 1B IT)</Text>
         <Text style={styles.copy}>Нейросеть ~{GEMMA_MODEL_SIZE_MB}МБ для анализа транскриптов прямо на устройстве. Требует скачивания один раз.</Text>
-        <Text style={styles.gemmaCopy}>Откройте вкладку «AI assistant», примите условия Gemma и нажмите «Скачать AI assistant». Модель загрузится и подключится автоматически, без браузера и файлового менеджера.</Text>
+        <Text style={styles.gemmaCopy}>Во вкладке «AI assistant» доступны Gemma с загрузкой в приложении и GGUF-модели через совместимый с PocketPal runtime. Gemma подключается автоматически; GGUF импортируется из файлов и остаётся локальным.</Text>
       </View>
 
       <View style={styles.localData}>

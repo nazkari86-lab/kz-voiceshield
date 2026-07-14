@@ -14,6 +14,7 @@ import com.facebook.react.bridge.ReactMethod
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.URI
 import java.security.MessageDigest
@@ -32,6 +33,7 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
   private var importMinimumBytes = 0L
   private var importMaximumBytes = 0L
   private var importExpectedSha256: String? = null
+  private var importExpectedMagic: String? = null
 
   private val importListener: ActivityEventListener = object : BaseActivityEventListener() {
     override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
@@ -67,6 +69,11 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
           importExpectedSha256?.let { expected ->
             require(verify(temporary, expected, importMinimumBytes)) { "Selected model SHA-256 does not match the verified release" }
           }
+          importExpectedMagic?.let { expected ->
+            val header = ByteArray(expected.length)
+            FileInputStream(temporary).use { input -> require(input.read(header) == header.size) { "Selected model is incomplete" } }
+            require(header.toString(Charsets.US_ASCII) == expected) { "Selected file is not a valid $expected model" }
+          }
           if (destination.exists()) require(destination.delete()) { "Could not replace the existing model" }
           require(temporary.renameTo(destination)) { "Could not finalize the imported model" }
           promise.resolve(destination.absolutePath)
@@ -76,6 +83,7 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
         } finally {
           importFileName = null
           importExpectedSha256 = null
+          importExpectedMagic = null
         }
       }.start()
     }
@@ -230,7 +238,12 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     beginImport(FASTCONFORMER_MODEL_FILE, FASTCONFORMER_MODEL_BYTES, FASTCONFORMER_MODEL_BYTES, promise, FASTCONFORMER_MODEL_SHA256)
   }
 
-  private fun beginImport(fileName: String, minimumBytes: Long, maximumBytes: Long, promise: Promise, expectedSha256: String? = null) {
+  @ReactMethod
+  fun importPocketPalModel(promise: Promise) {
+    beginImport(POCKETPAL_MODEL_FILE, MIN_POCKETPAL_MODEL_BYTES, MAX_MODEL_BYTES, promise, expectedMagic = "GGUF")
+  }
+
+  private fun beginImport(fileName: String, minimumBytes: Long, maximumBytes: Long, promise: Promise, expectedSha256: String? = null, expectedMagic: String? = null) {
     if (importPromise != null) {
       promise.reject("MODEL_IMPORT_BUSY", "Another model import is already running")
       return
@@ -245,6 +258,7 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     importMinimumBytes = minimumBytes
     importMaximumBytes = maximumBytes
     importExpectedSha256 = expectedSha256
+    importExpectedMagic = expectedMagic
     activity.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
       addCategory(Intent.CATEGORY_OPENABLE)
       type = "application/octet-stream"
@@ -314,7 +328,9 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     private const val GEMMA_MODEL_FILE = "gemma-3-1b-it-int4.task"
     private const val GEMMA_MODEL_BYTES = 554661243L
     private const val GEMMA_MODEL_SHA256 = "e3d981c01aeaaac69a84ffa0d4be13281b3176731063f1bea1c9fe6887bd9dee"
-    private const val MAX_MODEL_BYTES = 2L * 1024L * 1024L * 1024L
+    private const val POCKETPAL_MODEL_FILE = "voiceshield-pocketpal.gguf"
+    private const val MIN_POCKETPAL_MODEL_BYTES = 100L * 1024L * 1024L
+    private const val MAX_MODEL_BYTES = 4L * 1024L * 1024L * 1024L
     const val PREFS_NAME = "voice_shield_models"
     const val ACTIVE_WHISPER_MODEL = "active_whisper_model"
     private const val WHISPER_SMALL_FILE = "ggml-small.bin"

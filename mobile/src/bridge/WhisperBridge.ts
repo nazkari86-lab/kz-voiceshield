@@ -17,6 +17,7 @@ type ModelDownloaderNativeModule = {
   hasModel(fileName: string): Promise<boolean>
   getModelPath(fileName: string): Promise<string | null>
   importGemmaModel(): Promise<string>
+  importPocketPalModel(): Promise<string>
   importWhisperSmallModel(): Promise<string>
   importFastConformerModel(): Promise<string>
   getStorageInfo(): Promise<ModelStorageInfo>

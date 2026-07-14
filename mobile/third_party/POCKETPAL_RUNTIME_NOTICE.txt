@@ -1,0 +1,8 @@
+VoiceShield uses @pocketpalai/llama.rn, a React Native binding for llama.cpp,
+to run user-provided GGUF language models locally on supported Android devices.
+
+The PocketPal AI project and @pocketpalai/llama.rn are MIT licensed:
+https://github.com/a-ghorbani/pocketpal-ai/blob/main/LICENSE
+
+GGUF model licenses vary. The user must accept the license of every imported
+model before using it in VoiceShield.

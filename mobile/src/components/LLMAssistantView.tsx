@@ -9,11 +9,13 @@ import {
   GEMMA_MODEL_SIZE_MB, GEMMA_MODEL_URL, GEMMA_TERMS_URL,
 } from '../bridge/LLMBridge'
 import { modelEvents, ModelDownloader } from '../bridge/WhisperBridge'
+import { generatePocketPalResponse, loadPocketPalModel, POCKETPAL_MODEL_FILE } from '../bridge/PocketPalBridge'
 import { buildPrompt, QUICK_QUESTIONS, SYSTEM_PROMPT } from '../utils/llmPrompts'
 import { colors } from '../theme'
 import { Card, SectionTitle } from './ui'
 
 type ChatMessage = { role: 'user' | 'assistant'; text: string; streaming?: boolean }
+type AssistantEngine = 'gemma' | 'pocketpal'
 
 type Props = { transcript: string; modelBasePath?: string }
 const GEMMA_TERMS_ACCEPTED_KEY = 'voiceshield.gemma.terms.v1'
@@ -26,6 +28,9 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
   const [loadingModel, setLoadingModel] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [modelPath, setModelPath] = useState<string | null>(modelBasePath ?? null)
+  const [pocketPalPath, setPocketPalPath] = useState<string | null>(null)
+  const [engine, setEngine] = useState<AssistantEngine>('gemma')
+  const pocketPalContext = useRef<Awaited<ReturnType<typeof loadPocketPalModel>> | null>(null)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null)
   const scrollRef = useRef<ScrollView>(null)
@@ -40,7 +45,10 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
         .then(setModelPath)
         .catch(() => undefined)
     }
+    void ModelDownloader.getModelPath(POCKETPAL_MODEL_FILE).then(setPocketPalPath).catch(() => undefined)
   }, [modelBasePath])
+
+  useEffect(() => () => { void pocketPalContext.current?.release() }, [])
 
   useEffect(() => {
     const progressSub = modelEvents.addListener('VS_MODEL_DOWNLOAD_PROGRESS', (payload: { progress?: number }) => {
@@ -110,6 +118,29 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     }
   }, [])
 
+  const loadPocketPal = useCallback(async (path = pocketPalPath) => {
+    if (!path) throw new Error('Сначала импортируйте GGUF-модель.')
+    await pocketPalContext.current?.release()
+    pocketPalContext.current = await loadPocketPalModel(path)
+    setPocketPalPath(path)
+    setEngine('pocketpal')
+    setModelReady(true)
+  }, [pocketPalPath])
+
+  const importPocketPal = useCallback(async () => {
+    setLoadingModel(true)
+    setLoadError(null)
+    try {
+      const path = await ModelDownloader.importPocketPalModel()
+      await loadPocketPal(path)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось импортировать GGUF-модель'
+      if (!message.includes('MODEL_IMPORT_CANCELLED')) setLoadError(message)
+    } finally {
+      setLoadingModel(false)
+    }
+  }, [loadPocketPal])
+
   const downloadModel = useCallback(async () => {
     if (!termsAccepted) {
       setLoadError('Подтвердите принятие условий Gemma перед загрузкой модели.')
@@ -154,7 +185,23 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
     try {
       const fullPrompt = buildPrompt(SYSTEM_PROMPT, text.trim() + '\n\n', transcript)
-      await LLMModule!.generateResponse(fullPrompt)
+      if (engine === 'pocketpal') {
+        const context = pocketPalContext.current
+        if (!context) throw new Error('GGUF-модель не загружена')
+        const full = await generatePocketPalResponse(context, fullPrompt, (token) => {
+          currentTokensRef.current += token
+          setMessages(prev => {
+            const last = prev[prev.length - 1]
+            if (!last || last.role !== 'assistant' || !last.streaming) return prev
+            return [...prev.slice(0, -1), { ...last, text: currentTokensRef.current }]
+          })
+        })
+        setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', text: full, streaming: false }])
+        setGenerating(false)
+        currentTokensRef.current = ''
+      } else {
+        await LLMModule!.generateResponse(fullPrompt)
+      }
     } catch (e: any) {
       setMessages(prev => {
         const last = prev[prev.length - 1]
@@ -163,23 +210,66 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
       })
       setGenerating(false)
     }
-  }, [generating, modelReady, transcript])
+  }, [engine, generating, modelReady, transcript])
 
   const sendQuick = useCallback((q: (typeof QUICK_QUESTIONS)[number]) => {
     void send(q.prompt)
   }, [send])
 
   const stop = useCallback(() => {
-    void LLMModule?.cancelGeneration()
+    if (engine === 'pocketpal') void pocketPalContext.current?.stopCompletion()
+    else void LLMModule?.cancelGeneration()
     setGenerating(false)
-  }, [])
+  }, [engine])
+
+  const selectEngine = useCallback(async (next: AssistantEngine) => {
+    setLoadError(null)
+    if (next === 'gemma') {
+      setEngine('gemma')
+      setModelReady(false)
+      await loadModel()
+      return
+    }
+    if (!pocketPalPath) {
+      setModelReady(false)
+      setEngine('pocketpal')
+      return
+    }
+    setLoadingModel(true)
+    try {
+      await loadPocketPal()
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Не удалось загрузить GGUF-модель')
+    } finally {
+      setLoadingModel(false)
+    }
+  }, [loadModel, loadPocketPal, pocketPalPath])
 
   if (!modelReady) {
     return (
       <View style={styles.root}>
         <SectionTitle>VoiceShield AI (Gemma 3 1B)</SectionTitle>
         <Card>
+          <View style={styles.engineRow}>
+            <TouchableOpacity style={[styles.engineChip, engine === 'gemma' && styles.engineChipActive]} onPress={() => { void selectEngine('gemma') }}>
+              <Text style={[styles.engineChipText, engine === 'gemma' && styles.engineChipTextActive]}>Gemma</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.engineChip, engine === 'pocketpal' && styles.engineChipActive]} onPress={() => { void selectEngine('pocketpal') }}>
+              <Text style={[styles.engineChipText, engine === 'pocketpal' && styles.engineChipTextActive]}>GGUF / PocketPal</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.setupTitle}>Нейросеть не загружена</Text>
+          {engine === 'pocketpal' ? (
+            <>
+              <Text style={styles.setupText}>Импортируйте свою GGUF-модель. Она запускается локально через совместимый с PocketPal runtime и не передаёт транскрипт на сервер.</Text>
+              <Text style={styles.setupSteps}>Поддерживаются только 64-битные Android-устройства. Файл проверяется как GGUF перед сохранением. Лицензия выбранной модели остаётся ответственностью пользователя.</Text>
+              {loadError && <Text style={styles.error}>{loadError}</Text>}
+              <TouchableOpacity style={[styles.loadBtn, loadingModel && styles.loadBtnDisabled]} onPress={importPocketPal} disabled={loadingModel}>
+                {loadingModel ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadBtnText}>Импортировать GGUF-модель</Text>}
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
           <Text style={styles.setupText}>
             Модель Gemma 3 1B IT (~{GEMMA_MODEL_SIZE_MB}МБ) анализирует транскрипты звонков прямо на устройстве.
             Данные не покидают телефон.
@@ -208,6 +298,8 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
           <TouchableOpacity style={[styles.importBtn, loadingModel && styles.loadBtnDisabled]} onPress={importModel} disabled={loadingModel}>
             <Text style={styles.importBtnText}>Уже скачан файл? Импортировать</Text>
           </TouchableOpacity>
+            </>
+          )}
         </Card>
       </View>
     )
@@ -216,6 +308,14 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <SectionTitle>VoiceShield AI</SectionTitle>
+      <View style={styles.engineRow}>
+        <TouchableOpacity style={[styles.engineChip, engine === 'gemma' && styles.engineChipActive]} onPress={() => { void selectEngine('gemma') }}>
+          <Text style={[styles.engineChipText, engine === 'gemma' && styles.engineChipTextActive]}>Gemma</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.engineChip, engine === 'pocketpal' && styles.engineChipActive]} onPress={() => { void selectEngine('pocketpal') }}>
+          <Text style={[styles.engineChipText, engine === 'pocketpal' && styles.engineChipTextActive]}>GGUF / PocketPal</Text>
+        </TouchableOpacity>
+      </View>
 
       {transcript.trim().length > 0 && (
         <View style={styles.contextBanner}>
@@ -294,6 +394,11 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, minHeight: 400 },
   setupTitle: { color: colors.ink, fontSize: 16, fontWeight: '800', marginBottom: 6 },
+  engineRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  engineChip: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, flex: 1, padding: 9 },
+  engineChipActive: { backgroundColor: colors.softBrand, borderColor: colors.brand },
+  engineChipText: { color: colors.sub, fontSize: 12, fontWeight: '800', textAlign: 'center' },
+  engineChipTextActive: { color: colors.brandDark },
   setupText: { color: colors.sub, fontSize: 13, lineHeight: 20, marginBottom: 10 },
   setupSteps: { backgroundColor: colors.chipBg, borderRadius: 8, color: colors.ink, fontSize: 12, lineHeight: 20, marginBottom: 12, padding: 10 },
   termsRow: { alignItems: 'center', flexDirection: 'row', gap: 9, marginBottom: 5 },

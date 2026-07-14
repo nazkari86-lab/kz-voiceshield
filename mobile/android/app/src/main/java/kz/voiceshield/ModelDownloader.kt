@@ -17,9 +17,16 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.URI
 import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 
 class ModelDownloader(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
-  private val client = OkHttpClient()
+  // Model downloads can take several minutes on mobile data. The default
+  // 10-second idle read timeout produced false failures on slower networks.
+  private val client = OkHttpClient.Builder()
+    .connectTimeout(30, TimeUnit.SECONDS)
+    .readTimeout(60, TimeUnit.SECONDS)
+    .writeTimeout(60, TimeUnit.SECONDS)
+    .build()
   private var importPromise: Promise? = null
   private var importFileName: String? = null
   private var importMinimumBytes = 0L
@@ -116,8 +123,8 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
       try {
         validateUrl(url)
         validateExpectation(expectedSha256, expectedSize.toLong())
-        requireFreeSpace(expectedSize.toLong())
         val file = modelFile(fileName)
+        requireFreeSpace(expectedSize.toLong(), file.exists())
         val tmp = File(file.absolutePath + ".tmp")
         tmp.delete()
         val digest = MessageDigest.getInstance("SHA-256")
@@ -235,7 +242,7 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
       return
     }
     try {
-      requireFreeSpace(minimumBytes)
+      requireFreeSpace(minimumBytes, modelFile(fileName).exists())
     } catch (error: Throwable) {
       promise.reject("MODEL_IMPORT_STORAGE", error)
       return
@@ -292,10 +299,11 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     require(expectedSize in 1..MAX_MODEL_BYTES) { "Invalid expected model size" }
   }
 
-  private fun requireFreeSpace(modelBytes: Long) {
+  private fun requireFreeSpace(modelBytes: Long, replacingExistingModel: Boolean) {
     val available = StatFs(context.filesDir.absolutePath).availableBytes
-    // The downloader writes to a temporary file before atomically renaming it.
-    val required = modelBytes * 2 + STORAGE_RESERVE_BYTES
+    // A first download needs the temporary file plus a safety reserve. A
+    // replacement needs room for both the old file and temporary new file.
+    val required = modelBytes * if (replacingExistingModel) 2 else 1 + STORAGE_RESERVE_BYTES
     require(available >= required) {
       "Not enough free storage. Need ${required / 1024 / 1024} MB, available ${available / 1024 / 1024} MB"
     }

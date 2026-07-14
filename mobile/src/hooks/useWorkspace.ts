@@ -294,6 +294,13 @@ export function useWorkspace() {
     const audioErrorSub = audioEvents.addListener('VS_AUDIO_CAPTURE_ERROR', (event: { message?: string }) => {
       if (event.message) setCaptureError(event.message)
     })
+    const audioStartedSub = audioEvents.addListener('VS_AUDIO_CAPTURE_STARTED', (event: { source?: string }) => {
+      if (event.source === 'microphone') {
+        setCaptureNotice('Speakerphone microphone capture is active. VoiceShield keeps the call audio route unchanged.')
+      } else if (event.source === 'voice_recognition') {
+        setCaptureNotice('Compatibility microphone capture is active. Turn on speakerphone and raise call volume.')
+      }
+    })
     const notificationSub = notificationEvents.addListener('VS_NOTIFICATION_SIGNAL', (event: { signalId?: string }) => {
       if (!isListening) return
       const nextSignals = notificationSignalsFromId(event.signalId)
@@ -307,6 +314,7 @@ export function useWorkspace() {
       whisperSub.remove()
       levelSub.remove()
       audioErrorSub.remove()
+      audioStartedSub.remove()
       notificationSub.remove()
       modelSub.remove()
     }
@@ -422,8 +430,8 @@ export function useWorkspace() {
       }
       await OverlayModule.show(!accessibilityEnabled)
       if (!accessibilityEnabled) {
-        await AudioCaptureModule.startCapture()
         await WhisperModule.startStreaming()
+        await AudioCaptureModule.startCapture()
         lastAudibleAtRef.current = Date.now()
         setAudioLevel(0)
         setSource('Whisper')
@@ -449,8 +457,8 @@ export function useWorkspace() {
       const nativeModelReady = await WhisperModule.isInitialized()
       if (!nativeModelReady) await prepareWhisper()
       await WhisperModule.resetBuffer()
-      await AudioCaptureModule.startCapture()
       await WhisperModule.startStreaming()
+      await AudioCaptureModule.startCapture()
       lastAudibleAtRef.current = Date.now()
       setAudioLevel(0)
       setSource('Whisper')

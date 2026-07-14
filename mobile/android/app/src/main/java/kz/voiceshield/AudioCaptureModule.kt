@@ -38,20 +38,18 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
         promise.reject("AUDIO_UNAVAILABLE", "Microphone input is unavailable on this device")
         return
       }
-      recorder = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minBuffer * 2)
-      if (recorder?.state != AudioRecord.STATE_INITIALIZED) {
-        recorder?.release()
-        recorder = null
-        promise.reject("AUDIO_UNAVAILABLE", "Android could not initialize microphone capture")
-        return
-      }
-      recorder?.startRecording()
-      if (recorder?.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
-        recorder?.release()
-        recorder = null
+      // MIC is intentionally first. On several Xiaomi/MIUI builds VOICE_RECOGNITION
+      // can interfere with the active call audio route, muting the speaker or leaving
+      // the recorder silent. MIC captures the acoustic speaker output without changing
+      // the Telecom audio route. VOICE_RECOGNITION remains a compatibility fallback.
+      val source = startRecorder(minBuffer)
+      if (source == null) {
         promise.reject("AUDIO_PERMISSION_OR_BUSY", "Microphone permission is missing or the microphone is busy")
         return
       }
+      val started = Arguments.createMap()
+      started.putString("source", source)
+      AppRegistry.sendEvent("VS_AUDIO_CAPTURE_STARTED", started)
       job = scope.launch {
         val buffer = ShortArray(1600)
         while (recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
@@ -98,5 +96,41 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
     }
     recorder?.release()
     recorder = null
+  }
+
+  private fun startRecorder(minBuffer: Int): String? {
+    val sources = listOf(
+      MediaRecorder.AudioSource.MIC to "microphone",
+      MediaRecorder.AudioSource.VOICE_RECOGNITION to "voice_recognition",
+    )
+    for ((source, name) in sources) {
+      val candidate = try {
+        AudioRecord(
+          source,
+          16000,
+          AudioFormat.CHANNEL_IN_MONO,
+          AudioFormat.ENCODING_PCM_16BIT,
+          minBuffer * 4,
+        )
+      } catch (_: Throwable) {
+        null
+      }
+      if (candidate?.state != AudioRecord.STATE_INITIALIZED) {
+        candidate?.release()
+        continue
+      }
+      try {
+        candidate.startRecording()
+      } catch (_: Throwable) {
+        candidate.release()
+        continue
+      }
+      if (candidate.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+        recorder = candidate
+        return name
+      }
+      candidate.release()
+    }
+    return null
   }
 }

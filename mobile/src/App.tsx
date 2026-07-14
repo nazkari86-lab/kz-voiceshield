@@ -29,6 +29,7 @@ import { ScamToolsView } from './components/ScamToolsView'
 import { SmsScannerView } from './components/SmsScannerView'
 import { TranscriptHistoryView } from './components/TranscriptHistoryView'
 import { LLMAssistantView } from './components/LLMAssistantView'
+import { InvestorDemoView } from './components/InvestorDemoView'
 import { EmergencyView } from './components/EmergencyView'
 import { ScreenMotion } from './components/ScreenMotion'
 import { VoiceMessageView } from './components/VoiceMessageView'
@@ -41,15 +42,18 @@ type Tab =
   | 'simulator' | 'emergency' | 'cases' | 'operations' | 'dataset'
   | 'playbook' | 'family' | 'verify' | 'number' | 'tools' | 'voiceMsg'
   | 'model' | 'setup' | 'stats' | 'sms' | 'history' | 'llm'
+  | 'demo'
 
 const primaryTabs: Array<[Tab, string, string]> = [
   ['live', 'Shield', 'LIVE'],
   ['tools', 'Scan', 'SCAN'],
+  ['demo', 'Demo', 'PLAY'],
   ['simulator', 'Learn', 'LAB'],
   ['cases', 'Cases', 'CASE'],
 ]
 
 const toolTabs: Array<[Tab, string, string]> = [
+  ['demo', 'Investor demo', 'Run the complete protection story in one guided flow'],
   ['review', 'Review', 'Explain live risk and response steps'],
   ['evidence', 'Evidence', 'Inspect matched signals and context'],
   ['timeline', 'Timeline', 'Follow risk escalation over time'],
@@ -72,6 +76,7 @@ const toolTabs: Array<[Tab, string, string]> = [
 ]
 
 const tabMeta: Record<Tab, { label: string; group: string }> = {
+  demo: { label: 'Guided demo', group: 'Showcase' },
   live: { label: 'Live shield', group: 'Protect' }, review: { label: 'Review', group: 'Investigate' },
   evidence: { label: 'Evidence', group: 'Investigate' }, timeline: { label: 'Timeline', group: 'Investigate' },
   threats: { label: 'Threat lab', group: 'Learn' }, chain: { label: 'Attack chain', group: 'Learn' },
@@ -194,6 +199,11 @@ function AppContent() {
       {tab === 'sms' && <SmsScannerView />}
       {tab === 'history' && <TranscriptHistoryView />}
       {tab === 'llm' && <LLMAssistantView transcript={w.transcript} />}
+      {tab === 'demo' && <InvestorDemoView
+        onOpenReview={(transcript) => { w.setTranscript(transcript); w.setFileName('investor-demo.txt'); selectTab('review') }}
+        onOpenAi={(transcript) => { w.setTranscript(transcript); w.setFileName('investor-demo.txt'); selectTab('llm') }}
+        onOpenEmergency={() => selectTab('emergency')}
+      />}
       {tab === 'model' && <ModelView />}
       {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} modelSizePref={w.modelSizePref} modelStorage={w.modelStorage} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onSetModelSize={w.updateModelSize} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
     </>

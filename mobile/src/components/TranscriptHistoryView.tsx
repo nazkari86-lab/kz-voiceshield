@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Alert, StyleSheet, Text, TouchableOpacity, View, ScrollView } from 'react-native'
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { clearTranscriptHistory, deleteTranscriptEntry, getTranscriptHistory, type TranscriptEntry } from '../utils/transcriptHistory'
 import { colors, riskColor } from '../theme'
 import { Card, RiskBadge, SectionTitle } from './ui'

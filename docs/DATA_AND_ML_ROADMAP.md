@@ -68,6 +68,11 @@ python ml/model_card.py ml/artifacts/*.jsonl --model-version 0.1.1-baseline \
 python ml/train_baseline.py trusted.jsonl --output ml/artifacts/baseline   # needs real trusted data
 ```
 
+To reproduce the Android FastConformer artifact from NVIDIA's local `.nemo`
+checkpoint, use `ml/export_fastconformer_kk_ru.py`. The resulting INT8 ONNX
+file is distributed as a checksum-pinned GitHub Release asset, not committed
+to Git.
+
 `ml/model_card.py` feeds the app's **Data & Model** screen, so users see exactly
 what any model was trained on. Artifacts are git-ignored; the committed snapshot
 in `mobile/src/data/` is what ships.

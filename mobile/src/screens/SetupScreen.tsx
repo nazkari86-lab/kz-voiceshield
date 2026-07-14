@@ -11,20 +11,20 @@ import { useTheme } from '../ThemeContext'
 import { useI18n } from '../I18nContext'
 import type { Language } from '../I18nContext'
 import { colors } from '../theme'
-
-type ModelSize = 'tiny' | 'small'
+import { fitsDevice, recommendedModel, requiredStorageBytes, whisperModels } from '../data/whisperModels'
+import type { ModelStorageInfo, WhisperModelChoice } from '../data/whisperModels'
 
 type Props = {
   modelReady: boolean
   modelProgress: number | null
-  modelSizePref: ModelSize
+  modelSizePref: WhisperModelChoice
+  modelStorage: ModelStorageInfo | null
   privacyConsent: boolean
   storageError: string | null
   callStatus: string
   caseCount: number
   onPrepareWhisper: () => void
-  onImportWhisper: () => void
-  onSetModelSize: (size: ModelSize) => Promise<void>
+  onSetModelSize: (size: WhisperModelChoice) => Promise<void>
   onAcceptPrivacy: () => Promise<void>
   onDeclinePrivacy: () => Promise<void>
   onDeleteAllData: () => Promise<void>
@@ -44,23 +44,26 @@ export function SetupScreen({
   modelReady,
   modelProgress,
   modelSizePref,
+  modelStorage,
   privacyConsent,
   storageError,
   callStatus,
   caseCount,
   onPrepareWhisper,
-  onImportWhisper,
   onSetModelSize,
   onAcceptPrivacy,
   onDeclinePrivacy,
   onDeleteAllData,
 }: Props) {
-  const { colors: themeColors, mode: themeMode, setMode: setThemeMode } = useTheme()
+  const { mode: themeMode, setMode: setThemeMode } = useTheme()
   const { lang, setLang } = useI18n()
 
   const [status, setStatus] = useState<Status>(emptyStatus)
   const [device, setDevice] = useState<DeviceInfo | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const automaticModel = recommendedModel(modelStorage)
+  const currentModel = modelSizePref === 'auto' ? automaticModel : whisperModels.find((model) => model.id === modelSizePref) ?? automaticModel
+  const availableGb = modelStorage ? (modelStorage.availableBytes / 1024 ** 3).toFixed(1) : null
 
   const refresh = useCallback(async () => {
     const notificationPermission = Platform.OS === 'android' && Platform.Version >= 33
@@ -163,19 +166,30 @@ export function SetupScreen({
       <Step label="Open default phone apps" status={status.callRole} disabled={!privacyConsent} onPress={() => DeviceSettings.openDefaultAppsSettings()} />
 
       <Text style={styles.section}>On-device speech model</Text>
-      <Text style={styles.copy}>Choose model size then tap to download. Tiny (~75 MB) is faster with slightly lower accuracy. Small (~488 MB) is more accurate for RU/KZ. If Live Caption is available, download is optional.</Text>
-      <View style={styles.modelToggle}>
-        <Pressable style={[styles.modelOption, modelSizePref === 'tiny' && styles.modelOptionActive]} onPress={() => { void onSetModelSize('tiny') }}>
-          <Text style={[styles.modelOptionText, modelSizePref === 'tiny' && styles.modelOptionTextActive]}>Tiny — Fast</Text>
-          <Text style={[styles.modelOptionSub, modelSizePref === 'tiny' && styles.modelOptionSubActive]}>~75 MB · 1.5s latency</Text>
-        </Pressable>
-        <Pressable style={[styles.modelOption, modelSizePref === 'small' && styles.modelOptionActive]} onPress={() => { void onSetModelSize('small') }}>
-          <Text style={[styles.modelOptionText, modelSizePref === 'small' && styles.modelOptionTextActive]}>Small — Accurate</Text>
-          <Text style={[styles.modelOptionSub, modelSizePref === 'small' && styles.modelOptionSubActive]}>~488 MB · 3s latency</Text>
-        </Pressable>
+      <Text style={styles.copy}>All recognition remains on this device. The recommendation accounts for free storage, temporary download space and RAM. Large models may not keep up with a live call.</Text>
+      <View style={styles.recommendation}>
+        <Text style={styles.recommendationTitle}>Recommended: {automaticModel.title}</Text>
+        <Text style={styles.recommendationCopy}>{automaticModel.detail} · {availableGb === null ? 'checking device storage…' : `${availableGb} GB free`}</Text>
       </View>
-      <Step label={modelProgress === null ? `Download ${modelSizePref === 'tiny' ? 'Whisper Tiny' : 'Whisper Small'}` : `Downloading: ${modelProgress}%`} status={modelReady} disabled={!privacyConsent || modelProgress !== null} onPress={onPrepareWhisper} />
-      {modelSizePref === 'small' && <Step label="Import Whisper Small from Downloads" status={false} disabled={!privacyConsent || modelProgress !== null} onPress={onImportWhisper} />}
+      <Pressable style={[styles.autoOption, modelSizePref === 'auto' && styles.modelOptionActive]} onPress={() => { void onSetModelSize('auto') }}>
+        <Text style={[styles.modelOptionText, modelSizePref === 'auto' && styles.modelOptionTextActive]}>Automatic recommendation</Text>
+        <Text style={[styles.modelOptionSub, modelSizePref === 'auto' && styles.modelOptionSubActive]}>Uses the best compatible model: {automaticModel.title}</Text>
+      </Pressable>
+      <View style={styles.modelList}>
+        {whisperModels.map((model) => {
+          const compatible = fitsDevice(model, modelStorage)
+          const selected = modelSizePref === model.id
+          const needGb = (requiredStorageBytes(model) / 1024 ** 3).toFixed(1)
+          return (
+            <Pressable key={model.id} disabled={!compatible} style={[styles.modelOption, selected && styles.modelOptionActive, !compatible && styles.modelOptionUnavailable]} onPress={() => { void onSetModelSize(model.id) }}>
+              <View style={styles.modelHeading}><Text style={[styles.modelOptionText, selected && styles.modelOptionTextActive]}>{model.title}</Text><Text style={[styles.modelTier, selected && styles.modelTierActive]}>{model.tier.toUpperCase()}</Text></View>
+              <Text style={[styles.modelOptionSub, selected && styles.modelOptionSubActive]}>{model.detail}</Text>
+              <Text style={styles.modelRequirement}>{compatible ? `Ready for this device · needs ${needGb} GB while downloading` : `Unavailable · needs ${needGb} GB storage and ${(model.ramBytes / 1024 ** 3).toFixed(0)} GB RAM`}</Text>
+            </Pressable>
+          )
+        })}
+      </View>
+      <Step label={modelProgress === null ? `Download ${currentModel.title}` : `Downloading: ${modelProgress}%`} status={modelReady} disabled={!privacyConsent || modelProgress !== null} onPress={onPrepareWhisper} />
 
       <View style={styles.gemmaSection}>
         <Text style={styles.noticeTitle}>AI-ассистент (Gemma 3 1B IT)</Text>
@@ -231,13 +245,22 @@ const styles = StyleSheet.create({
   dangerOutline: { alignSelf: 'flex-start', borderColor: '#dc2626', borderRadius: 8, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 9 },
   dangerText: { color: '#dc2626', fontWeight: '900' },
   danger: { backgroundColor: '#dc2626', borderRadius: 8, paddingHorizontal: 13, paddingVertical: 10 },
-  modelToggle: { flexDirection: 'row', gap: 8 },
+  modelList: { gap: 8 },
+  autoOption: { borderColor: colors.brand, borderRadius: 8, borderWidth: 1, gap: 2, padding: 12 },
   modelOption: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, flex: 1, gap: 2, padding: 12 },
+  modelOptionUnavailable: { backgroundColor: '#f8fafc', opacity: 0.58 },
   modelOptionActive: { backgroundColor: colors.softBrand, borderColor: colors.brand },
   modelOptionText: { color: colors.ink, fontSize: 13, fontWeight: '900' },
   modelOptionTextActive: { color: colors.brandDark },
   modelOptionSub: { color: colors.muted, fontSize: 11 },
   modelOptionSubActive: { color: colors.sub },
+  modelHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  modelTier: { color: colors.muted, fontSize: 9, fontWeight: '900', letterSpacing: 0.7 },
+  modelTierActive: { color: colors.brandDark },
+  modelRequirement: { color: colors.muted, fontSize: 10, lineHeight: 15, marginTop: 4 },
+  recommendation: { backgroundColor: colors.softBrand, borderColor: colors.brand, borderRadius: 8, borderWidth: 1, gap: 3, padding: 12 },
+  recommendationTitle: { color: colors.brandDark, fontSize: 14, fontWeight: '900' },
+  recommendationCopy: { color: colors.sub, fontSize: 12 },
   dangerButtonText: { color: '#fff', fontWeight: '900' },
   gemmaSection: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 10, borderWidth: 1, gap: 8, marginBottom: 14, padding: 14 },
   gemmaCopy: { color: colors.muted, fontSize: 11, lineHeight: 16 },

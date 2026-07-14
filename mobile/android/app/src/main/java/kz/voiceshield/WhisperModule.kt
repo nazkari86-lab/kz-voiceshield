@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 class WhisperModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private var whisper: WhisperContext? = null
+  private var fastConformer: FastConformerContext? = null
   private var streamJob: Job? = null
   private var lastTranscript = ""
 
@@ -31,7 +32,14 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     scope.launch {
       try {
         whisper?.close()
-        whisper = WhisperContext(modelPath, language)
+        fastConformer?.close()
+        whisper = null
+        fastConformer = null
+        if (modelPath.endsWith(".onnx", ignoreCase = true)) {
+          fastConformer = FastConformerContext(modelPath, context)
+        } else {
+          whisper = WhisperContext(modelPath, language)
+        }
         lastTranscript = ""
         promise.resolve(true)
       } catch (e: UnsatisfiedLinkError) {
@@ -45,11 +53,12 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
 
   fun pushAudio(chunk: ShortArray) {
     whisper?.process(chunk)
+    fastConformer?.process(chunk)
   }
 
   @ReactMethod
   fun startStreaming(promise: Promise) {
-    if (whisper == null) {
+    if (whisper == null && fastConformer == null) {
       promise.reject("WHISPER_NOT_READY", "Speech model is not initialized. Open Setup and prepare Whisper first.")
       return
     }
@@ -57,10 +66,10 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     streamJob = scope.launch {
       while (true) {
         delay(3000)
-        val context = whisper ?: continue
-        if (context.bufferSize() >= 32000) {
+        val bufferedSamples = whisper?.bufferSize() ?: fastConformer?.bufferSize() ?: 0
+        if (bufferedSamples >= 32000) {
           val startedAt = System.currentTimeMillis()
-          val text = context.transcribe().trim()
+          val text = (whisper?.transcribe() ?: fastConformer?.transcribe().orEmpty()).trim()
           if (text.isEmpty() || text == lastTranscript) continue
           lastTranscript = text
           val payload = Arguments.createMap()
@@ -74,15 +83,17 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   }
 
   @ReactMethod fun stopStreaming(promise: Promise) { streamJob?.cancel(); streamJob = null; promise.resolve(null) }
-  @ReactMethod fun isInitialized(promise: Promise) { promise.resolve(whisper != null) }
-  @ReactMethod fun resetBuffer(promise: Promise) { whisper?.reset(); lastTranscript = ""; promise.resolve(null) }
-  @ReactMethod fun getBufferSize(promise: Promise) { promise.resolve(whisper?.bufferSize() ?: 0) }
+  @ReactMethod fun isInitialized(promise: Promise) { promise.resolve(whisper != null || fastConformer != null) }
+  @ReactMethod fun resetBuffer(promise: Promise) { whisper?.reset(); fastConformer?.reset(); lastTranscript = ""; promise.resolve(null) }
+  @ReactMethod fun getBufferSize(promise: Promise) { promise.resolve(whisper?.bufferSize() ?: fastConformer?.bufferSize() ?: 0) }
 
   override fun invalidate() {
     streamJob?.cancel()
     streamJob = null
     whisper?.close()
     whisper = null
+    fastConformer?.close()
+    fastConformer = null
     AppRegistry.whisperModule = null
     scope.cancel()
     super.invalidate()

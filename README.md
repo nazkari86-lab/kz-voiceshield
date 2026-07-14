@@ -7,7 +7,7 @@
 
 KZ VoiceShield is a local-first anti-scam call review workspace for Kazakh and Russian conversations.
 
-It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. Version 0.9.6 is a private-beta system: the web and Android apps can run locally, and the optional FastAPI backend supports authenticated case sync, reviewer workflow, audit logging, queued audio transcription, and experimental ML comparison. It is still not a production anti-fraud platform until public deployment, real RU/KZ validation, durable storage/queues, and production identity are in place.
+It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. Version 1.1.0 is a private-beta system: the web and Android apps can run locally, and the optional FastAPI backend supports authenticated case sync, reviewer workflow, audit logging, queued audio transcription, and experimental ML comparison. It is still not a production anti-fraud platform until public deployment, real RU/KZ validation, durable storage/queues, and production identity are in place.
 
 ## Core Workflow
 
@@ -52,6 +52,7 @@ Android Gradle builds require JDK 17. The checked-in Gradle wrapper lives in `mo
 - Scheme classification for fake-bank, safe-account, fake-police, investment, family-emergency, courier, remote-access, SIM-swap, eGov, marketplace, and messenger scams.
 - Privacy-preserving device context: the Android app observes package names and notification risk types only during an active session; it does not upload audio, expose OTP values, retain raw phone numbers, or retain bank-screen content.
 - Verified Whisper model download with a pinned size and SHA-256 digest, progress reporting, and corrupted-model cleanup.
+- Verified on-device FastConformer KZ/RU INT8 download, with a pinned GitHub Release asset, SHA-256 verification, and Sherpa-ONNX runtime for Android phones.
 - Dataset provenance and reviewer trust state; untrusted imported cases are excluded from train/dev/test split exports.
 - Reproducible multilingual transfer baseline in `ml/` using character TF-IDF and logistic regression, with an optional sentence-embedding mode, duplicate/provenance gates, and explicit rules-vs-ML disagreement output.
 - Live browser speech-to-text when supported by the browser.
@@ -156,6 +157,15 @@ This is a private beta, not a final fraud-detection engine. The next production 
 - run Play Console Internal Testing on physical Xiaomi/Samsung devices;
 - secure a bank, operator, contact-center, or consumer-protection pilot partner;
 - add official reporting/export formats for banks or consumer-protection teams.
+
+## Mobile 1.1.0
+
+The Android private beta adds a FastConformer KZ/RU speech option. The model is
+an external 132 MB GitHub Release asset so it can be updated independently from
+the APK; the app checks its SHA-256 before activation. The reproducible Android
+build downloads the matching Sherpa-ONNX JNI release using a pinned checksum.
+See [`docs/MOBILE_PILOT_TEST_PLAN.md`](docs/MOBILE_PILOT_TEST_PLAN.md) for the
+required Xiaomi/Samsung validation matrix before a broader pilot.
 
 ## Tech Stack
 

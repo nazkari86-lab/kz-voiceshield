@@ -9,7 +9,6 @@ import type { CallbackResult } from '../utils/callbackDetector'
 
 type Props = {
   analysis: Analysis
-  timelineLength: number
   highSignals: number
   pressureAnalysis?: PressureScore
   semanticMatches?: TemplateMatch[]
@@ -19,7 +18,7 @@ type Props = {
   captureCompleteness?: number
 }
 
-export function ReviewView({ analysis, timelineLength, highSignals, pressureAnalysis, semanticMatches, callbackInfo, repeatBonus, llmAutoAnalysis, captureCompleteness }: Props) {
+export function ReviewView({ analysis, highSignals, pressureAnalysis, semanticMatches, callbackInfo, repeatBonus, llmAutoAnalysis, captureCompleteness }: Props) {
   const cashOut = analysis.evidence.some((item) => item.stage === 'Cash-out')
   return (
     <View>

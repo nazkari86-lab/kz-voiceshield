@@ -1,4 +1,5 @@
 import { NativeEventEmitter, NativeModules } from 'react-native'
+import type { ModelStorageInfo } from '../data/whisperModels'
 
 type WhisperNativeModule = {
   initialize(modelPath: string, language: string): Promise<boolean>
@@ -17,6 +18,9 @@ type ModelDownloaderNativeModule = {
   getModelPath(fileName: string): Promise<string | null>
   importGemmaModel(): Promise<string>
   importWhisperSmallModel(): Promise<string>
+  importFastConformerModel(): Promise<string>
+  getStorageInfo(): Promise<ModelStorageInfo>
+  setActiveWhisperModel(fileName: string): Promise<void>
 }
 
 type AudioCaptureNativeModule = {

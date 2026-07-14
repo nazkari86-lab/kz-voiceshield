@@ -16,7 +16,7 @@ const CALLBACK_TRIGGERS_KZ = [
 const ALL_TRIGGERS = [...CALLBACK_TRIGGERS_RU, ...CALLBACK_TRIGGERS_KZ]
 
 // Loose phone number pattern for KZ/RU: 7-digit to 11-digit sequences
-const PHONE_RE = /(?:\+7|8)?[\s\-]?\(?7\d{2}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}|\b\d{4,5}\b/g
+const PHONE_RE = /(?:\+7|8)?[\s-]?\(?7\d{2}\)?[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}|\b\d{4,5}\b/g
 
 export type CallbackResult = {
   detected: boolean

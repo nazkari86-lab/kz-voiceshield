@@ -55,6 +55,9 @@ jobs:
       - name: Fetch whisper.cpp
         run: ./scripts/fetch-whisper.sh
 
+      - name: Fetch verified Sherpa-ONNX JNI
+        run: ./scripts/fetch-sherpa-onnx.sh
+
       - name: Typecheck
         run: npm run typecheck
 

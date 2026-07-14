@@ -1,12 +1,12 @@
 {
   "name": "kz-voiceshield",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "oxlint --ignore-pattern 'tools/**'",
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

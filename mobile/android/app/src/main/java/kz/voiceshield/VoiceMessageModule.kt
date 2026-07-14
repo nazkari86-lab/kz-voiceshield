@@ -108,7 +108,9 @@ class VoiceMessageModule(private val context: ReactApplicationContext) : ReactCo
     scope.launch {
       try {
         val modelsDir = File(context.filesDir, "models")
-        val modelFile = listOf("ggml-small.bin", "ggml-tiny.bin")
+        val selectedModel = context.getSharedPreferences(ModelDownloader.PREFS_NAME, 0)
+          .getString(ModelDownloader.ACTIVE_WHISPER_MODEL, null)
+        val modelFile = listOfNotNull(selectedModel, "ggml-small.bin", "ggml-tiny.bin")
           .map { File(modelsDir, it) }
           .firstOrNull { it.isFile && it.length() > 1_000_000L }
         if (modelFile == null) {
@@ -124,11 +126,20 @@ class VoiceMessageModule(private val context: ReactApplicationContext) : ReactCo
           )
           return@launch
         }
-        val whisper = WhisperContext(modelFile.absolutePath, language)
-        val transcript = try {
-          whisper.transcribePcm(pcm)
-        } finally {
-          whisper.close()
+        val transcript = if (modelFile.name.endsWith(".onnx", ignoreCase = true)) {
+          val fastConformer = FastConformerContext(modelFile.absolutePath, context)
+          try {
+            fastConformer.transcribePcm(pcm)
+          } finally {
+            fastConformer.close()
+          }
+        } else {
+          val whisper = WhisperContext(modelFile.absolutePath, language)
+          try {
+            whisper.transcribePcm(pcm)
+          } finally {
+            whisper.close()
+          }
         }
         val result = Arguments.createMap()
         result.putString("transcript", transcript.trim())

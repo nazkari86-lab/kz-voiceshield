@@ -14,7 +14,9 @@ import { matchSemanticTemplates } from '../utils/semanticMatcher'
 import { getRepeatRiskBonus, recordCall } from '../utils/callMemory'
 import { saveTranscriptEntry } from '../utils/transcriptHistory'
 import { addFineTuneExample } from '../utils/fineTuneDataCollector'
-import { LLMModule, GEMMA_MODEL_FILE } from '../bridge/LLMBridge'
+import { LLMModule } from '../bridge/LLMBridge'
+import { modelFor, recommendedModel, whisperModels } from '../data/whisperModels'
+import type { ModelStorageInfo, WhisperModelChoice } from '../data/whisperModels'
 import { buildPrompt, QUICK_QUESTIONS, SYSTEM_PROMPT } from '../utils/llmPrompts'
 import {
   analyzeTranscript,
@@ -39,26 +41,6 @@ import {
 import type { CaseLabel, CaseStatus, RiskSignal, SavedCase, WorkflowFlags } from '@scoring'
 
 const validStatuses: CaseStatus[] = ['new', 'reviewing', 'escalated', 'closed']
-
-type ModelSize = 'tiny' | 'small'
-
-const MODEL_CONFIGS: Record<ModelSize, { file: string; url: string; sha256: string; size: number; label: string }> = {
-  tiny: {
-    file: 'ggml-tiny.bin',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin',
-    // SHA256 from whisper.cpp/models/SHA256SUMS — update if HF file changes
-    sha256: 'be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21',
-    size: 75572464,
-    label: 'Whisper Tiny (fast, ~75 MB)',
-  },
-  small: {
-    file: 'ggml-small.bin',
-    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
-    sha256: '1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b',
-    size: 487601967,
-    label: 'Whisper Small (accurate, ~488 MB)',
-  },
-}
 
 const modelSizeKey = 'voiceshield.model-size.v1'
 const privacyConsentKey = 'voiceshield.privacy-consent.v1'
@@ -96,7 +78,8 @@ export function useWorkspace() {
   const [source, setSource] = useState<'Live Caption' | 'Whisper' | 'Manual'>('Manual')
 
   // ---- model size preference ----
-  const [modelSizePref, setModelSizePref] = useState<ModelSize>('small')
+  const [modelSizePref, setModelSizePref] = useState<WhisperModelChoice>('auto')
+  const [modelStorage, setModelStorage] = useState<ModelStorageInfo | null>(null)
 
   // ---- live capture ----
   const [isListening, setIsListening] = useState(false)
@@ -121,7 +104,6 @@ export function useWorkspace() {
   const lastWhisperRef = useRef('')
   // Temporal signals: track when each signal was received for decay
   const signalTimestampsRef = useRef<Map<string, number>>(new Map())
-  const criticalAlertedRef = useRef(false)
   const lastAudibleAtRef = useRef(Date.now())
   const sessionStartRef = useRef(Date.now())
 
@@ -188,7 +170,9 @@ export function useWorkspace() {
       AsyncStorage.getItem(modelSizeKey).catch(() => null),
     ])
       .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete, storedModelSize]) => {
-        if (storedModelSize === 'tiny' || storedModelSize === 'small') setModelSizePref(storedModelSize)
+        if (storedModelSize === 'auto' || whisperModels.some((model) => model.id === storedModelSize)) {
+          setModelSizePref(storedModelSize as WhisperModelChoice)
+        }
         if (!active) return
         const stored = encryptedCases ?? legacyCases
         if (stored) {
@@ -226,7 +210,20 @@ export function useWorkspace() {
     return () => {
       active = false
     }
-  }, [modelSizePref])
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const refreshStorage = () => ModelDownloader.getStorageInfo()
+      .then((storage) => { if (active) setModelStorage(storage) })
+      .catch(() => { if (active) setModelStorage(null) })
+    void refreshStorage()
+    const timer = setInterval(refreshStorage, 30_000)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
+  }, [])
 
   useEffect(() => {
     if (!hydrated) return
@@ -375,7 +372,7 @@ export function useWorkspace() {
     setCaptureCompleteness(source === 'Live Caption' ? 0.9 : source === 'Whisper' ? 0.45 : 1.0)
   }, [source, isListening])
 
-  const updateModelSize = useCallback(async (size: ModelSize) => {
+  const updateModelSize = useCallback(async (size: WhisperModelChoice) => {
     setModelSizePref(size)
     await AsyncStorage.setItem(modelSizeKey, size)
     // Reset model ready state — new model needs to be downloaded/verified
@@ -383,23 +380,28 @@ export function useWorkspace() {
   }, [])
 
   const prepareWhisper = useCallback(async () => {
-    const cfg = MODEL_CONFIGS[modelSizePref]
+    const cfg = modelSizePref === 'auto' ? recommendedModel(modelStorage) : modelFor(modelSizePref)
     setCaptureError(null)
     setCaptureNotice(null)
     setModelProgress(0)
     try {
       const existing = await ModelDownloader.getVerifiedModelPath(cfg.file, cfg.sha256, cfg.size)
+      if (!existing && cfg.importOnly) {
+        throw new Error('Import the verified FastConformer INT8 model from Setup before preparing it.')
+      }
       const path = existing ?? (await ModelDownloader.downloadModel(cfg.url, cfg.file, cfg.sha256, cfg.size))
       await WhisperModule.initialize(path, 'auto')
+      await ModelDownloader.setActiveWhisperModel(cfg.file)
       setModelReady(true)
       setModelProgress(null)
+      void ModelDownloader.getStorageInfo().then(setModelStorage).catch(() => undefined)
     } catch (error) {
       setModelReady(false)
       setModelProgress(null)
-      setCaptureError('Could not prepare the speech model. Check internet access and free storage.')
+      setCaptureError(error instanceof Error ? error.message : 'Could not prepare the speech model. Check internet access and free storage.')
       throw error
     }
-  }, [modelSizePref])
+  }, [modelSizePref, modelStorage])
 
   const startListening = useCallback(async () => {
     setCaptureError(null)
@@ -587,8 +589,7 @@ export function useWorkspace() {
     await AudioCaptureModule.stopCapture().catch(() => undefined)
     await WhisperModule.stopStreaming().catch(() => undefined)
     await OverlayModule.hide().catch(() => undefined)
-    await ModelDownloader.deleteModel(MODEL_CONFIGS[modelSizePref].file).catch(() => undefined)
-    await ModelDownloader.deleteModel(MODEL_CONFIGS[modelSizePref === 'small' ? 'tiny' : 'small'].file).catch(() => undefined)
+    await Promise.all(whisperModels.map((model) => ModelDownloader.deleteModel(model.file).catch(() => undefined)))
     await CallModule.clearProtectionData().catch(() => undefined)
     await AsyncStorage.removeItem(storageKey).catch(() => undefined)
     await SecureStorage.clear()
@@ -601,7 +602,7 @@ export function useWorkspace() {
     setStorageError(null)
     setTrustedContact(null)
     setCaptureNotice(null)
-  }, [modelSizePref])
+  }, [])
 
   const saveTrustedContact = useCallback(async (name: string, phone: string) => {
     const normalized: TrustedContact = {
@@ -723,7 +724,7 @@ export function useWorkspace() {
     reviewerName, setReviewerName,
     source,
     // capture
-    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript,
+    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript, modelStorage,
     startListening, stopListening, prepareWhisper, switchToMicrophoneFallback,
     modelSizePref, updateModelSize,
     repeatBonusData, llmAutoAnalysis, captureCompleteness,

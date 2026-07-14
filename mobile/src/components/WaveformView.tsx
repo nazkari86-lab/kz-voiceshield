@@ -44,8 +44,6 @@ export function WaveformView({ audioLevel, isActive, barCount = 30, height = 40,
 
   const barWidth = Math.max(1, Math.floor((barCount * 2 - (barCount - 1)) / barCount))
   const activeColor = color ?? colors.brand
-  const midIndex = Math.floor(HISTORY_LEN / 2)
-
   return (
     <View style={[styles.container, { height }]}>
       {animValues.map((anim, idx) => {

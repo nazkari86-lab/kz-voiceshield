@@ -29,8 +29,12 @@ android {
         applicationId "kz.voiceshield"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 17
-        versionName "1.0.3"
+        versionCode 18
+        versionName "1.1.0"
+
+        // Pilot distribution targets physical Android phones. Keeping the
+        // release to ARM avoids shipping emulator-only native runtimes.
+        ndk { abiFilters "arm64-v8a", "armeabi-v7a" }
 
         externalNativeBuild {
             cmake {

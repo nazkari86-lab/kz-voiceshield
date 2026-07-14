@@ -34,7 +34,6 @@ import { ScreenMotion } from './components/ScreenMotion'
 import { VoiceMessageView } from './components/VoiceMessageView'
 import { MotionPressable } from './components/MotionPressable'
 import { ShareIntentModule, shareIntentEvents } from './bridge/ShareIntentBridge'
-import { ModelDownloader } from './bridge/WhisperBridge'
 import { VoiceMessageModule, voiceMessageEvents } from './bridge/VoiceMessageBridge'
 
 type Tab =
@@ -104,7 +103,7 @@ export default function App() {
 }
 
 function AppContent() {
-  const { colors, isDark } = useTheme()
+  const { colors } = useTheme()
   const [tab, setTab] = useState<Tab>('live')
   const [sharedText, setSharedText] = useState('')
   const [pendingSharedAudio, setPendingSharedAudio] = useState(false)
@@ -175,7 +174,7 @@ function AppContent() {
   const content = (
     <>
       {tab === 'live' && <LiveView analysis={w.analysis} transcript={w.transcript} source={w.source} isListening={w.isListening} audioLevel={w.audioLevel} error={w.captureError} notice={w.captureNotice} callStatus={w.callStatus} storageError={w.storageError} trustedContactName={w.trustedContact?.name} callbackWarning={w.callbackInfo?.warning} onChangeTranscript={w.setTranscript} onToggleListening={() => { void (w.isListening ? w.stopListening() : w.startListening()) }} onUseMicrophoneFallback={() => { void w.switchToMicrophoneFallback() }} onSave={w.saveCurrentCase} onExportReport={w.exportReport} onCallTrusted={() => { void w.callTrustedContact() }} onOpenEmergency={() => selectTab('emergency')} onOpenSimulator={() => selectTab('simulator')} />}
-      {tab === 'review' && <ReviewView analysis={w.analysis} timelineLength={w.timeline.length} highSignals={w.highSignals} pressureAnalysis={w.pressureAnalysis} semanticMatches={w.semanticMatches} callbackInfo={w.callbackInfo} repeatBonus={w.repeatBonusData ?? undefined} llmAutoAnalysis={w.llmAutoAnalysis} captureCompleteness={w.captureCompleteness} />}
+      {tab === 'review' && <ReviewView analysis={w.analysis} highSignals={w.highSignals} pressureAnalysis={w.pressureAnalysis} semanticMatches={w.semanticMatches} callbackInfo={w.callbackInfo} repeatBonus={w.repeatBonusData ?? undefined} llmAutoAnalysis={w.llmAutoAnalysis} captureCompleteness={w.captureCompleteness} />}
       {tab === 'evidence' && <EvidenceView analysis={w.analysis} />}
       {tab === 'timeline' && <TimelineView timeline={w.timeline} />}
       {tab === 'threats' && <ThreatsView />}
@@ -196,7 +195,7 @@ function AppContent() {
       {tab === 'history' && <TranscriptHistoryView />}
       {tab === 'llm' && <LLMAssistantView transcript={w.transcript} />}
       {tab === 'model' && <ModelView />}
-      {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} modelSizePref={w.modelSizePref} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onImportWhisper={() => { void ModelDownloader.importWhisperSmallModel().then(() => w.prepareWhisper()) }} onSetModelSize={w.updateModelSize} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
+      {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} modelSizePref={w.modelSizePref} modelStorage={w.modelStorage} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onSetModelSize={w.updateModelSize} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
     </>
   )
 

@@ -301,6 +301,15 @@ export function useWorkspace() {
         setCaptureNotice('Compatibility microphone capture is active. Turn on speakerphone and raise call volume.')
       }
     })
+    const audioRouteSub = audioEvents.addListener('VS_AUDIO_ROUTE_STATUS', (event: { bluetoothScoOn?: boolean; microphoneMuted?: boolean; speakerphoneOn?: boolean }) => {
+      if (event.microphoneMuted) {
+        setCaptureError('The phone microphone is muted. Unmute it before VoiceShield can transcribe speakerphone audio.')
+      } else if (event.bluetoothScoOn) {
+        setCaptureNotice('Bluetooth call audio is active. Switch the call to the phone speaker for reliable local transcription.')
+      } else if (!event.speakerphoneOn) {
+        setCaptureNotice('Phone speaker is off. Enable speakerphone so VoiceShield can hear the caller acoustically.')
+      }
+    })
     const notificationSub = notificationEvents.addListener('VS_NOTIFICATION_SIGNAL', (event: { signalId?: string }) => {
       if (!isListening) return
       const nextSignals = notificationSignalsFromId(event.signalId)
@@ -315,6 +324,7 @@ export function useWorkspace() {
       levelSub.remove()
       audioErrorSub.remove()
       audioStartedSub.remove()
+      audioRouteSub.remove()
       notificationSub.remove()
       modelSub.remove()
     }

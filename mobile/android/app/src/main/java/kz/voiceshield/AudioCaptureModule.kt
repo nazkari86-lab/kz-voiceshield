@@ -1,6 +1,7 @@
 package kz.voiceshield
 
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import com.facebook.react.bridge.Arguments
@@ -50,6 +51,7 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
       val started = Arguments.createMap()
       started.putString("source", source)
       AppRegistry.sendEvent("VS_AUDIO_CAPTURE_STARTED", started)
+      emitRouteStatus()
       job = scope.launch {
         val buffer = ShortArray(1600)
         while (recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
@@ -132,5 +134,14 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
       candidate.release()
     }
     return null
+  }
+
+  private fun emitRouteStatus() {
+    val manager = context.getSystemService(AudioManager::class.java)
+    val payload = Arguments.createMap()
+    payload.putBoolean("speakerphoneOn", manager.isSpeakerphoneOn)
+    payload.putBoolean("bluetoothScoOn", manager.isBluetoothScoOn)
+    payload.putBoolean("microphoneMuted", manager.isMicrophoneMute)
+    AppRegistry.sendEvent("VS_AUDIO_ROUTE_STATUS", payload)
   }
 }

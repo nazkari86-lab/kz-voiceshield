@@ -166,7 +166,7 @@ export function SetupScreen({
       <Step label="Open default phone apps" status={status.callRole} disabled={!privacyConsent} onPress={() => DeviceSettings.openDefaultAppsSettings()} />
 
       <Text style={styles.section}>On-device speech model</Text>
-      <Text style={styles.copy}>All recognition remains on this device. The recommendation accounts for free storage, temporary download space and RAM. Large models may not keep up with a live call.</Text>
+      <Text style={styles.copy}>All recognition remains on this device. The recommendation accounts for free storage, temporary download space and RAM. Downloads resume after a network interruption and every completed model is verified before use. Large models may not keep up with a live call.</Text>
       <View style={styles.recommendation}>
         <Text style={styles.recommendationTitle}>Recommended: {automaticModel.title}</Text>
         <Text style={styles.recommendationCopy}>{automaticModel.detail} · {availableGb === null ? 'checking device storage…' : `${availableGb} GB free`}</Text>

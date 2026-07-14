@@ -130,27 +130,54 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     Thread {
       try {
         validateUrl(url)
-        validateExpectation(expectedSha256, expectedSize.toLong())
+        val expectedBytes = expectedSize.toLong()
+        validateExpectation(expectedSha256, expectedBytes)
         val file = modelFile(fileName)
         val tmp = File(file.absolutePath + ".tmp")
-        tmp.delete()
         val digest = MessageDigest.getInstance("SHA-256")
-        var totalBytes = 0L
+        var totalBytes = if (tmp.exists()) tmp.length() else 0L
+        if (totalBytes > expectedBytes) {
+          require(tmp.delete()) { "Could not reset invalid partial model" }
+          totalBytes = 0L
+        }
+        ensureDownloadStorage(expectedBytes - totalBytes)
+        if (totalBytes > 0) updateDigest(digest, tmp)
+        if (totalBytes == expectedBytes) {
+          require(digest.digest().toHex() == expectedSha256.lowercase()) {
+            tmp.delete()
+            "Saved partial model SHA-256 mismatch"
+          }
+          if (file.exists()) require(file.delete()) { "Could not replace the existing model" }
+          require(tmp.renameTo(file)) { "Could not finalize saved model" }
+          promise.resolve(file.absolutePath)
+          return@Thread
+        }
         var lastProgress = -1
-        client.newCall(Request.Builder().url(url).build()).execute().use { response ->
+        val request = Request.Builder().url(url).apply {
+          if (totalBytes > 0) header("Range", "bytes=$totalBytes-")
+        }.build()
+        client.newCall(request).execute().use { response ->
           if (!response.isSuccessful) error("Download failed: ${response.code}")
+          if (totalBytes > 0 && response.code == 200) {
+            // The mirror ignored Range. Restart rather than append duplicate bytes.
+            require(tmp.delete()) { "Could not restart model download" }
+            totalBytes = 0L
+            digest.reset()
+          } else if (totalBytes > 0) {
+            require(response.code == 206) { "Download server returned an invalid resume response" }
+          }
           val body = response.body ?: error("Download returned an empty body")
           body.byteStream().use { input ->
-            FileOutputStream(tmp).use { output ->
+            FileOutputStream(tmp, totalBytes > 0).use { output ->
               val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
               while (true) {
                 val read = input.read(buffer)
                 if (read < 0) break
                 totalBytes += read
-                require(totalBytes <= expectedSize.toLong()) { "Model download exceeds expected size" }
+                require(totalBytes <= expectedBytes) { "Model download exceeds expected size" }
                 digest.update(buffer, 0, read)
                 output.write(buffer, 0, read)
-                val progress = ((totalBytes * 100L) / expectedSize.toLong()).toInt()
+                val progress = ((totalBytes * 100L) / expectedBytes).toInt()
                 if (progress != lastProgress) {
                   lastProgress = progress
                   val payload = Arguments.createMap().apply { putInt("progress", progress) }
@@ -161,13 +188,15 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
             }
           }
         }
-        require(totalBytes == expectedSize.toLong()) { "Model size mismatch" }
-        require(digest.digest().toHex() == expectedSha256.lowercase()) { "Model SHA-256 mismatch" }
+        require(totalBytes == expectedBytes) { "Model download is incomplete; retry to resume" }
+        require(digest.digest().toHex() == expectedSha256.lowercase()) {
+          tmp.delete()
+          "Model SHA-256 mismatch"
+        }
         if (file.exists()) require(file.delete()) { "Could not replace the existing model" }
         if (!tmp.renameTo(file)) error("Could not finalize model file")
         promise.resolve(file.absolutePath)
       } catch (error: Throwable) {
-        runCatching { modelFile(fileName + ".tmp").delete() }
         promise.reject("MODEL_DOWNLOAD_FAILED", error)
       }
     }.start()
@@ -319,6 +348,23 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
       }
     }
     return digest.digest().toHex() == expectedSha256.lowercase()
+  }
+
+  private fun updateDigest(digest: MessageDigest, file: File) {
+    file.inputStream().use { input ->
+      val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+      while (true) {
+        val read = input.read(buffer)
+        if (read < 0) break
+        digest.update(buffer, 0, read)
+      }
+    }
+  }
+
+  private fun ensureDownloadStorage(remainingBytes: Long) {
+    val available = StatFs(context.filesDir.absolutePath).availableBytes
+    val safetyMargin = 64L * 1024L * 1024L
+    require(available >= remainingBytes + safetyMargin) { "Not enough free storage to download this model" }
   }
 
   private fun ByteArray.toHex(): String = joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0') }

@@ -10,9 +10,9 @@ describe('speech model manifest', () => {
     expect(model.sha256).toMatch(/^[a-f0-9]{64}$/)
   })
 
-  it('calculates temporary download space and falls back on constrained devices', () => {
+  it('requires only the model file and a small first-download reserve', () => {
     const fast = modelFor('fastconformer')
-    expect(requiredStorageBytes(fast)).toBeGreaterThan(fast.size)
+    expect(requiredStorageBytes(fast)).toBe(fast.size + 64 * 1024 * 1024)
     expect(fitsDevice(fast, { availableBytes: fast.size, totalBytes: fast.size, ramBytes: 8_000_000_000 })).toBe(false)
     expect(recommendedModel({ availableBytes: 100_000_000, totalBytes: 1_000_000_000, ramBytes: 1_000_000_000 }).id).toBe('tiny')
   })

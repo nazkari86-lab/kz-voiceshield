@@ -124,7 +124,6 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
         validateUrl(url)
         validateExpectation(expectedSha256, expectedSize.toLong())
         val file = modelFile(fileName)
-        requireFreeSpace(expectedSize.toLong(), file.exists())
         val tmp = File(file.absolutePath + ".tmp")
         tmp.delete()
         val digest = MessageDigest.getInstance("SHA-256")
@@ -241,12 +240,6 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
       promise.reject("ACTIVITY_UNAVAILABLE", "Open the application before selecting a model file")
       return
     }
-    try {
-      requireFreeSpace(minimumBytes, modelFile(fileName).exists())
-    } catch (error: Throwable) {
-      promise.reject("MODEL_IMPORT_STORAGE", error)
-      return
-    }
     importPromise = promise
     importFileName = fileName
     importMinimumBytes = minimumBytes
@@ -299,16 +292,6 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     require(expectedSize in 1..MAX_MODEL_BYTES) { "Invalid expected model size" }
   }
 
-  private fun requireFreeSpace(modelBytes: Long, replacingExistingModel: Boolean) {
-    val available = StatFs(context.filesDir.absolutePath).availableBytes
-    // A first download needs the temporary file plus a safety reserve. A
-    // replacement needs room for both the old file and temporary new file.
-    val required = modelBytes * if (replacingExistingModel) 2 else 1 + STORAGE_RESERVE_BYTES
-    require(available >= required) {
-      "Not enough free storage. Need ${required / 1024 / 1024} MB, available ${available / 1024 / 1024} MB"
-    }
-  }
-
   private fun verify(file: File, expectedSha256: String, expectedSize: Long): Boolean {
     if (file.length() != expectedSize) return false
     val digest = MessageDigest.getInstance("SHA-256")
@@ -330,7 +313,6 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     private const val GEMMA_MODEL_FILE = "gemma-3-1b-it-int4.task"
     private const val MIN_GEMMA_BYTES = 300L * 1024L * 1024L
     private const val MAX_MODEL_BYTES = 2L * 1024L * 1024L * 1024L
-    private const val STORAGE_RESERVE_BYTES = 256L * 1024L * 1024L
     const val PREFS_NAME = "voice_shield_models"
     const val ACTIVE_WHISPER_MODEL = "active_whisper_model"
     private const val WHISPER_SMALL_FILE = "ggml-small.bin"

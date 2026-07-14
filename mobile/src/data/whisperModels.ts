@@ -38,7 +38,9 @@ export const modelFor = (id: WhisperModelId): WhisperModel => {
 
 export type ModelStorageInfo = { availableBytes: number; totalBytes: number; ramBytes: number }
 
-export const requiredStorageBytes = (model: WhisperModel): number => model.size * 2 + 256 * 1024 * 1024
+// The downloader writes the model once and atomically renames it. Do not
+// preemptively reject a first download by requiring an imaginary second copy.
+export const requiredStorageBytes = (model: WhisperModel): number => model.size + 64 * 1024 * 1024
 
 export const fitsDevice = (model: WhisperModel, storage: ModelStorageInfo | null): boolean => {
   if (!storage) return false

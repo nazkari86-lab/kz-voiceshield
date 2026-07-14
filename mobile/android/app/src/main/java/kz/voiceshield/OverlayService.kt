@@ -2,6 +2,7 @@ package kz.voiceshield
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.pm.ServiceInfo
 import android.content.Intent
@@ -36,6 +37,8 @@ class OverlayService : Service() {
       .setContentTitle(getString(R.string.overlay_notification_title))
       .setContentText(getString(R.string.overlay_notification_body))
       .setOngoing(true)
+      .setContentIntent(openAppIntent())
+      .setAutoCancel(false)
       .build()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       val useMicrophone = intent?.getBooleanExtra(EXTRA_USE_MICROPHONE, false) == true
@@ -48,6 +51,10 @@ class OverlayService : Service() {
     } else {
       startForeground(7, notification)
     }
+    // The phone application covers the React Native activity during a call.
+    // Show a neutral badge immediately so the user can confirm protection is
+    // active before the first transcript/risk event arrives.
+    if (view == null) updateRisk(0, "low", "Listening")
     return START_NOT_STICKY
   }
 
@@ -59,6 +66,9 @@ class OverlayService : Service() {
         it.setTextColor(android.graphics.Color.WHITE)
         it.textSize = 14f
         it.setPadding(22, 14, 22, 14)
+        it.contentDescription = "VoiceShield call risk. Tap to open the protection screen."
+        it.isClickable = true
+        it.setOnClickListener { startActivity(openAppActivityIntent()) }
         it.setBackgroundResource(R.drawable.overlay_badge_bg)
         val params = WindowManager.LayoutParams(
           WindowManager.LayoutParams.WRAP_CONTENT,
@@ -107,7 +117,20 @@ class OverlayService : Service() {
     }
   }
 
+  private fun openAppActivityIntent(): Intent = Intent(this, MainActivity::class.java).apply {
+    action = ACTION_OPEN_LIVE_PROTECTION
+    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+  }
+
+  private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
+    this,
+    0,
+    openAppActivityIntent(),
+    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+  )
+
   companion object {
     const val EXTRA_USE_MICROPHONE = "kz.voiceshield.extra.USE_MICROPHONE"
+    const val ACTION_OPEN_LIVE_PROTECTION = "kz.voiceshield.action.OPEN_LIVE_PROTECTION"
   }
 }

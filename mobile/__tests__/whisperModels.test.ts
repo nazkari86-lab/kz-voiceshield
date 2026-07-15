@@ -10,6 +10,11 @@ describe('speech model manifest', () => {
     expect(model.sha256).toMatch(/^[a-f0-9]{64}$/)
   })
 
+  it('uses Hugging Face download mode so LFS/Xet returns a resumable object', () => {
+    expect(modelFor('turboFull').url).toBe('https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin?download=true')
+    expect(modelFor('turboFull').size).toBe(1_624_555_275)
+  })
+
   it('requires only the model file and a small first-download reserve', () => {
     const fast = modelFor('fastconformer')
     expect(requiredStorageBytes(fast)).toBe(fast.size + 64 * 1024 * 1024)

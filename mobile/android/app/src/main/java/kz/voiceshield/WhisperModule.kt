@@ -1,5 +1,8 @@
 package kz.voiceshield
 
+import android.app.ActivityManager
+import android.util.Log
+import java.io.File
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -31,6 +34,18 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   fun initialize(modelPath: String, language: String, promise: Promise) {
     scope.launch {
       try {
+        val model = File(modelPath)
+        require(model.isFile && model.canRead()) { "Speech model file is missing or unreadable. Download it again." }
+        require(model.length() > 0L) { "Speech model file is empty. Download it again." }
+        val memory = context.getSystemService(ActivityManager::class.java).let { manager ->
+          ActivityManager.MemoryInfo().also(manager::getMemoryInfo)
+        }
+        val requiredRam = requiredRamFor(model.length())
+        require(memory.totalMem >= requiredRam) {
+          "This model needs at least ${requiredRam / 1_000_000_000} GB RAM. This phone has about ${memory.totalMem / 1_000_000_000} GB; choose Large v3 Turbo Q5, Medium Q5 or FastConformer."
+        }
+        val threads = recommendedThreads(model.length())
+        Log.i(TAG, "Initializing speech model ${model.name}, ${model.length()} bytes, ${threads} threads")
         whisper?.close()
         fastConformer?.close()
         whisper = null
@@ -38,13 +53,15 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
         if (modelPath.endsWith(".onnx", ignoreCase = true)) {
           fastConformer = FastConformerContext(modelPath, context)
         } else {
-          whisper = WhisperContext(modelPath, language)
+          whisper = WhisperContext(modelPath, language, 1, threads)
         }
         lastTranscript = ""
         promise.resolve(true)
       } catch (e: UnsatisfiedLinkError) {
         // whisper.so not bundled or ABI mismatch
         promise.reject("WHISPER_LINK_ERROR", "Native whisper library not found: ${e.message}", e)
+      } catch (e: OutOfMemoryError) {
+        promise.reject("WHISPER_MEMORY", "Not enough memory to load this speech model. Choose a smaller model or FastConformer.", e)
       } catch (e: Exception) {
         promise.reject("WHISPER_INIT_FAILED", e.message ?: "Unknown init error", e)
       }
@@ -97,5 +114,24 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     AppRegistry.whisperModule = null
     scope.cancel()
     super.invalidate()
+  }
+
+  private fun requiredRamFor(modelBytes: Long): Long = when {
+    modelBytes >= 1_200_000_000L -> 12_000_000_000L
+    modelBytes >= 800_000_000L -> 10_000_000_000L
+    modelBytes >= 500_000_000L -> 6_000_000_000L
+    modelBytes >= 450_000_000L -> 4_000_000_000L
+    modelBytes >= 130_000_000L -> 2_000_000_000L
+    else -> 1_500_000_000L
+  }
+
+  private fun recommendedThreads(modelBytes: Long): Int = when {
+    modelBytes >= 1_200_000_000L -> 2
+    modelBytes >= 700_000_000L -> 3
+    else -> 4
+  }
+
+  companion object {
+    private const val TAG = "VoiceShieldWhisper"
   }
 }

@@ -58,8 +58,11 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
   // 10-second idle read timeout produced false failures on slower networks.
   private val client = OkHttpClient.Builder()
     .connectTimeout(30, TimeUnit.SECONDS)
-    .readTimeout(60, TimeUnit.SECONDS)
+    // HF may spend more than a minute redirecting a multi-GB LFS object.
+    // The stream is still bounded by the expected byte count and SHA-256.
+    .readTimeout(0, TimeUnit.SECONDS)
     .writeTimeout(60, TimeUnit.SECONDS)
+    .retryOnConnectionFailure(true)
     .build()
   private var importPromise: Promise? = null
   private var importFileName: String? = null
@@ -208,7 +211,7 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
           if (totalBytes > 0) header("Range", "bytes=$totalBytes-")
         }.build()
         client.newCall(request).execute().use { response ->
-          if (!response.isSuccessful) error("Download failed: ${response.code}")
+          if (!response.isSuccessful) error("Download failed: HTTP ${response.code}. The partial file is kept; retry to resume.")
           if (totalBytes > 0 && response.code == 200) {
             // The mirror ignored Range. Restart rather than append duplicate bytes.
             require(tmp.delete()) { "Could not restart model download" }
@@ -231,7 +234,11 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
                 val progress = ((totalBytes * 100L) / expectedBytes).toInt()
                 if (progress != lastProgress) {
                   lastProgress = progress
-                  val payload = Arguments.createMap().apply { putInt("progress", progress) }
+                  val payload = Arguments.createMap().apply {
+                    putInt("progress", progress)
+                    putDouble("downloadedBytes", totalBytes.toDouble())
+                    putDouble("expectedBytes", expectedBytes.toDouble())
+                  }
                   AppRegistry.sendEvent("VS_MODEL_DOWNLOAD_PROGRESS", payload)
                 }
               }

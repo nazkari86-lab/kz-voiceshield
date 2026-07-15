@@ -1,5 +1,6 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
+import { LocalizedText as Text } from './LocalizedText'
 import type { Analysis } from '@scoring'
 import type { LiveAiResult } from '../utils/liveAiAnalysis'
 import { buildAttackGraph, buildDeviceDiagnostics, buildDriftReport, buildFamilyAlert, buildIncidentCopilot, buildModelConsensus } from '../utils/protectionIntelligence'

@@ -137,14 +137,14 @@ export function SetupScreen({
         </View>
         <Text style={[styles.section, { marginTop: 10 }]}>{t.setup.language}</Text>
         <View style={styles.toggleRow}>
-          {(['ru', 'kz'] as Language[]).map((l) => (
+          {(['en', 'ru', 'kz'] as Language[]).map((l) => (
             <Pressable
               key={l}
               style={[styles.toggleChip, lang === l && styles.toggleChipActive]}
               onPress={() => setLang(l)}
             >
               <Text style={[styles.toggleText, lang === l && styles.toggleTextActive]}>
-                {l === 'ru' ? 'Русский' : 'Қазақша'}
+                {l === 'en' ? 'English' : l === 'ru' ? 'Русский' : 'Қазақша'}
               </Text>
             </Pressable>
           ))}

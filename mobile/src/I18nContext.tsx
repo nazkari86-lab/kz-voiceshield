@@ -2,9 +2,10 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { ru } from './i18n/ru'
 import { kz } from './i18n/kz'
+import { en } from './i18n/en'
 
-export type Language = 'ru' | 'kz'
-const strings = { ru, kz }
+export type Language = 'en' | 'ru' | 'kz'
+const strings = { en, ru, kz }
 
 type I18nContextValue = {
   t: typeof ru
@@ -12,16 +13,16 @@ type I18nContextValue = {
   setLang: (lang: Language) => void
 }
 
-const I18nContext = createContext<I18nContextValue>({ t: ru, lang: 'ru', setLang: () => undefined })
+const I18nContext = createContext<I18nContextValue>({ t: en, lang: 'en', setLang: () => undefined })
 
 const LANG_KEY = 'voiceshield.language.v1'
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Language>('ru')
+  const [lang, setLangState] = useState<Language>('en')
 
   useEffect(() => {
     AsyncStorage.getItem(LANG_KEY).then(v => {
-      if (v === 'ru' || v === 'kz') setLangState(v)
+      if (v === 'en' || v === 'ru' || v === 'kz') setLangState(v)
     }).catch(() => undefined)
   }, [])
 

@@ -2,7 +2,17 @@ import React, { Children, type ReactNode } from 'react'
 import { Text as NativeText, type TextProps } from 'react-native'
 import { useI18n } from '../I18nContext'
 
-const translations: Record<string, { ru: string; kz: string }> = {
+const translations: Record<string, { en?: string; ru: string; kz: string }> = {
+  'Protection Intelligence': { ru: 'Интеллект защиты', kz: 'Қорғаныс интеллекті' },
+  'Incident Copilot · сейчас': { ru: 'Incident Copilot · сейчас', kz: 'Incident Copilot · қазір' },
+  'Attack graph': { ru: 'Граф атаки', kz: 'Шабуыл графы' },
+  'Family-safe alert': { ru: 'Безопасное уведомление семье', kz: 'Отбасыға қауіпсіз ескерту' },
+  'CONSENSUS': { ru: 'КОНСЕНСУС', kz: 'КЕЛІСІМ' },
+  'CONFIDENCE': { ru: 'УВЕРЕННОСТЬ', kz: 'СЕНІМДІЛІК' },
+  'DRIFT': { ru: 'DRIFT', kz: 'DRIFT' },
+  'ADAPTIVE COACH': { ru: 'АДАПТИВНЫЙ ТРЕНЕР', kz: 'БЕЙІМДЕЛЕТІН ЖАТТЫҚТЫРУШЫ' },
+  'Scam call training': { ru: 'Тренировка против мошеннических звонков', kz: 'Алаяқ қоңырауларға қарсы жаттығу' },
+  'Practice decisions under pressure. No real call or personal data is used.': { ru: 'Тренируйте решения под давлением. Реальные звонки и персональные данные не используются.', kz: 'Қысым кезіндегі шешімдерді жаттықтырыңыз. Нақты қоңырау мен жеке дерек қолданылмайды.' },
   'Save current': { ru: 'Сохранить текущий', kz: 'Ағымдағыны сақтау' },
   'No saved cases yet': { ru: 'Сохранённых дел пока нет', kz: 'Сақталған істер әзірге жоқ' },
   'Save reviewed calls to build a local investigation library.': { ru: 'Сохраняйте проверенные звонки, чтобы создать локальную библиотеку расследований.', kz: 'Жергілікті тергеу қорын құру үшін тексерілген қоңырауларды сақтаңыз.' },
@@ -113,7 +123,8 @@ const translations: Record<string, { ru: string; kz: string }> = {
   'Run': { ru: 'Запустить', kz: 'Іске қосу' },
 }
 
-function translateUi(value: string, lang: 'ru' | 'kz'): string {
+function translateUi(value: string, lang: 'en' | 'ru' | 'kz'): string {
+  if (lang === 'en') return value
   const exact = translations[value]
   if (exact) return exact[lang]
   const lowerValue = value.toLowerCase()

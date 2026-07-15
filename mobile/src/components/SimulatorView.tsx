@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useEffect, useRef, useState } from 'react'
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Animated, Pressable, StyleSheet, View } from 'react-native'
 import { colors } from '../theme'
 import { dailyTrainingScenario, examScenarios, scenarioSkill, trainingScenarios, trainingScore, trainingSkillLabels } from '../training'
 import type { TrainingSkill } from '../training'
 import { TrainingVoiceModule } from '../bridge/TrainingVoiceBridge'
 import { adaptiveTrainingRecommendation } from '../utils/protectionIntelligence'
+import { LocalizedText as Text } from './LocalizedText'
 
 export function SimulatorView() {
   const [scenarioId, setScenarioId] = useState<string | null>(null)

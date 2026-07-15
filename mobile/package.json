@@ -1,6 +1,6 @@
 {
   "name": "kz-voiceshield-mobile",
-  "version": "1.9.7",
+  "version": "1.9.8",
   "private": true,
   "scripts": {
     "android": "react-native run-android",

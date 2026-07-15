@@ -35,6 +35,9 @@ PRESETS: dict[str, dict] = {
     "all_scam_spam": {"text": "text", "label": "is_spam", "lang": "mul", "fraud_values": {"1", "spam", "scam", "true"}},
     "uzbek_russian_phishing": {"text": "text", "label": "label", "lang": "ru-uz", "fraud_values": {"1", "phishing", "fraud", "scam", "true"}},
     "fraudlens_ru": {"text": "text_clean", "label": "fraud_type", "lang": "ru", "fraud_values": {"phone_scam", "bank_scam", "social_engineering", "phishing", "recruitment_scam", "investment_scam", "online_scam"}},
+    "difraud_sms": {"text": "text", "label": "label", "lang": "en", "fraud_values": {"1", "true", "scam", "fraud", "phishing"}},
+    "difraud_job_scams": {"text": "text", "label": "label", "lang": "en", "fraud_values": {"1", "true", "scam", "fraud"}},
+    "trilingual_fraud": {"text": "text", "label": "label", "lang": "mul", "fraud_values": {"scam", "fraud", "1", "true"}},
 }
 
 
@@ -45,7 +48,9 @@ def _label_for(raw_label: str, fraud_values: set[str]) -> str:
 def _read_rows(path: Path):
     if path.suffix.lower() == ".csv":
         with path.open(encoding="utf-8", newline="") as handle:
-            yield from csv.DictReader(handle)
+            for record in csv.DictReader(handle):
+                # Some public CSV exports prefix the first header with a UTF-8 BOM.
+                yield {(str(key).lstrip("\ufeff") if key is not None else ""): value for key, value in record.items()}
     elif path.suffix.lower() == ".parquet":
         try:
             import pyarrow.parquet as parquet

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import { Pressable, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native'
+import { Pressable, Share, StyleSheet, Switch, TextInput, View } from 'react-native'
 import { CallModule } from '@bridge/CallModule'
 import type { PhoneAssessment, PhoneProtectionConfig, PhoneRelationship } from '@bridge/CallModule'
 import { checkScamNumber } from '../data/scamNumbers'
 import type { ScamEntry } from '../data/scamNumbers'
 import { colors } from '../theme'
+import { LocalizedText as Text } from './LocalizedText'
 
 const defaultConfig: PhoneProtectionConfig = {
   enabled: false,

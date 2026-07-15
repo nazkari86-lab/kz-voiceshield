@@ -1,8 +1,9 @@
 import React, { useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import type { DatasetQuality } from '@scoring'
 import { colors } from '../theme'
 import { Card, Metric, SectionTitle, ui } from './ui'
+import { LocalizedText as Text } from './LocalizedText'
 
 type Props = {
   quality: DatasetQuality

@@ -16,4 +16,10 @@ describe('Kazakh language identifier', () => {
     expect(detectTranscriptLanguage('Сейчас банк қауіпсіз емес', vocabulary)).toBe('mixed')
     expect(languageConfidence('Сейчас банк қауіпсіз емес', vocabulary)).toBeGreaterThan(0.7)
   })
+
+  it('uses character n-grams when diacritics and exact spelling are missing', () => {
+    const result = classifyWord('кауипсиздикк', new Set(['қауіпсіздік', 'қауіпсіз', 'қызметкері']))
+    expect(result.language).toBe('kk')
+    expect(result.reason).toBe('char_ngram')
+  })
 })

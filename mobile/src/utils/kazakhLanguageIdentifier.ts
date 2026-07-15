@@ -5,17 +5,37 @@ export type WordLanguageResult = {
   word: string
   language: DetectedWordLanguage
   confidence: number
-  reason: 'lexicon' | 'kazakh_letter' | 'russian_stopword' | 'unknown'
+  reason: 'lexicon' | 'kazakh_letter' | 'char_ngram' | 'russian_stopword' | 'unknown'
 }
 
 const wordPattern = /[а-яёәғқңөұүһі]+(?:-[а-яёәғқңөұүһі]+)?/giu
 const kazakhLetters = /[әғқңөұүһі]/iu
 const russianStopwords = new Set('и в во не что он на я с со как а то все она так его но да ты к тебе у же вы за бы по только ее мне было вот от меня еще нет о из ему теперь сейчас когда даже ну вдруг ли если уже или быть был него до тебя ведь там потом себя ничего ей может они тут где есть надо'.split(' '))
 const kazakhStopwords = new Set('мен және де да бұл ол біз сіз сен үшін бойынша бірақ ғана емес керек қазір қалай немесе не бар жоқ айтпаңыз'.split(' '))
+type NgramModel = { grams: Set<string>; vocabularySize: number }
+const modelCache = new WeakMap<Set<string>, NgramModel>()
 
 const foldKazakhLetters = (text: string): string => text.toLocaleLowerCase('kk-KZ')
   .replace(/[ә]/gu, 'а').replace(/[ғ]/gu, 'г').replace(/[қ]/gu, 'к').replace(/[ң]/gu, 'н')
   .replace(/[ө]/gu, 'о').replace(/[ұү]/gu, 'у').replace(/[һ]/gu, 'х').replace(/[і]/gu, 'и')
+
+const charNgrams = (text: string): string[] => {
+  const value = `^${foldKazakhLetters(text)}$`
+  return Array.from({ length: Math.max(0, value.length - 2) }, (_, index) => value.slice(index, index + 3))
+}
+
+const getNgramModel = (vocabulary: Set<string>): NgramModel => {
+  const cached = modelCache.get(vocabulary)
+  if (cached) return cached
+  const grams = new Set<string>()
+  for (const candidate of vocabulary) {
+    if (candidate.length < 4 || !kazakhLetters.test(candidate)) continue
+    charNgrams(candidate).forEach((gram) => grams.add(gram))
+  }
+  const model = { grams, vocabularySize: vocabulary.size }
+  modelCache.set(vocabulary, model)
+  return model
+}
 
 export function classifyWord(word: string, kazakhVocabulary = new Set<string>()): WordLanguageResult {
   const normalized = word.toLocaleLowerCase('kk-KZ')
@@ -27,6 +47,12 @@ export function classifyWord(word: string, kazakhVocabulary = new Set<string>())
   const folded = foldKazakhLetters(normalized)
   const foldedMatch = [...kazakhVocabulary].some((candidate) => foldKazakhLetters(candidate) === folded && kazakhLetters.test(candidate))
   if (foldedMatch) return { word, language: 'kk', confidence: 0.84, reason: 'lexicon' }
+  if (normalized.length >= 5 && kazakhVocabulary.size > 0) {
+    const grams = charNgrams(normalized)
+    const model = getNgramModel(kazakhVocabulary)
+    const hitRatio = grams.length === 0 ? 0 : grams.filter((gram) => model.grams.has(gram)).length / grams.length
+    if (hitRatio >= 0.76) return { word, language: 'kk', confidence: Math.min(0.82, 0.62 + hitRatio * 0.2), reason: 'char_ngram' }
+  }
   return { word, language: 'unknown', confidence: 0.35, reason: 'unknown' }
 }
 

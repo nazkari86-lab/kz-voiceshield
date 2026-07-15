@@ -227,7 +227,7 @@ function AppContent() {
       {tab === 'voiceMsg' && <VoiceMessageView modelReady={w.modelReady} pendingSharedAudio={pendingSharedAudio} onClearSharedAudio={() => setPendingSharedAudio(false)} onAnalyzeAsCall={(transcript) => { w.setTranscript(transcript); w.setFileName('voice-message.ogg'); selectTab('review') }} />}
       {tab === 'verify' && <VerifyView />}
       {tab === 'stats' && <StatsView cases={w.cases} />}
-      {tab === 'sms' && <SmsScannerView />}
+      {tab === 'sms' && <SmsScannerView onAnalyze={(text) => { w.setTranscript(text); w.setFileName('sms-message.txt'); selectTab('tools') }} />}
       {tab === 'history' && <TranscriptHistoryView />}
       {tab === 'llm' && <LLMAssistantView transcript={w.analysisTranscript} languageContext={w.ksc2LanguageContext} ai={ai} />}
       {tab === 'demo' && <ProtectionWalkthroughView

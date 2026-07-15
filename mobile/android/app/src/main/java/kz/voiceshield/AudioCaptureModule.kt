@@ -40,6 +40,7 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
         promise.reject("AUDIO_UNAVAILABLE", "Microphone input is unavailable on this device")
         return
       }
+      preprocessor.reset()
       // MIC is intentionally first. On several Xiaomi/MIUI builds VOICE_RECOGNITION
       // can interfere with the active call audio route, muting the speaker or leaving
       // the recorder silent. MIC captures the acoustic speaker output without changing
@@ -99,6 +100,7 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
     }
     recorder?.release()
     recorder = null
+    preprocessor.reset()
   }
 
   private fun startRecorder(minBuffer: Int): String? {

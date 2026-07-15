@@ -10,6 +10,12 @@ internal class AudioPreprocessor {
   private var previousOutput = 0f
   private var noiseFloor = 0.008f
 
+  fun reset() {
+    previousInput = 0f
+    previousOutput = 0f
+    noiseFloor = 0.008f
+  }
+
   fun process(input: ShortArray): ShortArray {
     if (input.isEmpty()) return input
     var peak = 0f

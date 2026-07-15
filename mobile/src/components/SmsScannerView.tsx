@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from 'react-native'
 import { SmsScannerModule, type SmsMessage } from '../bridge/SmsScannerBridge'
 import { checkScamNumber } from '../data/scamNumbers'
 import { colors } from '../theme'
 import { Card, SectionTitle } from './ui'
+import { LocalizedText as Text } from './LocalizedText'
 
 const SCAM_KEYWORDS = [
   'банк', 'карта', 'заблокир', 'код подтверждени', 'код из смс',

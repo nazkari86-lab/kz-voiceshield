@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Alert, StyleSheet, TouchableOpacity, View } from 'react-native'
 import { clearTranscriptHistory, deleteTranscriptEntry, getTranscriptHistory, type TranscriptEntry } from '../utils/transcriptHistory'
 import { colors, riskColor } from '../theme'
 import { Card, RiskBadge, SectionTitle } from './ui'
+import { LocalizedText as Text } from './LocalizedText'
 
 function fmtDate(ts: number): string {
   return new Date(ts).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })

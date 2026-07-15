@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, View } from 'react-native'
 import type { CaseLabel, CaseStatus, SavedCase, WorkflowFlags } from '@scoring'
 import { labelText, statusText } from '@scoring'
 import { colors, riskColor } from '../theme'
 import { Card, EmptyState } from './ui'
+import { LocalizedText as Text } from './LocalizedText'
 
 const LABELS: CaseLabel[] = ['unreviewed', 'true_positive', 'false_positive', 'needs_review']
 const STATUSES: CaseStatus[] = ['new', 'reviewing', 'escalated', 'closed']

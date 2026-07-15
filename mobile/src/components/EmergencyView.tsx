@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { recoveryPlans, type ExposureType } from '../emergency'
 import { colors } from '../theme'
 import { MotionPressable } from './MotionPressable'
 import { SectionHeader } from './ui'
+import { LocalizedText as Text } from './LocalizedText'
 
 type Props = { trustedContactName?: string; onCallTrusted: () => void; onOpenVerify: () => void }
 

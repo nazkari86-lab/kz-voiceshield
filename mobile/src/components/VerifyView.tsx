@@ -1,7 +1,8 @@
 import React from 'react'
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native'
+import { Linking, Pressable, StyleSheet, View } from 'react-native'
 import { officialOrganizations } from '../data/officialOrganizations'
 import { colors } from '../theme'
+import { LocalizedText as Text } from './LocalizedText'
 
 export function VerifyView() {
   return (

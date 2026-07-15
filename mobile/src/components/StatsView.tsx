@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { SavedCase } from '@scoring'
 import { colors, riskColor } from '../theme'
 import { Card, Metric, SectionTitle } from './ui'
+import { LocalizedText as Text } from './LocalizedText'
 
 type Props = {
   cases: SavedCase[]

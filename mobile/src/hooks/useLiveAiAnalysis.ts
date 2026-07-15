@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { OnDeviceAiRuntime } from './useOnDeviceAiRuntime'
+import { SecureStorage } from '../bridge/SecureStorageBridge'
+import { cloudProviderById } from '../data/cloudAiProviders'
+import { hasProviderLiveConsent, setProviderLiveConsent } from '../services/cloudAiClient'
 import {
   buildLiveAiGenerationRequest,
   concurrentAiModelLimit,
@@ -28,6 +31,8 @@ const LIVE_AI_ENABLED_KEY = 'voiceshield.live-ai.enabled.v1'
 
 export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleScore, ramBytes }: Options) {
   const [enabled, setEnabledState] = useState(true)
+  const [cloudLiveConsent, setCloudLiveConsent] = useState(false)
+  const [cloudConsentHydrated, setCloudConsentHydrated] = useState(false)
   const [status, setStatus] = useState<LiveAiStatus>('waiting')
   const [result, setResult] = useState<LiveAiResult | null>(null)
   const [draft, setDraft] = useState('')
@@ -48,10 +53,15 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
   const tokenBufferRef = useRef('')
   const tokenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const modelIdentity = `${ai.engine}:${ai.modelName}:${ai.activeLocalModelId ?? ''}`
+  const cloudProviderId = ai.engine === 'cloud' ? ai.activeCloudConfig?.providerId ?? null : null
+  const aiGenerationOwner = ai.generationOwner
+  const stopAiGeneration = ai.stopGeneration
+  const isCloud = cloudProviderId !== null
+  const canRun = enabled && (!isCloud || (cloudConsentHydrated && cloudLiveConsent))
   const previousModelIdentityRef = useRef(modelIdentity)
 
   latestTranscriptRef.current = transcript
-  enabledRef.current = enabled
+  enabledRef.current = canRun
   listeningRef.current = isListening
 
   const clearTimer = useCallback(() => {
@@ -158,18 +168,41 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
   runRef.current = runAnalysis
 
   useEffect(() => {
-    void AsyncStorage.getItem(LIVE_AI_ENABLED_KEY)
-      .then((value) => {
+    void Promise.all([
+      SecureStorage.getItem(LIVE_AI_ENABLED_KEY),
+      AsyncStorage.getItem(LIVE_AI_ENABLED_KEY).catch(() => null),
+    ])
+      .then(async ([secureValue, legacyValue]) => {
+        const value = secureValue ?? legacyValue
         const next = value !== 'disabled'
-        enabledRef.current = next
         setEnabledState(next)
-        setStatus(next ? 'waiting' : 'disabled')
+        if (secureValue === null && legacyValue !== null) {
+          await SecureStorage.setItem(LIVE_AI_ENABLED_KEY, legacyValue)
+          await AsyncStorage.removeItem(LIVE_AI_ENABLED_KEY).catch(() => undefined)
+        }
       })
       .catch(() => undefined)
   }, [])
 
   useEffect(() => {
-    if (!enabled || !isListening || !ai.hydrated) {
+    let active = true
+    setCloudConsentHydrated(!cloudProviderId)
+    setCloudLiveConsent(false)
+    if (!cloudProviderId) return () => { active = false }
+    void hasProviderLiveConsent(cloudProviderId)
+      .then((accepted) => {
+        if (!active) return
+        setCloudLiveConsent(accepted)
+        setCloudConsentHydrated(true)
+      })
+      .catch(() => {
+        if (active) setCloudConsentHydrated(true)
+      })
+    return () => { active = false }
+  }, [cloudProviderId])
+
+  useEffect(() => {
+    if (!canRun || !isListening || !ai.hydrated) {
       clearTimer()
       return
     }
@@ -181,7 +214,7 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
       const throttle = Math.max(0, LIVE_AI_MIN_INTERVAL_MS - (Date.now() - lastStartedAtRef.current))
       schedule(Math.max(LIVE_AI_DEBOUNCE_MS, throttle))
     }
-  }, [ai.hydrated, clearTimer, enabled, isListening, schedule, transcript])
+  }, [ai.hydrated, canRun, clearTimer, isListening, schedule, transcript])
 
   useEffect(() => {
     if (isListening && !previousListeningRef.current) {
@@ -216,8 +249,19 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
     pendingRef.current = false
     setDraft('')
     setError(null)
-    setStatus(enabled ? (result ? 'ready' : 'waiting') : 'disabled')
-  }, [enabled, result, transcript])
+    setStatus(canRun ? (result ? 'ready' : 'waiting') : 'disabled')
+  }, [canRun, result, transcript])
+
+  useEffect(() => {
+    if (canRun) {
+      if (status === 'disabled') setStatus('waiting')
+      return
+    }
+    clearTimer()
+    pendingRef.current = false
+    setStatus('disabled')
+    if (aiGenerationOwner === 'live') void stopAiGeneration('live')
+  }, [aiGenerationOwner, canRun, clearTimer, status, stopAiGeneration])
 
   useEffect(() => () => {
     clearTimer()
@@ -225,18 +269,48 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
   }, [clearTimer])
 
   const setEnabled = useCallback(async (next: boolean) => {
+    if (next && cloudProviderId && !cloudLiveConsent) {
+      setError(`Подтвердите отдельное согласие на Live AI для ${cloudProviderById[cloudProviderId].title}.`)
+      setStatus('disabled')
+      return
+    }
     enabledRef.current = next
     setEnabledState(next)
     setStatus(next ? 'waiting' : 'disabled')
-    await AsyncStorage.setItem(LIVE_AI_ENABLED_KEY, next ? 'enabled' : 'disabled')
+    await SecureStorage.setItem(LIVE_AI_ENABLED_KEY, next ? 'enabled' : 'disabled')
+    await AsyncStorage.removeItem(LIVE_AI_ENABLED_KEY).catch(() => undefined)
     if (!next) {
       clearTimer()
       pendingRef.current = false
-      await ai.stopGeneration('live')
+      await stopAiGeneration('live')
     } else if (listeningRef.current) {
       schedule(400)
     }
-  }, [ai, clearTimer, schedule])
+  }, [clearTimer, cloudLiveConsent, cloudProviderId, schedule, stopAiGeneration])
+
+  const acceptCloudLiveConsent = useCallback(async () => {
+    if (!cloudProviderId) return
+    await setProviderLiveConsent(cloudProviderId, true)
+    setCloudLiveConsent(true)
+    setCloudConsentHydrated(true)
+    setError(null)
+    setEnabledState(true)
+    enabledRef.current = true
+    setStatus('waiting')
+    await SecureStorage.setItem(LIVE_AI_ENABLED_KEY, 'enabled')
+    if (listeningRef.current) schedule(400)
+  }, [cloudProviderId, schedule])
+
+  const revokeCloudLiveConsent = useCallback(async () => {
+    if (!cloudProviderId) return
+    await setProviderLiveConsent(cloudProviderId, false)
+    setCloudLiveConsent(false)
+    enabledRef.current = false
+    clearTimer()
+    pendingRef.current = false
+    await stopAiGeneration('live')
+    setStatus('disabled')
+  }, [clearTimer, cloudProviderId, stopAiGeneration])
 
   const analyzeNow = useCallback(() => runAnalysis(true), [runAnalysis])
   const disagreement = useMemo(() => liveAiDisagreement(ruleRisk, result?.risk ?? 'unknown'), [result?.risk, ruleRisk])
@@ -244,11 +318,15 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
   return {
     analyzeNow,
     analyzedAt,
+    acceptCloudLiveConsent,
+    cloudProviderName: cloudProviderId ? cloudProviderById[cloudProviderId].title : null,
     disagreement,
     draft,
-    enabled,
+    enabled: canRun,
     error,
     modelName: ai.modelName,
+    requiresCloudConsent: isCloud && cloudConsentHydrated && !cloudLiveConsent,
+    revokeCloudLiveConsent,
     result,
     ruleRisk,
     ruleScore,

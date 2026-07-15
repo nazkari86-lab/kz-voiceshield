@@ -6,8 +6,11 @@ import {
   type CloudProvider,
   type CloudProviderId,
 } from '../data/cloudAiProviders'
+import { redactSensitiveText } from '../scoring'
 
 const KEY_PREFIX = 'voiceshield.cloud-api-key.'
+const DATA_CONSENT_PREFIX = 'voiceshield.cloud-data-consent.v1.'
+const LIVE_CONSENT_PREFIX = 'voiceshield.cloud-live-consent.v1.'
 const REQUEST_TIMEOUT_MS = 60_000
 
 type JsonRecord = Record<string, unknown>
@@ -18,6 +21,35 @@ const asString = (value: unknown): string => typeof value === 'string' ? value :
 const asNumber = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
 
 export const providerKeyStorageKey = (providerId: CloudProviderId): string => `${KEY_PREFIX}${providerId}`
+export const providerDataConsentStorageKey = (providerId: CloudProviderId): string => `${DATA_CONSENT_PREFIX}${providerId}`
+export const providerLiveConsentStorageKey = (providerId: CloudProviderId): string => `${LIVE_CONSENT_PREFIX}${providerId}`
+
+export async function hasProviderDataConsent(providerId: CloudProviderId): Promise<boolean> {
+  return await SecureStorage.getItem(providerDataConsentStorageKey(providerId)) === 'accepted'
+}
+
+export async function setProviderDataConsent(providerId: CloudProviderId, accepted: boolean): Promise<void> {
+  if (accepted) await SecureStorage.setItem(providerDataConsentStorageKey(providerId), 'accepted')
+  else await Promise.all([
+    SecureStorage.removeItem(providerDataConsentStorageKey(providerId)),
+    SecureStorage.removeItem(providerLiveConsentStorageKey(providerId)),
+  ])
+}
+
+export async function hasProviderLiveConsent(providerId: CloudProviderId): Promise<boolean> {
+  return await SecureStorage.getItem(providerLiveConsentStorageKey(providerId)) === 'accepted'
+}
+
+export async function setProviderLiveConsent(providerId: CloudProviderId, accepted: boolean): Promise<void> {
+  if (accepted) await SecureStorage.setItem(providerLiveConsentStorageKey(providerId), 'accepted')
+  else await SecureStorage.removeItem(providerLiveConsentStorageKey(providerId))
+}
+
+export function prepareCloudUserMessage(message: string): string {
+  return redactSensitiveText(message)
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu, '[REDACTED EMAIL]')
+    .replace(/(?:https?:\/\/)?(?:t\.me|wa\.me)\/[^\s]+/giu, '[REDACTED LINK]')
+}
 
 export async function hasProviderApiKey(providerId: CloudProviderId): Promise<boolean> {
   return Boolean(await SecureStorage.getItem(providerKeyStorageKey(providerId)))
@@ -30,7 +62,11 @@ export async function saveProviderApiKey(providerId: CloudProviderId, rawKey: st
 }
 
 export async function removeProviderApiKey(providerId: CloudProviderId): Promise<void> {
-  await SecureStorage.removeItem(providerKeyStorageKey(providerId))
+  await Promise.all([
+    SecureStorage.removeItem(providerKeyStorageKey(providerId)),
+    setProviderDataConsent(providerId, false),
+    setProviderLiveConsent(providerId, false),
+  ])
 }
 
 async function readProviderApiKey(providerId: CloudProviderId): Promise<string> {
@@ -169,20 +205,24 @@ export async function generateCloudResponse(
   signal?: AbortSignal,
 ): Promise<string> {
   const provider = cloudProviderById[config.providerId]
+  if (!await hasProviderDataConsent(config.providerId)) {
+    throw new Error(`CLOUD_CONSENT_REQUIRED: подтвердите передачу обезличенного текста в ${provider.title}.`)
+  }
   const apiKey = await readProviderApiKey(config.providerId)
+  const safeUserMessage = prepareCloudUserMessage(userMessage)
   let url: string
   let body: JsonRecord
   let extract: (payload: unknown) => string
 
   if (provider.apiStyle === 'anthropic') {
     url = `${provider.baseUrl}/messages`
-    body = { model: config.modelId, max_tokens: 700, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] }
+    body = { model: config.modelId, max_tokens: 700, system: systemPrompt, messages: [{ role: 'user', content: safeUserMessage }] }
     extract = extractAnthropicText
   } else if (provider.apiStyle === 'gemini') {
     url = `${provider.baseUrl}/models/${encodeURIComponent(config.modelId)}:generateContent`
     body = {
       systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+      contents: [{ role: 'user', parts: [{ text: safeUserMessage }] }],
       generationConfig: { maxOutputTokens: 700, temperature: 0.2 },
     }
     extract = extractGeminiText
@@ -191,7 +231,7 @@ export async function generateCloudResponse(
     const openAiReasoningModel = provider.id === 'openai' && /^(gpt-5|o[1345](?:-|$))/iu.test(config.modelId)
     body = {
       model: config.modelId,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: safeUserMessage }],
       ...(openAiReasoningModel ? { max_completion_tokens: 700 } : { max_tokens: 700, temperature: 0.2 }),
       stream: false,
     }

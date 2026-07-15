@@ -31,6 +31,14 @@ describe('live AI analysis policy', () => {
     expect(parsed.action).toContain('завершить звонок')
   })
 
+  it('prefers validated JSON while rejecting unknown risk values and extra prose', () => {
+    const parsed = parseLiveAiResponse('Result: {"risk":"critical","scheme":"лжеполиция","evidence":"просит перевести деньги","action":"завершить звонок","ignored":"x"}')
+    expect(parsed).toMatchObject({ risk: 'critical', scheme: 'лжеполиция', action: 'завершить звонок' })
+
+    const invalidRisk = parseLiveAiResponse('{"risk":"maximum","scheme":"unknown","evidence":"none","action":"verify"}')
+    expect(invalidRisk.risk).toBe('unknown')
+  })
+
   it('keeps an unstructured answer visible instead of dropping the analysis', () => {
     const parsed = parseLiveAiResponse('Вероятно высокий риск: собеседник торопит и просит деньги.')
     expect(parsed.risk).toBe('high')

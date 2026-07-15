@@ -11,8 +11,14 @@ jest.mock('../src/bridge/SecureStorageBridge', () => ({
 import {
   generateCloudResponse,
   listCloudModels,
+  prepareCloudUserMessage,
+  providerDataConsentStorageKey,
   providerKeyStorageKey,
+  providerLiveConsentStorageKey,
+  removeProviderApiKey,
   saveProviderApiKey,
+  setProviderDataConsent,
+  setProviderLiveConsent,
 } from '../src/services/cloudAiClient'
 
 const jsonResponse = (payload: unknown, ok = true, status = 200) => ({
@@ -31,6 +37,18 @@ describe('cloud AI client', () => {
     await saveProviderApiKey('openai', 'sk-test-secret')
     expect(mockSecureValues.get(providerKeyStorageKey('openai'))).toBe('sk-test-secret')
     expect(providerKeyStorageKey('openai')).toContain('openai')
+  })
+
+  it('revokes provider and Live AI consent when access is disabled', async () => {
+    await saveProviderApiKey('openai', 'sk-test-secret')
+    await setProviderDataConsent('openai', true)
+    await setProviderLiveConsent('openai', true)
+
+    await removeProviderApiKey('openai')
+
+    expect(mockSecureValues.has(providerKeyStorageKey('openai'))).toBe(false)
+    expect(mockSecureValues.has(providerDataConsentStorageKey('openai'))).toBe(false)
+    expect(mockSecureValues.has(providerLiveConsentStorageKey('openai'))).toBe(false)
   })
 
   it('parses OpenRouter free and paid model metadata', async () => {
@@ -54,6 +72,7 @@ describe('cloud AI client', () => {
     ['gemini', 'https://generativelanguage.googleapis.com/v1beta/models/gemini-test:generateContent', 'x-goog-api-key', 'gemini-secret', { candidates: [{ content: { parts: [{ text: 'Gemini result' }] } }] }, 'Gemini result'],
   ] as const)('uses the official %s protocol', async (providerId, expectedUrl, header, expectedHeader, payload, expectedText) => {
     mockSecureValues.set(providerKeyStorageKey(providerId), `${providerId}-secret`)
+    mockSecureValues.set(providerDataConsentStorageKey(providerId), 'accepted')
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(payload))
 
     const result = await generateCloudResponse(
@@ -71,6 +90,7 @@ describe('cloud AI client', () => {
   it('redacts a provider key from API errors', async () => {
     const secret = 'sensitive-api-secret'
     mockSecureValues.set(providerKeyStorageKey('openai'), secret)
+    mockSecureValues.set(providerDataConsentStorageKey('openai'), 'accepted')
     ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse({ error: { message: `invalid ${secret}` } }, false, 401))
 
     await expect(generateCloudResponse(
@@ -78,5 +98,36 @@ describe('cloud AI client', () => {
       'system',
       'user',
     )).rejects.toThrow('invalid [REDACTED]')
+  })
+
+  it('blocks generation until provider-specific data consent exists', async () => {
+    mockSecureValues.set(providerKeyStorageKey('openai'), 'openai-secret')
+
+    await expect(generateCloudResponse(
+      { providerId: 'openai', modelId: 'gpt-test', modelName: 'Test' },
+      'system',
+      'user',
+    )).rejects.toThrow('CLOUD_CONSENT_REQUIRED')
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('redacts sensitive transcript data before transmission', async () => {
+    mockSecureValues.set(providerKeyStorageKey('openai'), 'openai-secret')
+    mockSecureValues.set(providerDataConsentStorageKey('openai'), 'accepted')
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: 'ok' } }] }))
+
+    await generateCloudResponse(
+      { providerId: 'openai', modelId: 'gpt-test', modelName: 'Test' },
+      'system',
+      'SMS код 123456, карта 4400 1234 5678 9012, test@example.com, t.me/private-user',
+    )
+
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)
+    const sent = body.messages[1].content as string
+    expect(sent).not.toContain('123456')
+    expect(sent).not.toContain('4400 1234 5678 9012')
+    expect(sent).not.toContain('test@example.com')
+    expect(sent).not.toContain('t.me/private-user')
+    expect(prepareCloudUserMessage('код 1234')).toContain('[REDACTED]')
   })
 })

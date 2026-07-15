@@ -7,7 +7,7 @@ const slides = [
     id: 'protect',
     eyebrow: 'WELCOME',
     title: 'Your AI shield\nagainst call fraud',
-    body: 'KZ VoiceShield detects phone scams in real time. All analysis runs on your device — no call audio ever leaves your phone.',
+    body: 'KZ VoiceShield detects phone scams in real time. Core speech recognition and rules run on your device. Call audio is never uploaded.',
     accent: colors.brand,
   },
   {
@@ -27,8 +27,8 @@ const slides = [
   {
     id: 'privacy',
     eyebrow: 'PRIVACY',
-    title: 'Everything stays\non your device',
-    body: 'Transcripts are stored locally and encrypted at rest. The Whisper model runs fully offline (~488 MB). Nothing is uploaded unless you choose to donate a reviewed case.',
+    title: 'Local by default,\ncloud by consent',
+    body: 'Transcripts are encrypted on your device and Whisper runs offline. Optional API models receive only redacted text after separate provider and Live AI consent. You can revoke access at any time.',
     accent: colors.brandDark,
   },
 ]

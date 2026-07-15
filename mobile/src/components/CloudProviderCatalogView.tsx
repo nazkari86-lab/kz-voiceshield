@@ -9,10 +9,12 @@ import {
   type CloudProviderId,
 } from '../data/cloudAiProviders'
 import {
+  hasProviderDataConsent,
   hasProviderApiKey,
   listCloudModels,
   removeProviderApiKey,
   saveProviderApiKey,
+  setProviderDataConsent,
 } from '../services/cloudAiClient'
 import { colors } from '../theme'
 import { SecureStorage } from '../bridge/SecureStorageBridge'
@@ -39,6 +41,7 @@ export function CloudProviderCatalogView({ activeConfig, busy, error, onActivate
   const [providerId, setProviderId] = useState<CloudProviderId>(activeConfig?.providerId ?? 'openai')
   const [apiKey, setApiKey] = useState('')
   const [keySaved, setKeySaved] = useState(false)
+  const [dataConsent, setDataConsent] = useState(false)
   const [models, setModels] = useState<CloudModel[]>([])
   const [query, setQuery] = useState('')
   const [priceFilter, setPriceFilter] = useState<PriceFilter>('all')
@@ -50,8 +53,12 @@ export function CloudProviderCatalogView({ activeConfig, busy, error, onActivate
     setLoading(true)
     setCatalogError(null)
     try {
-      const saved = await hasProviderApiKey(nextProviderId)
+      const [saved, consented] = await Promise.all([
+        hasProviderApiKey(nextProviderId),
+        hasProviderDataConsent(nextProviderId),
+      ])
       setKeySaved(saved)
+      setDataConsent(consented)
       if (!saved) {
         setModels([])
         return
@@ -102,6 +109,7 @@ export function CloudProviderCatalogView({ activeConfig, busy, error, onActivate
     try {
       await removeProviderApiKey(providerId)
       setKeySaved(false)
+      setDataConsent(false)
       setModels([])
       setApiKey('')
       onCredentialRemoved(providerId)
@@ -111,6 +119,20 @@ export function CloudProviderCatalogView({ activeConfig, busy, error, onActivate
       setLoading(false)
     }
   }, [onCredentialRemoved, providerId])
+
+  const toggleDataConsent = useCallback(async () => {
+    const next = !dataConsent
+    setLoading(true)
+    setCatalogError(null)
+    try {
+      await setProviderDataConsent(providerId, next)
+      setDataConsent(next)
+    } catch (cause) {
+      setCatalogError(cause instanceof Error ? cause.message : 'Не удалось сохранить согласие.')
+    } finally {
+      setLoading(false)
+    }
+  }, [dataConsent, providerId])
 
   const visibleModels = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -135,7 +157,7 @@ export function CloudProviderCatalogView({ activeConfig, busy, error, onActivate
             key={item.id}
             disabled={busy || loading}
             style={[styles.providerChip, providerId === item.id && styles.providerChipActive]}
-            onPress={() => { setProviderId(item.id); setApiKey(''); setQuery(''); setPriceFilter('all') }}
+            onPress={() => { setProviderId(item.id); setApiKey(''); setKeySaved(false); setDataConsent(false); setModels([]); setQuery(''); setPriceFilter('all') }}
           >
             <Text style={[styles.providerText, providerId === item.id && styles.providerTextActive]}>{item.title}</Text>
           </Pressable>
@@ -202,6 +224,22 @@ export function CloudProviderCatalogView({ activeConfig, busy, error, onActivate
 
       {keySaved && (
         <View style={styles.modelSection}>
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: dataConsent }}
+            disabled={loading || busy}
+            style={[styles.consentCard, dataConsent && styles.consentCardAccepted]}
+            onPress={() => { void toggleDataConsent() }}
+          >
+            <View style={[styles.checkbox, dataConsent && styles.checkboxChecked]}>
+              {dataConsent && <Text style={styles.checkboxMark}>✓</Text>}
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.consentTitle}>Разрешить запросы в {provider.title}</Text>
+              <Text style={styles.consentText}>VoiceShield будет отправлять выбранной модели текст ваших сообщений и, только после отдельного включения, обезличенные фрагменты транскрипта. Аудио, контакты и сохранённые дела не отправляются.</Text>
+            </View>
+          </Pressable>
+          {!dataConsent && <Text style={styles.consentRequired}>Выбор модели заблокирован, пока вы явно не разрешите передачу текста этому провайдеру.</Text>}
           <View style={styles.modelHeader}>
             <View style={styles.flex}><Text style={styles.sectionTitle}>Модели аккаунта</Text><Text style={styles.modelCount}>{models.length} получено от API</Text></View>
             {loading && <ActivityIndicator color={colors.brand} />}
@@ -225,8 +263,8 @@ export function CloudProviderCatalogView({ activeConfig, busy, error, onActivate
                   {model.capabilities.length > 0 && <Text numberOfLines={1} style={styles.modelCapabilities}>{model.capabilities.join(' · ')}</Text>}
                 </View>
                 <Pressable
-                  disabled={busy || loading || active}
-                  style={[styles.useButton, active && styles.useButtonActive, (busy || loading) && styles.disabled]}
+                  disabled={busy || loading || active || !dataConsent}
+                  style={[styles.useButton, active && styles.useButtonActive, (busy || loading || !dataConsent) && styles.disabled]}
                   onPress={() => { void onActivate({ providerId, modelId: model.id, modelName: model.name }) }}
                 >
                   <Text style={styles.useText}>{active ? 'ACTIVE' : 'USE'}</Text>
@@ -282,6 +320,14 @@ const styles = StyleSheet.create({
   removeText: { color: '#9f2339', fontSize: 9, fontWeight: '900' },
   error: { backgroundColor: '#fee2e2', borderRadius: 6, color: '#991b1b', fontSize: 11, lineHeight: 16, padding: 9 },
   modelSection: { gap: 8 },
+  consentCard: { alignItems: 'flex-start', backgroundColor: '#fff7ed', borderColor: '#fdba74', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 10, padding: 11 },
+  consentCardAccepted: { backgroundColor: colors.softBrand, borderColor: colors.brand },
+  checkbox: { alignItems: 'center', borderColor: colors.muted, borderRadius: 4, borderWidth: 1, height: 21, justifyContent: 'center', marginTop: 1, width: 21 },
+  checkboxChecked: { backgroundColor: colors.brand, borderColor: colors.brand },
+  checkboxMark: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  consentTitle: { color: colors.ink, fontSize: 11, fontWeight: '900' },
+  consentText: { color: colors.sub, fontSize: 9, lineHeight: 14, marginTop: 3 },
+  consentRequired: { color: '#9a3412', fontSize: 9, fontWeight: '800', lineHeight: 14 },
   modelHeader: { alignItems: 'center', flexDirection: 'row', gap: 8 },
   modelCount: { color: colors.muted, fontSize: 9, marginTop: 2 },
   searchInput: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 7, borderWidth: 1, color: colors.ink, minHeight: 44, paddingHorizontal: 11 },

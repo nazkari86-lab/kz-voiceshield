@@ -1,6 +1,6 @@
 # VoiceShield Capability Matrix
 
-Status as of 0.7.0. "Implemented" means code and deterministic tests exist in this repository.
+Status as of 1.8.1. "Implemented" means code and deterministic tests exist in this repository; it does not imply public deployment or production validation.
 
 ## Implemented locally
 
@@ -15,6 +15,8 @@ Status as of 0.7.0. "Implemented" means code and deterministic tests exist in th
 - Banking, remote-access, and screen-sharing app context.
 - Critical overlay and vibration; official bank callback buttons; family contact mode.
 - On-device pasted SMS/messenger/link analysis, including fake-bank domains and APK links.
+- On-device screenshot OCR and QR extraction through ML Kit, followed by the same local link/text risk analysis.
+- Optional local Gemma/GGUF analysis and consent-gated BYOK cloud text analysis with encrypted API-key storage and pre-transmission redaction.
 - Optional automatic transcript deletion when a protection session stops.
 
 ## Partial or controlled deployment
@@ -30,8 +32,6 @@ Status as of 0.7.0. "Implemented" means code and deterministic tests exist in th
 - Carrier-grade spoofing, international route verification, and SIM-swap events require mobile-operator APIs.
 - Blocking or delaying a bank transfer, detecting a new recipient, and credit-flow controls require bank integration.
 - Shared verified organization caller identity requires signed bank/operator data feeds.
-- Screenshot OCR and QR decoding require an audited on-device OCR/scanner dependency and separate consent UX.
 - Malware reputation requires a licensed provider or a maintained internal analysis pipeline.
 - Government/regional warning feeds require an authoritative signed feed and freshness monitoring.
 - Ending an active system call programmatically requires default-dialer/InCallService privileges; VoiceShield does not request that role.
-

@@ -22,7 +22,7 @@ import {
   type CloudModelConfig,
   type CloudProviderId,
 } from '../data/cloudAiProviders'
-import { generateCloudResponse, hasProviderApiKey } from '../services/cloudAiClient'
+import { generateCloudResponse, hasProviderApiKey, hasProviderDataConsent } from '../services/cloudAiClient'
 
 export type AssistantEngine = 'gemma' | 'local' | 'cloud'
 export type AiGenerationOwner = 'assistant' | 'live'
@@ -118,7 +118,11 @@ export function useOnDeviceAiRuntime() {
         const provider = cloudProviderById[selectedCloud.providerId]
         setModelName(`${provider.title} · ${selectedCloud.modelName}`)
         setModelSize(0)
-        updateReady(await hasProviderApiKey(selectedCloud.providerId))
+        const [hasKey, hasConsent] = await Promise.all([
+          hasProviderApiKey(selectedCloud.providerId),
+          hasProviderDataConsent(selectedCloud.providerId),
+        ])
+        updateReady(hasKey && hasConsent)
       } else if (preferred === 'local' && selectedLocal) {
         setModelName(selectedLocal.title)
         setModelSize(selectedLocal.size)
@@ -231,6 +235,9 @@ export function useOnDeviceAiRuntime() {
       if (!await hasProviderApiKey(config.providerId)) {
         throw new Error(`Сначала сохраните API-ключ ${cloudProviderById[config.providerId].title}.`)
       }
+      if (!await hasProviderDataConsent(config.providerId)) {
+        throw new Error(`Подтвердите передачу обезличенного текста в ${cloudProviderById[config.providerId].title}.`)
+      }
       await stopGeneration()
       await releaseLocalContext()
       const gemmaReady = await LLMModule?.isReady().catch(() => false)
@@ -271,7 +278,15 @@ export function useOnDeviceAiRuntime() {
       const config = activeCloudConfigRef.current
       setModelName(config ? `${cloudProviderById[config.providerId].title} · ${config.modelName}` : 'Облачная API-модель')
       setModelSize(0)
-      updateReady(config ? await hasProviderApiKey(config.providerId) : false)
+      if (config) {
+        const [hasKey, hasConsent] = await Promise.all([
+          hasProviderApiKey(config.providerId),
+          hasProviderDataConsent(config.providerId),
+        ])
+        updateReady(hasKey && hasConsent)
+      } else {
+        updateReady(false)
+      }
     } else {
       await releaseLocalContext()
       setModelName(GEMMA_TITLE)
@@ -310,6 +325,9 @@ export function useOnDeviceAiRuntime() {
         if (!config) throw new Error('AI_MODEL_MISSING: выберите API-модель в разделе AI assistant.')
         if (!await hasProviderApiKey(config.providerId)) {
           throw new Error(`AI_KEY_MISSING: добавьте API-ключ ${cloudProviderById[config.providerId].title}.`)
+        }
+        if (!await hasProviderDataConsent(config.providerId)) {
+          throw new Error(`CLOUD_CONSENT_REQUIRED: подтвердите передачу обезличенного текста в ${cloudProviderById[config.providerId].title}.`)
         }
         updateReady(true)
         return

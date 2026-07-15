@@ -44,6 +44,7 @@ export function LiveAiPanel({ controller, hasTranscript, onOpenAssistant }: Prop
           <Text style={styles.toggleLabel}>{controller.enabled ? 'ON' : 'OFF'}</Text>
           <Switch
             accessibilityLabel="Live AI analysis"
+            disabled={controller.requiresCloudConsent}
             onValueChange={(value) => { void controller.setEnabled(value) }}
             thumbColor="#ffffff"
             trackColor={{ false: '#cbd5e1', true: colors.brand }}
@@ -51,6 +52,25 @@ export function LiveAiPanel({ controller, hasTranscript, onOpenAssistant }: Prop
           />
         </View>
       </View>
+
+      {controller.requiresCloudConsent && (
+        <View style={styles.cloudConsent}>
+          <Text style={styles.cloudConsentTitle}>Отдельное согласие для Live AI</Text>
+          <Text style={styles.cloudConsentText}>При включении VoiceShield будет периодически отправлять в {controller.cloudProviderName} только последние обезличенные фразы транскрипта. Аудио, контакты, номера карт и сохранённые дела не отправляются. Возможна тарификация провайдером.</Text>
+          <MotionPressable style={styles.cloudConsentButton} onPress={() => { void controller.acceptCloudLiveConsent() }}>
+            <Text style={styles.cloudConsentButtonText}>Разрешить Live AI через {controller.cloudProviderName}</Text>
+          </MotionPressable>
+        </View>
+      )}
+
+      {controller.cloudProviderName && !controller.requiresCloudConsent && (
+        <View style={styles.cloudActiveRow}>
+          <Text style={styles.cloudActiveText}>CLOUD · обезличенный текст отправляется в {controller.cloudProviderName}</Text>
+          <MotionPressable onPress={() => { void controller.revokeCloudLiveConsent() }}>
+            <Text style={styles.revokeText}>Отозвать</Text>
+          </MotionPressable>
+        </View>
+      )}
 
       <View style={styles.statusRow}>
         {busy ? <ActivityIndicator color={colors.brand} size="small" /> : <View style={[styles.statusDot, { backgroundColor: controller.status === 'error' ? '#dc2626' : controller.enabled ? colors.brand : colors.muted }]} />}
@@ -120,6 +140,14 @@ const styles = StyleSheet.create({
   toggleRow: { alignItems: 'center', flexDirection: 'row', gap: 5 },
   toggleLabel: { color: colors.sub, fontSize: 9, fontWeight: '900' },
   statusRow: { alignItems: 'center', borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', gap: 7, paddingBottom: 9 },
+  cloudConsent: { backgroundColor: '#fff7ed', borderColor: '#fdba74', borderRadius: 7, borderWidth: 1, gap: 7, padding: 10 },
+  cloudConsentTitle: { color: '#9a3412', fontSize: 11, fontWeight: '900' },
+  cloudConsentText: { color: '#7c2d12', fontSize: 10, lineHeight: 15 },
+  cloudConsentButton: { alignItems: 'center', alignSelf: 'stretch', backgroundColor: '#9a3412', borderRadius: 6, minHeight: 40, justifyContent: 'center', paddingHorizontal: 10 },
+  cloudConsentButtonText: { color: '#fff', fontSize: 10, fontWeight: '900', textAlign: 'center' },
+  cloudActiveRow: { alignItems: 'center', backgroundColor: '#eef6ff', borderRadius: 6, flexDirection: 'row', gap: 8, padding: 8 },
+  cloudActiveText: { color: '#1e4e72', flex: 1, fontSize: 9, fontWeight: '800', lineHeight: 13 },
+  revokeText: { color: '#9f2339', fontSize: 9, fontWeight: '900', textDecorationLine: 'underline' },
   statusDot: { borderRadius: 4, height: 8, width: 8 },
   status: { color: colors.sub, flex: 1, fontSize: 11, fontWeight: '800' },
   rules: { color: colors.muted, fontSize: 9, fontWeight: '900' },

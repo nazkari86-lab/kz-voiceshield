@@ -23,6 +23,7 @@ mobile/android/app/src/main/jniLibs/
 tools/sherpa-onnx/
 tools/export_fastconformer_kk_ru.py
 backend/data/
+data/external/
 backend/.env
 test-results/
 playwright-report/

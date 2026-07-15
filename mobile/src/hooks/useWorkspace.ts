@@ -489,22 +489,28 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
         return
       }
       const accessibilityEnabled = await AccessibilityModule.isEnabled()
-      if (!accessibilityEnabled) {
+      let microphoneStarted = false
+      try {
         const microphoneReady = await ensureMicrophonePermission()
-        if (!microphoneReady) {
-          setCaptureError('Microphone access is required for local Whisper protection. Enable it in Setup or Android app settings.')
-          return
+        if (microphoneReady) {
+          // Prefer the direct, proven microphone -> Whisper path. Caption
+          // service remains an additional source, not a reason to skip audio.
+          const nativeModelReady = await WhisperModule.isInitialized()
+          if (!nativeModelReady) await prepareWhisper()
+          await WhisperModule.resetBuffer()
+          await WhisperModule.startStreaming()
+          await AudioCaptureModule.startCapture()
+          microphoneStarted = true
         }
-        // A downloaded model is only a file. After an app restart, its native
-        // Whisper context must be recreated before audio chunks can be decoded.
-        const nativeModelReady = await WhisperModule.isInitialized()
-        if (!nativeModelReady) await prepareWhisper()
-        await WhisperModule.resetBuffer()
+      } catch (error) {
+        if (!accessibilityEnabled) throw error
       }
-      await OverlayModule.show(!accessibilityEnabled)
-      if (!accessibilityEnabled) {
-        await WhisperModule.startStreaming()
-        await AudioCaptureModule.startCapture()
+      if (!microphoneStarted && !accessibilityEnabled) {
+        setCaptureError('Microphone access and a verified Whisper model are required for local protection. Enable them in Setup.')
+        return
+      }
+      await OverlayModule.show(microphoneStarted)
+      if (microphoneStarted) {
         lastAudibleAtRef.current = Date.now()
         setAudioLevel(0)
         setSource('Whisper')

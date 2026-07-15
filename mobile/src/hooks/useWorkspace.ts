@@ -118,6 +118,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
   const signalTimestampsRef = useRef<Map<string, number>>(new Map())
   const lastAudibleAtRef = useRef(Date.now())
   const sessionStartRef = useRef(Date.now())
+  const restoredWhisperModelRef = useRef<string | null>(null)
 
   // ---- saved cases ----
   const [cases, setCases] = useState<SavedCase[]>([])
@@ -410,6 +411,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
 
   const updateModelSize = useCallback(async (size: WhisperModelChoice) => {
     setModelSizePref(size)
+    restoredWhisperModelRef.current = null
     await AsyncStorage.setItem(modelSizeKey, size)
     // Reset model ready state — new model needs to be downloaded/verified
     setModelReady(false)
@@ -428,6 +430,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
       const path = existing ?? (await ModelDownloader.downloadModel(cfg.url, cfg.file, cfg.sha256, cfg.size))
       await WhisperModule.initialize(path, 'auto')
       await ModelDownloader.setActiveWhisperModel(cfg.file)
+      restoredWhisperModelRef.current = cfg.file
       setModelReady(true)
       setModelProgress(null)
       void ModelDownloader.getStorageInfo().then(setModelStorage).catch(() => undefined)
@@ -443,10 +446,11 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
   // a download. The native context is process-local, so the Ready badge must
   // be restored from the on-device model file on every fresh process.
   useEffect(() => {
-    if (!hydrated || !modelStorage) return
+    if (!hydrated || !modelStorage || isListening) return
     let active = true
     const restoreWhisper = async () => {
       const cfg = modelSizePref === 'auto' ? recommendedModel(modelStorage) : modelFor(modelSizePref)
+      if (restoredWhisperModelRef.current === cfg.file) return
       try {
         const path = await ModelDownloader.getVerifiedModelPath(cfg.file, cfg.sha256, cfg.size)
         if (!path) {
@@ -454,7 +458,10 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
           return
         }
         await WhisperModule.initialize(path, 'auto')
-        if (active) setModelReady(true)
+        if (active) {
+          restoredWhisperModelRef.current = cfg.file
+          setModelReady(true)
+        }
       } catch {
         if (active) setModelReady(false)
       }
@@ -463,7 +470,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     return () => {
       active = false
     }
-  }, [hydrated, modelSizePref, modelStorage])
+  }, [hydrated, isListening, modelSizePref, modelStorage])
 
   const startListening = useCallback(async () => {
     setCaptureError(null)

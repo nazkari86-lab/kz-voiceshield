@@ -34,6 +34,9 @@ export const modelManifest = {
       { name: 'KorCCVi (Korean voice-phishing)', role: 'Transfer only', link: 'github.com/kimdesok/Text-classification-of-voice-phishing-transcipts' },
       { name: 'SMS Scam merged (Kaggle)', role: 'SMS/smishing signal (transfer)', link: 'kaggle.com/datasets/vinit119/sms-scam-detection-dataset-merged' },
       { name: 'KSC2 (Kazakh Speech Corpus 2)', role: 'ASR fine-tuning (RU/KZ speech)', link: 'issai.nu.edu.kz/kz-speech-corpus' },
+      { name: 'Kazakh Speech Dataset', role: 'Offline ASR quality evaluation only', link: 'huggingface.co/datasets/Flamme-VRM/kazakh-speech-dataset' },
+      { name: 'ASVspoof 2021 DF', role: 'Offline deepfake benchmark only; not used by live decisions', link: 'huggingface.co/datasets/SpeechAntiSpoofingBenchmarks/ASVspoof2021_DF' },
+      { name: 'LCNN ASVspoof 2019 checkpoint', role: 'Unvalidated conversion candidate; not bundled or executed', link: 'huggingface.co/caa-speech-detection-asvspoof2019/lcnn' },
     ] as SourceRef[],
     caveats: [
       'Synthetic and external data are transfer/pretraining only and are excluded from any held-out test.',

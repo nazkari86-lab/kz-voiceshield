@@ -8,6 +8,7 @@ import type { TemplateMatch } from '../utils/semanticMatcher'
 import type { CallbackResult } from '../utils/callbackDetector'
 import type { TranscriptEnhancement } from '../utils/transcriptEnhancer'
 import type { TranscriptCorrectionState } from '../hooks/useTranscriptCorrection'
+import { ProtectionIntelligencePanel } from './ProtectionIntelligencePanel'
 
 type Props = {
   analysis: Analysis
@@ -133,6 +134,8 @@ export function ReviewView({ analysis, rawAnalysis, modelCorrection, enhancement
         <SectionTitle>Response checklist</SectionTitle>
         {analysis.responseChecklist.map((item) => <Text key={item} style={styles.bullet}>• {item}</Text>)}
       </Card>
+
+      <ProtectionIntelligencePanel analysis={analysis} repeatBonus={repeatBonus?.bonus} />
 
       <Card>
         <SectionTitle>Threat stage coverage</SectionTitle>

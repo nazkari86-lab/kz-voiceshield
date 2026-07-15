@@ -15,6 +15,7 @@ import { matchSemanticTemplates } from '../utils/semanticMatcher'
 import { getRepeatRiskBonus, recordCall } from '../utils/callMemory'
 import { saveTranscriptEntry } from '../utils/transcriptHistory'
 import { addFineTuneExample } from '../utils/fineTuneDataCollector'
+import { recordKnowledgeDiagnostic } from '../data/knowledgeGraphStore'
 import { useTranscriptCorrection } from './useTranscriptCorrection'
 import type { OnDeviceAiRuntime } from './useOnDeviceAiRuntime'
 import { modelFor, recommendedModel, whisperModels } from '../data/whisperModels'
@@ -311,7 +312,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
       setAudioLevel(level)
     })
     const audioErrorSub = audioEvents.addListener('VS_AUDIO_CAPTURE_ERROR', (event: { message?: string }) => {
-      if (event.message) setCaptureError(event.message)
+      if (event.message) { setCaptureError(event.message); void recordKnowledgeDiagnostic('audio_capture', event.message) }
     })
     const audioStartedSub = audioEvents.addListener('VS_AUDIO_CAPTURE_STARTED', (event: { source?: string }) => {
       if (event.source === 'microphone') {
@@ -322,7 +323,8 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     })
     const audioRouteSub = audioEvents.addListener('VS_AUDIO_ROUTE_STATUS', (event: { bluetoothScoOn?: boolean; microphoneMuted?: boolean; speakerphoneOn?: boolean }) => {
       if (event.microphoneMuted) {
-        setCaptureError('The phone microphone is muted. Unmute it before VoiceShield can transcribe speakerphone audio.')
+        const message = 'The phone microphone is muted. Unmute it before VoiceShield can transcribe speakerphone audio.'
+        setCaptureError(message); void recordKnowledgeDiagnostic('microphone_muted', message)
       } else if (event.bluetoothScoOn) {
         setCaptureNotice('Bluetooth call audio is active. Switch the call to the phone speaker for reliable local transcription.')
       } else if (!event.speakerphoneOn) {

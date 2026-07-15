@@ -43,6 +43,13 @@ class WorkflowPatch(BaseModel):
     expectedUpdatedAt: str | None = None
 
 
+class KnowledgeGraphPayload(BaseModel):
+    schemaVersion: str = Field(pattern=r"^voiceshield\.knowledge\.v1$")
+    appVersion: str = Field(min_length=1, max_length=32)
+    graph: dict[str, Any] = Field(default_factory=dict)
+    clientUpdatedAt: str | None = None
+
+
 class AudioJobResponse(BaseModel):
     jobId: str
     status: JobStatus

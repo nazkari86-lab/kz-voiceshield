@@ -204,3 +204,22 @@ def test_rejects_large_or_unsupported_audio(api):
         "/transcribe-audio", headers=auth("analyst-token"), files={"audio": ("call.wav", b"x" * 65, "audio/wav")}
     )
     assert too_large.status_code == 413
+
+
+def test_knowledge_graph_is_encrypted_and_scoped_to_user(api):
+    client, database_path = api
+    payload = {
+        "schemaVersion": "voiceshield.knowledge.v1",
+        "appVersion": "1.9.7",
+        "graph": {"nodes": [{"id": "note:test", "summary": "private"}], "edges": []},
+    }
+    saved = client.put("/knowledge-graph", headers=auth("analyst-token"), json=payload)
+    assert saved.status_code == 200
+    loaded = client.get("/knowledge-graph", headers=auth("analyst-token"))
+    assert loaded.status_code == 200
+    assert loaded.json()["graph"]["graph"]["nodes"][0]["id"] == "note:test"
+    other = client.get("/knowledge-graph", headers=auth("reviewer-token"))
+    assert other.json()["found"] is False
+    with sqlite3.connect(database_path) as connection:
+        encrypted = connection.execute("SELECT payload FROM knowledge_graphs").fetchone()[0]
+    assert b"private" not in encrypted

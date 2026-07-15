@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Principal, Settings
 from .ml_service import ModelService, ModelUnavailable
-from .models import AudioJobResponse, CasePayload, TranscriptRequest, WorkflowPatch
+from .models import AudioJobResponse, CasePayload, KnowledgeGraphPayload, TranscriptRequest, WorkflowPatch
 from .repository import CaseVersionConflict, Repository
 from .security import PayloadCipher, authenticate, require_roles
 from .transcription import Transcriber, transcriber_from_env
@@ -185,5 +185,19 @@ def create_app(
     ) -> dict[str, Any]:
         items = repository.list_audit(case_id, limit)
         return {"items": items, "count": len(items)}
+
+    @app.get("/knowledge-graph")
+    def get_knowledge_graph(principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        payload = repository.get_knowledge_graph(principal.user_id)
+        return {"graph": payload, "found": payload is not None}
+
+    @app.put("/knowledge-graph")
+    def sync_knowledge_graph(body: KnowledgeGraphPayload, principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        payload = body.model_dump(mode="json")
+        graph_size = len(str(payload.get("graph", {})).encode("utf-8"))
+        if graph_size > 2_000_000:
+            raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Knowledge graph is too large")
+        updated_at = repository.save_knowledge_graph(principal.user_id, payload)
+        return {"ok": True, "serverUpdatedAt": updated_at, "schemaVersion": body.schemaVersion}
 
     return app

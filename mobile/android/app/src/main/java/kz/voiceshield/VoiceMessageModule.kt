@@ -26,23 +26,40 @@ import java.util.concurrent.atomic.AtomicBoolean
 class VoiceMessageModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private var pendingPromise: Promise? = null
+  private var cloudAudioPromise: Promise? = null
   private val isTranscribing = AtomicBoolean(false)
 
   private val pickerListener: ActivityEventListener = object : BaseActivityEventListener() {
     override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
-      if (requestCode != PICK_AUDIO_REQUEST) return
-      val promise = pendingPromise ?: return
-      pendingPromise = null
-      if (resultCode != Activity.RESULT_OK) {
-        promise.reject("AUDIO_PICK_CANCELLED", "No audio file was selected")
+      if (requestCode == PICK_AUDIO_REQUEST) {
+        val promise = pendingPromise ?: return
+        pendingPromise = null
+        if (resultCode != Activity.RESULT_OK) {
+          promise.reject("AUDIO_PICK_CANCELLED", "No audio file was selected")
+          return
+        }
+        val uri = data?.data
+        if (uri == null) {
+          promise.reject("AUDIO_PICK_FAILED", "The selected audio could not be opened")
+          return
+        }
+        transcribeUri(uri, promise)
         return
       }
-      val uri = data?.data
-      if (uri == null) {
-        promise.reject("AUDIO_PICK_FAILED", "The selected audio could not be opened")
-        return
+      if (requestCode == PICK_AUDIO_URI_REQUEST) {
+        val promise = cloudAudioPromise ?: return
+        cloudAudioPromise = null
+        if (resultCode != Activity.RESULT_OK) {
+          promise.reject("AUDIO_PICK_CANCELLED", "No audio file was selected")
+          return
+        }
+        val uri = data?.data
+        if (uri == null) promise.reject("AUDIO_PICK_FAILED", "The selected audio could not be opened")
+        else {
+          runCatching { activity.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+          promise.resolve(uri.toString())
+        }
       }
-      transcribeUri(uri, promise)
     }
   }
 
@@ -98,6 +115,26 @@ class VoiceMessageModule(private val context: ReactApplicationContext) : ReactCo
   fun consumePendingAudio(promise: Promise) {
     val hasPending = pendingAudioUri != null
     promise.resolve(hasPending)
+  }
+
+  @ReactMethod
+  fun pickAudioUri(promise: Promise) {
+    if (cloudAudioPromise != null || pendingPromise != null) {
+      promise.reject("VOICE_MSG_BUSY", "Another audio operation is already running")
+      return
+    }
+    val activity = currentActivity
+    if (activity == null) {
+      promise.reject("ACTIVITY_UNAVAILABLE", "Open the application before selecting audio")
+      return
+    }
+    cloudAudioPromise = promise
+    activity.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+      addCategory(Intent.CATEGORY_OPENABLE)
+      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+      type = "audio/*"
+      putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("audio/*", "application/ogg", "application/octet-stream"))
+    }, PICK_AUDIO_URI_REQUEST)
   }
 
   private fun transcribeUri(uri: Uri, promise: Promise, language: String = pendingModelLanguage) {
@@ -157,6 +194,8 @@ class VoiceMessageModule(private val context: ReactApplicationContext) : ReactCo
   override fun invalidate() {
     pendingPromise?.reject("VOICE_MSG_CANCELLED", "Transcription was cancelled")
     pendingPromise = null
+    cloudAudioPromise?.reject("VOICE_MSG_CANCELLED", "Audio selection was cancelled")
+    cloudAudioPromise = null
     context.removeActivityEventListener(pickerListener)
     scope.cancel()
     super.invalidate()
@@ -164,6 +203,7 @@ class VoiceMessageModule(private val context: ReactApplicationContext) : ReactCo
 
   companion object {
     private const val PICK_AUDIO_REQUEST = 4108
+    private const val PICK_AUDIO_URI_REQUEST = 4109
     private const val TARGET_SAMPLE_RATE = 16_000
     private const val MAX_SAMPLES = TARGET_SAMPLE_RATE * 300 // 5 minutes
 

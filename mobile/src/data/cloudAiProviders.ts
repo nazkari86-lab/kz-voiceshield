@@ -40,6 +40,32 @@ export type CloudModelConfig = {
   modelName: string
 }
 
+export type CloudSpeechProviderId = 'openai' | 'groq' | 'mistral'
+
+export type CloudSpeechModel = {
+  providerId: CloudSpeechProviderId
+  modelId: string
+  name: string
+  detail: string
+  multilingual: boolean
+  quality: 'fast' | 'balanced' | 'maximum'
+}
+
+export type CloudSpeechModelConfig = Pick<CloudSpeechModel, 'providerId' | 'modelId' | 'name'>
+
+export const cloudSpeechModels: readonly CloudSpeechModel[] = [
+  { providerId: 'groq', modelId: 'whisper-large-v3-turbo', name: 'Whisper Large v3 Turbo', detail: 'Быстрое мультиязычное распознавание через Groq', multilingual: true, quality: 'balanced' },
+  { providerId: 'groq', modelId: 'whisper-large-v3', name: 'Whisper Large v3', detail: 'Максимальная точность Whisper через Groq', multilingual: true, quality: 'maximum' },
+  { providerId: 'openai', modelId: 'gpt-4o-transcribe', name: 'GPT-4o Transcribe', detail: 'Новое облачное распознавание OpenAI', multilingual: true, quality: 'maximum' },
+  { providerId: 'openai', modelId: 'gpt-4o-mini-transcribe', name: 'GPT-4o mini Transcribe', detail: 'Более экономичное распознавание OpenAI', multilingual: true, quality: 'balanced' },
+  { providerId: 'openai', modelId: 'whisper-1', name: 'Whisper 1', detail: 'Официальная Whisper-модель OpenAI', multilingual: true, quality: 'balanced' },
+  { providerId: 'mistral', modelId: 'voxtral-mini-latest', name: 'Voxtral Mini Transcribe', detail: 'Аудио-модель Mistral для транскрипции', multilingual: true, quality: 'maximum' },
+]
+
+export const cloudSpeechModelByKey = Object.fromEntries(
+  cloudSpeechModels.map((model) => [`${model.providerId}:${model.modelId}`, model]),
+) as Record<string, CloudSpeechModel>
+
 export const cloudProviders: CloudProvider[] = [
   {
     id: 'openai',

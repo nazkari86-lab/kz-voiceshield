@@ -20,6 +20,9 @@ export function ModelView() {
   const [storage, setStorage] = useState<Awaited<ReturnType<typeof ModelDownloader.getStorageInfo>> | null>(null)
   const [readyModels, setReadyModels] = useState<Set<string>>(new Set())
   const [noteText, setNoteText] = useState('')
+  const [edgeFrom, setEdgeFrom] = useState('')
+  const [edgeTo, setEdgeTo] = useState('')
+  const [edgeRelation, setEdgeRelation] = useState('supports')
   const [backendUrl, setBackendUrl] = useState('')
   const [backendToken, setBackendToken] = useState('')
   const [syncStatus, setSyncStatus] = useState('')
@@ -48,6 +51,12 @@ export function ModelView() {
     const next = { ...graphState, notes: [note, ...graphState.notes].slice(0, 100), updatedAt: new Date().toISOString() }
     await saveKnowledgeGraphState(next); setGraphState(next); setNoteText('')
   }
+  const addEdge = async () => {
+    const from = edgeFrom.trim(); const to = edgeTo.trim(); const relation = edgeRelation.trim()
+    if (!from || !to || !relation) return
+    const next = { ...graphState, customEdges: [...graphState.customEdges, { from, to, relation }].slice(-200), updatedAt: new Date().toISOString() }
+    await saveKnowledgeGraphState(next); setGraphState(next); setEdgeFrom(''); setEdgeTo('')
+  }
   const syncGraph = async () => {
     try {
       const remote = await pullKnowledgeGraph()
@@ -68,6 +77,9 @@ export function ModelView() {
         <TextInput value={query} onChangeText={setQuery} placeholder="Search models, functions, datasets or advice" placeholderTextColor={colors.muted} style={styles.search} />
         <TextInput value={noteText} onChangeText={setNoteText} placeholder="Add a private note or device finding" placeholderTextColor={colors.muted} style={styles.search} />
         <Pressable style={styles.graphButton} onPress={() => { void addNote() }}><Text style={styles.graphButtonText}>Add encrypted note</Text></Pressable>
+        <TextInput value={edgeFrom} onChangeText={setEdgeFrom} placeholder="Connection from node id" placeholderTextColor={colors.muted} autoCapitalize="none" style={styles.search} />
+        <TextInput value={edgeTo} onChangeText={setEdgeTo} placeholder="Connection to node id" placeholderTextColor={colors.muted} autoCapitalize="none" style={styles.search} />
+        <View style={styles.graphActions}><TextInput value={edgeRelation} onChangeText={setEdgeRelation} placeholder="Relation" placeholderTextColor={colors.muted} style={[styles.search, styles.relationInput]} /><Pressable style={styles.graphButton} onPress={() => { void addEdge() }}><Text style={styles.graphButtonText}>Add connection</Text></Pressable></View>
         <TextInput value={backendUrl} onChangeText={setBackendUrl} placeholder="Backend URL (optional)" placeholderTextColor={colors.muted} autoCapitalize="none" style={styles.search} />
         <TextInput value={backendToken} onChangeText={setBackendToken} placeholder="Backend token (stored encrypted)" placeholderTextColor={colors.muted} secureTextEntry autoCapitalize="none" style={styles.search} />
         <View style={styles.graphActions}><Pressable style={styles.graphButton} onPress={() => { void setKnowledgeBackendConfig(backendUrl, backendToken); setSyncStatus('Backend settings saved encrypted') }}><Text style={styles.graphButtonText}>Save backend</Text></Pressable><Pressable style={styles.graphButton} onPress={() => { void syncGraph() }}><Text style={styles.graphButtonText}>Sync graph</Text></Pressable></View>
@@ -218,4 +230,5 @@ const styles = StyleSheet.create({
   graphButton: { alignItems: 'center', backgroundColor: colors.brand, borderRadius: 8, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 9 },
   graphButtonText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   recommendation: { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0', borderRadius: 8, borderWidth: 1, gap: 4, marginBottom: 8, padding: 10 },
+  relationInput: { flex: 1, marginVertical: 0 },
 })

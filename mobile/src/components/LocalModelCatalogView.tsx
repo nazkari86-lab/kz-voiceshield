@@ -10,6 +10,12 @@ import {
   type PublicGgufModel,
 } from '../data/huggingFaceCatalog'
 import type { InstalledLocalModel } from '../bridge/LocalLlmBridge'
+import {
+  currentKazakhPackBytes,
+  plannedKazakhPackBytes,
+  qoldaModel,
+  recommendedQoldaVariant,
+} from '../data/kazakhQualityPack'
 import { colors } from '../theme'
 
 type Props = {
@@ -60,6 +66,7 @@ export function LocalModelCatalogView({
   const searchAbort = useRef<AbortController | null>(null)
   const variantAbort = useRef<AbortController | null>(null)
   const recommendedBytes = useMemo(() => recommendedModelBytes(ramBytes), [ramBytes])
+  const qoldaRecommended = useMemo(() => recommendedQoldaVariant(ramBytes, availableBytes), [availableBytes, ramBytes])
   const usableStorage = Math.max(0, availableBytes - 64 * 1024 * 1024)
   const recommendedVariantId = useMemo(() => {
     const fitting = variants.filter((variant) => variant.size <= Math.min(recommendedBytes, usableStorage))
@@ -121,6 +128,38 @@ export function LocalModelCatalogView({
           <View style={styles.deviceMetric}><Text style={styles.deviceValue}>{formatModelBytes(ramBytes)}</Text><Text style={styles.deviceLabel}>RAM</Text></View>
           <View style={styles.deviceMetric}><Text style={styles.deviceValue}>{formatModelBytes(recommendedBytes)}</Text><Text style={styles.deviceLabel}>рекомендуемый предел</Text></View>
         </View>
+      </View>
+
+      <View style={styles.kazakhPack}>
+        <View style={styles.sectionHeading}>
+          <View style={styles.flex}>
+            <Text style={styles.eyebrow}>KAZAKH QUALITY PACK</Text>
+            <Text style={styles.sectionTitle}>Максимальное понимание қазақша</Text>
+            <Text style={styles.sectionCopy}>Qolda используется как локальная казахская модель и semantic coprocessor. Файл закреплён по commit, размеру и SHA-256.</Text>
+            <Text style={styles.packNote}>На телефонах с 8 ГБ RAM запускайте Qolda для разбора готового транскрипта. Live ASR работает отдельно, чтобы Android не завершил два тяжёлых процесса из-за нехватки памяти.</Text>
+          </View>
+        </View>
+        <View style={styles.packMetrics}>
+          <Text style={styles.packMetric}>Рабочий пакет {formatModelBytes(currentKazakhPackBytes)}</Text>
+          <Text style={styles.packMetric}>Полный план {formatModelBytes(plannedKazakhPackBytes)} / 5 ГБ</Text>
+        </View>
+        {qoldaRecommended ? (
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy || downloadingVariantId === qoldaRecommended.id}
+            style={styles.kazakhDownload}
+            onPress={() => { void onDownload(qoldaModel, qoldaRecommended) }}
+          >
+            {downloadingVariantId === qoldaRecommended.id
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={styles.kazakhDownloadText}>Скачать Qolda {qoldaRecommended.quantization} · {formatModelBytes(qoldaRecommended.size)}</Text>}
+          </Pressable>
+        ) : (
+          <Text style={styles.packWarning}>Для Qolda требуется минимум 6 ГБ RAM и около 3 ГБ свободного места с резервом.</Text>
+        )}
+        {downloadingVariantId === qoldaRecommended?.id && downloadProgress !== null && (
+          <Text style={styles.packProgress}>Проверяемая загрузка: {Math.round(downloadProgress * 100)}%</Text>
+        )}
       </View>
 
       {installedModels.length > 0 && (
@@ -247,6 +286,14 @@ const styles = StyleSheet.create({
   deviceValue: { color: '#fff', fontSize: 13, fontWeight: '900' },
   deviceLabel: { color: '#add4c3', fontSize: 8, lineHeight: 11, marginTop: 2 },
   section: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 9, padding: 13 },
+  kazakhPack: { backgroundColor: '#eefaf5', borderColor: '#76bfa1', borderRadius: 8, borderWidth: 1, gap: 9, padding: 14 },
+  packMetrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  packMetric: { backgroundColor: '#d9f1e7', borderRadius: 5, color: colors.brandDark, fontSize: 9, fontWeight: '800', paddingHorizontal: 7, paddingVertical: 5 },
+  packNote: { color: colors.sub, fontSize: 10, lineHeight: 15, marginTop: 5 },
+  kazakhDownload: { alignItems: 'center', backgroundColor: colors.brandDark, borderRadius: 7, justifyContent: 'center', minHeight: 44, paddingHorizontal: 12 },
+  kazakhDownloadText: { color: '#fff', fontSize: 11, fontWeight: '900', textAlign: 'center' },
+  packWarning: { color: '#8a4b08', fontSize: 10, lineHeight: 15 },
+  packProgress: { color: colors.brandDark, fontSize: 10, fontWeight: '800' },
   sectionHeading: { alignItems: 'center', flexDirection: 'row', gap: 8 },
   sectionTitle: { color: colors.ink, fontSize: 15, fontWeight: '900' },
   sectionCopy: { color: colors.muted, fontSize: 10, lineHeight: 14, marginTop: 2 },

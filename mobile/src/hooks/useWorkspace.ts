@@ -9,6 +9,7 @@ import { OverlayModule } from '@bridge/OverlayBridge'
 import { notificationEvents } from '@bridge/NotificationAccessBridge'
 import { SecureStorage } from '@bridge/SecureStorageBridge'
 import { detectCallbackNumber } from '../utils/callbackDetector'
+import { buildKsc2LanguageContext, enhanceTranscript } from '../utils/transcriptEnhancer'
 import { analyzePressure } from '../utils/pressureAnalyzer'
 import { matchSemanticTemplates } from '../utils/semanticMatcher'
 import { getRepeatRiskBonus, recordCall } from '../utils/callMemory'
@@ -58,11 +59,14 @@ export type TrustedContact = { name: string; phone: string }
 
 const normalizeSavedCase = (item: SavedCase): SavedCase => {
   const transcript = redactSensitiveText(item.transcript)
-  const analysis = analyzeTranscript(transcript, { signals: item.analysis?.contextSignals ?? [] })
+  const enhancement = enhanceTranscript(transcript)
+  const normalizedTranscript = redactSensitiveText(item.normalizedTranscript ?? enhancement.normalizedTranscript)
+  const analysis = analyzeTranscript(normalizedTranscript, { signals: item.analysis?.contextSignals ?? [] })
   const workflow = createWorkflowState(analysis, item.createdAt, 'migration')
   return {
     ...item,
     transcript,
+    normalizedTranscript,
     provenance: item.provenance ?? { origin: 'migration', trusted: false },
     analysis,
     assignedTo: item.assignedTo || workflow.assignedTo,
@@ -119,11 +123,14 @@ export function useWorkspace() {
   const [repeatBonusData, setRepeatBonusData] = useState<{ bonus: number; reason: string } | null>(null)
   const llmAutoAnalysis: string | null = null
 
-  const analysis = useMemo(() => analyzeTranscript(transcript, { signals: deviceSignals, captureCompleteness }), [deviceSignals, transcript, captureCompleteness])
-  const pressureAnalysis = useMemo(() => analyzePressure(transcript), [transcript])
-  const semanticMatches = useMemo(() => matchSemanticTemplates(transcript), [transcript])
-  const callbackInfo = useMemo(() => detectCallbackNumber(transcript), [transcript])
-  const timeline = useMemo(() => sentenceTimeline(transcript), [transcript])
+  const transcriptEnhancement = useMemo(() => enhanceTranscript(transcript), [transcript])
+  const analysisTranscript = transcriptEnhancement.normalizedTranscript
+  const ksc2LanguageContext = useMemo(() => buildKsc2LanguageContext(transcriptEnhancement), [transcriptEnhancement])
+  const analysis = useMemo(() => analyzeTranscript(analysisTranscript, { signals: deviceSignals, captureCompleteness }), [analysisTranscript, deviceSignals, captureCompleteness])
+  const pressureAnalysis = useMemo(() => analyzePressure(analysisTranscript), [analysisTranscript])
+  const semanticMatches = useMemo(() => matchSemanticTemplates(analysisTranscript), [analysisTranscript])
+  const callbackInfo = useMemo(() => detectCallbackNumber(analysisTranscript), [analysisTranscript])
+  const timeline = useMemo(() => sentenceTimeline(analysisTranscript), [analysisTranscript])
   const quality = useMemo(() => datasetQuality(cases), [cases])
   const highSignals = analysis.evidence.filter((item) => item.severity === 'critical' || item.severity === 'high').length
 
@@ -477,6 +484,14 @@ export function useWorkspace() {
     }
   }, [prepareWhisper, privacyConsent])
 
+  const endActiveCall = useCallback(async () => {
+    try {
+      return await CallModule.endActiveCall()
+    } catch {
+      return false
+    }
+  }, [])
+
   const switchToMicrophoneFallback = useCallback(async () => {
     setCaptureError(null)
     try {
@@ -507,7 +522,7 @@ export function useWorkspace() {
 
   const stopListening = useCallback(async () => {
     // Record fingerprint before stopping for cross-call memory
-    const snap = analyzeTranscript(transcript, { signals: deviceSignals })
+    const snap = analyzeTranscript(analysisTranscript, { signals: deviceSignals })
     const durationSec = Math.round((Date.now() - sessionStartRef.current) / 1000)
     if (snap.score >= 40) {
       void recordCall({ matchedRuleIds: snap.evidence.map((e) => e.id), score: snap.score, schemeLabel: snap.schemeLabel })
@@ -535,7 +550,7 @@ export function useWorkspace() {
       setFileName('manual-call.txt')
       setSource('Manual')
     }
-  }, [autoDeleteTranscript, deviceSignals, transcript])
+  }, [analysisTranscript, autoDeleteTranscript, deviceSignals, transcript])
 
   useEffect(() => () => {
     void AccessibilityModule.setProtectionActive(false).catch(() => undefined)
@@ -556,7 +571,9 @@ export function useWorkspace() {
   const saveCurrentCase = useCallback(() => {
     const now = new Date().toISOString()
     const safeTranscript = redactSensitiveText(transcript)
-    const current = analyzeTranscript(safeTranscript, { signals: deviceSignals })
+    const safeEnhancement = enhanceTranscript(safeTranscript)
+    const safeNormalizedTranscript = safeEnhancement.normalizedTranscript
+    const current = analyzeTranscript(safeNormalizedTranscript, { signals: deviceSignals })
     setCases((existingCases) => {
       const existing = existingCases.find((item) => item.id === current.caseId)
       const workflow = existing ?? createWorkflowState(current, now, reviewerName)
@@ -572,6 +589,14 @@ export function useWorkspace() {
         updatedAt: now,
         fileName,
         transcript: safeTranscript,
+        normalizedTranscript: safeNormalizedTranscript,
+        transcriptDerivation: {
+          source: safeEnhancement.source,
+          packVersion: safeEnhancement.packVersion,
+          dominantLanguage: safeEnhancement.dominantLanguage,
+          lexiconCoverage: safeEnhancement.lexiconCoverage,
+          corrections: safeEnhancement.corrections,
+        },
         label: caseLabel,
         status: existing?.status ?? workflow.status,
         assignedTo: existing?.assignedTo ?? workflow.assignedTo,
@@ -750,7 +775,7 @@ export function useWorkspace() {
 
   return {
     // intake
-    transcript, setTranscript,
+    transcript, setTranscript, transcriptEnhancement, analysisTranscript, ksc2LanguageContext,
     fileName, setFileName,
     caseLabel, setCaseLabel,
     analystNote, setAnalystNote,
@@ -759,6 +784,7 @@ export function useWorkspace() {
     // capture
     isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript, modelStorage,
     startListening, stopListening, prepareWhisper, switchToMicrophoneFallback,
+    endActiveCall,
     modelSizePref, updateModelSize,
     repeatBonusData, llmAutoAnalysis, captureCompleteness,
     // computed

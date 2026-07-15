@@ -49,6 +49,9 @@ export type ScamScheme =
   | 'fake_egov'
   | 'marketplace_scam'
   | 'messenger_takeover'
+  | 'loan_rescue_fraud'
+  | 'fake_telecom_support'
+  | 'dropper_recruitment'
   | 'unclassified'
 
 export type Analysis = {
@@ -215,6 +218,9 @@ const schemeLabels: Record<ScamScheme, string> = {
   fake_egov: 'Fake eGov or benefit claim',
   marketplace_scam: 'Marketplace or job scam',
   messenger_takeover: 'Messenger account takeover',
+  loan_rescue_fraud: 'Fake National Bank loan rescue',
+  fake_telecom_support: 'Fake telecom support with malware',
+  dropper_recruitment: 'Dropper recruitment and bank access sale',
   unclassified: 'Unclassified risk pattern',
 }
 
@@ -311,6 +317,21 @@ export const threatRules: ThreatRule[] = [
       'судебный приказ',
     ],
     advice: 'Do not discuss money or accounts by phone. Verify through official published numbers.',
+  },
+  {
+    id: 'loan-rescue', title: 'Fake National Bank or loan-rescue operation', tactic: 'Regulator impersonation + credit pressure', stage: 'Cash-out', severity: 'critical', weight: 30, minHits: 2,
+    terms: ['национальный банк', 'национального банка', 'нацбанк', 'онлайн кредит на ваше имя', 'онлайн-кредит на ваше имя', 'кредит оформлен на ваше имя', 'заявка на кредит', 'для отмены кредита', 'переоформить кредит', 'взять новый кредит', 'подтвердить непричастность', 'безопасный счет', 'ұлттық банк', 'атыңызға онлайн несие', 'несиені жою үшін', 'жаңа несие алыңыз', 'несие рәсімделді'],
+    advice: 'Do not take a new loan or transfer money. End the call and contact the bank and National Bank through official channels.',
+  },
+  {
+    id: 'fake-telecom', title: 'Kazakhtelecom or telecom support impersonation', tactic: 'Service impersonation + malware delivery', stage: 'Takeover', severity: 'critical', weight: 29, minHits: 2,
+    terms: ['казахтелеком', 'kazakhtelecom', 'срок договора истекает', 'договор истекает', 'скидка на интернет', 'акция от казахтелеком', 'интернет отключат', 'оператор связи', 'вредоносный файл', 'скачайте файл', 'установите apk', 'файл для подтверждения', 'қазақтелеком', 'шарт мерзімі аяқталды', 'интернет өшеді', 'жеңілдік', 'файлды жүктеңіз', 'қосымша орнатыңыз'],
+    advice: 'Do not open the file or install an APK. Disconnect the device from the internet if opened, then call the operator and bank using official contacts.',
+  },
+  {
+    id: 'dropper-recruitment', title: 'Dropper recruitment or bank-access sale', tactic: 'Money laundering recruitment', stage: 'Cash-out', severity: 'critical', weight: 30, minHits: 2,
+    terms: ['дроппер', 'дроппером', 'сдам карту', 'сдайте карту', 'аренда карты', 'передайте доступ к онлайн банкингу', 'доступ к интернет банкингу', 'за каждую операцию', 'легкий заработок', 'вывод средств', 'обналичить', 'криптовалюту', 'телеграм куратор', 'анонимный куратор', 'студентам', 'несовершеннолетним', 'картаны жалға бер', 'банкке кіру деректерін бер', 'оңай ақша', 'әр операция үшін', 'телеграмдағы куратор', 'криптовалютаға айырбастау'],
+    advice: 'Never rent out a card or share online-banking access. Stop contact, notify the bank and report the recruitment to law enforcement.',
   },
   {
     id: 'otp-code',
@@ -770,6 +791,9 @@ const buildResponseChecklist = (risk: Severity, evidence: Evidence[], contextSig
   if (evidence.some((item) => item.id === 'sim-swap')) checklist.push('Call your mobile operator immediately to cancel the SIM replacement and lock your number.')
   if (evidence.some((item) => item.id === 'egov-benefits')) checklist.push('Check benefit status only at egov.kz or enbek.kz — never confirm IIN or codes by phone.')
   if (evidence.some((item) => item.id === 'kaspi-qr')) checklist.push('Do not scan the QR code or click the transfer link; verify all payments through the Kaspi app directly.')
+  if (evidence.some((item) => item.id === 'loan-rescue')) checklist.push('Do not take a new loan or move money to cancel a loan. Call your bank using the number in its official app or on the card.')
+  if (evidence.some((item) => item.id === 'fake-telecom')) checklist.push('Do not open files or install APKs sent by a telecom caller. Disconnect internet if opened and contact the operator and bank independently.')
+  if (evidence.some((item) => item.id === 'dropper-recruitment')) checklist.push('Do not sell or rent your card, SIM or online-banking access. Freeze the account and report the recruitment.')
   if (contextSignals.some((item) => item.id === 'remote_access_app_open')) checklist.push('Close the remote-access app now. Never reveal a connection code or approve screen control during a financial call.')
   if (contextSignals.some((item) => item.id === 'bank_app_open')) checklist.push('Do not approve payments or sign-in prompts in the bank app while the caller is still on the line.')
   if (contextSignals.some((item) => item.id === 'otp_notification')) checklist.push('An OTP arrived during the call. Do not read, forward, enter or approve that code for the caller.')
@@ -779,6 +803,9 @@ const buildResponseChecklist = (risk: Severity, evidence: Evidence[], contextSig
 
 const classifyScheme = (evidence: Evidence[]): ScamScheme => {
   const ids = new Set(evidence.map((item) => item.id))
+  if (ids.has('dropper-recruitment')) return 'dropper_recruitment'
+  if (ids.has('fake-telecom')) return 'fake_telecom_support'
+  if (ids.has('loan-rescue')) return 'loan_rescue_fraud'
   if (ids.has('remote-access')) return 'remote_access'
   if (ids.has('sim-swap')) return 'sim_swap'
   if (ids.has('law-enforcement')) return 'fake_police'
@@ -856,7 +883,13 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
   const matchedTerms = evidence.reduce((total, item) => total + item.matches.length, 0)
   const has = (id: string) => evidence.some((item) => item.id === id)
   const comboBonus =
-    has('otp-code') && has('safe-account')
+    has('fake-telecom')
+      ? 24
+      : has('dropper-recruitment')
+        ? 24
+        : has('loan-rescue')
+          ? 22
+          : has('otp-code') && has('safe-account')
       ? 22
       : has('remote-access') && has('bank-security')
         ? 18

@@ -21,6 +21,8 @@ import csv
 import json
 from pathlib import Path
 
+csv.field_size_limit(2**31 - 1)
+
 SCHEMA_VERSION = "voiceshield.dataset.v2"
 
 # source -> (default text column, default label column, default language, fraud-value matcher)
@@ -28,6 +30,11 @@ PRESETS: dict[str, dict] = {
     "teleantifraud": {"text": "transcript", "label": "label", "lang": "zh", "fraud_values": {"fraud", "1", "scam", "true"}},
     "korccvi": {"text": "text", "label": "label", "lang": "ko", "fraud_values": {"1", "fraud", "vishing", "true"}},
     "sms_scam": {"text": "text", "label": "label", "lang": "mul", "fraud_values": {"spam", "scam", "1", "smishing"}},
+    "anti_spam_ru": {"text": "text", "label": "is_spam", "lang": "ru", "fraud_values": {"1", "spam", "scam", "true"}},
+    "telegram_spam": {"text": "text", "label": "label", "lang": "ru", "fraud_values": {"1", "spam", "scam", "true"}},
+    "all_scam_spam": {"text": "text", "label": "is_spam", "lang": "mul", "fraud_values": {"1", "spam", "scam", "true"}},
+    "uzbek_russian_phishing": {"text": "text", "label": "label", "lang": "ru-uz", "fraud_values": {"1", "phishing", "fraud", "scam", "true"}},
+    "fraudlens_ru": {"text": "text_clean", "label": "fraud_type", "lang": "ru", "fraud_values": {"phone_scam", "bank_scam", "social_engineering", "phishing", "recruitment_scam", "investment_scam", "online_scam"}},
 }
 
 
@@ -39,6 +46,13 @@ def _read_rows(path: Path):
     if path.suffix.lower() == ".csv":
         with path.open(encoding="utf-8", newline="") as handle:
             yield from csv.DictReader(handle)
+    elif path.suffix.lower() == ".parquet":
+        try:
+            import pyarrow.parquet as parquet
+        except ImportError as error:
+            raise RuntimeError("Parquet input requires pyarrow; install it or convert the file to CSV") from error
+        table = parquet.read_table(path)
+        yield from table.to_pylist()
     else:  # jsonl
         for line in path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -87,6 +101,10 @@ def adapt(source: str, in_path: Path, text_field: str | None, label_field: str |
         transcript = str(record.get(tf, "")).strip()
         if len(transcript.split()) < 3:
             continue
+        metadata = {
+            key: record[key] for key in ("target", "method", "platform", "severity", "date", "channel")
+            if record.get(key) not in (None, "")
+        }
         rows.append({
             "schemaVersion": SCHEMA_VERSION,
             "id": f"{source}-{index:06d}",
@@ -94,7 +112,8 @@ def adapt(source: str, in_path: Path, text_field: str | None, label_field: str |
             "label": _label_for(record.get(lf, ""), preset["fraud_values"]),
             "score": 0,
             "lang": record.get("lang", preset["lang"]),
-            "scheme": "external",
+            "scheme": str(record.get("fraud_type") or "external"),
+            "externalMetadata": metadata,
             "provenance": {"origin": source, "trusted": False},
         })
     return rows

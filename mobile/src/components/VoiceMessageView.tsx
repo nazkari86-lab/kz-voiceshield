@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native'
 import { analyzeTranscript } from '@scoring'
+import { enhanceTranscript } from '../utils/transcriptEnhancer'
 import { colors, riskColor, riskLabel } from '../theme'
 import { VoiceMessageModule } from '../bridge/VoiceMessageBridge'
 import { MotionPressable } from './MotionPressable'
@@ -83,7 +84,8 @@ export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCa
     if (pendingSharedAudio && phase.kind === 'idle') void transcribe('pending')
   }, [pendingSharedAudio, phase.kind, transcribe])
 
-  const analysis = phase.kind === 'result' ? analyzeTranscript(phase.transcript, {}) : null
+  const enhancement = phase.kind === 'result' ? enhanceTranscript(phase.transcript) : null
+  const analysis = enhancement ? analyzeTranscript(enhancement.normalizedTranscript, {}) : null
   const isIdle = phase.kind === 'idle' || phase.kind === 'error'
   const isBusy = phase.kind === 'picking' || phase.kind === 'transcribing'
 

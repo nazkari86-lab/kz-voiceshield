@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
 import { riskColor, colors } from '../theme'
-import { buildInvestorDemoSnapshot, investorDemoSteps } from '../data/investorDemo'
+import { buildProtectionWalkthroughSnapshot, protectionWalkthroughSteps } from '../data/protectionWalkthrough'
 import { trainingScenarios } from '../training'
 import { whisperModels } from '../data/whisperModels'
 
@@ -13,13 +13,13 @@ type Props = {
 
 const stepIntervalMs = 1_650
 
-export function InvestorDemoView({ onOpenAi, onOpenEmergency, onOpenReview }: Props) {
+export function ProtectionWalkthroughView({ onOpenAi, onOpenEmergency, onOpenReview }: Props) {
   const [stepIndex, setStepIndex] = useState(0)
   const [running, setRunning] = useState(false)
   const progress = useRef(new Animated.Value(0)).current
-  const snapshot = useMemo(() => buildInvestorDemoSnapshot(stepIndex), [stepIndex])
+  const snapshot = useMemo(() => buildProtectionWalkthroughSnapshot(stepIndex), [stepIndex])
   const { analysis } = snapshot
-  const complete = stepIndex === investorDemoSteps.length - 1
+  const complete = stepIndex === protectionWalkthroughSteps.length - 1
 
   useEffect(() => {
     Animated.timing(progress, {
@@ -56,11 +56,11 @@ export function InvestorDemoView({ onOpenAi, onOpenEmergency, onOpenReview }: Pr
     <View style={styles.root}>
       <View style={styles.heroBand}>
         <View style={styles.heroTopline}>
-          <Text style={styles.demoLabel}>GUIDED DEMO · SYNTHETIC DATA</Text>
-          <Text style={styles.stepCount}>{stepIndex + 1}/{investorDemoSteps.length}</Text>
+          <Text style={styles.demoLabel}>PROTECTION WALKTHROUGH · SYNTHETIC DATA</Text>
+          <Text style={styles.stepCount}>{stepIndex + 1}/{protectionWalkthroughSteps.length}</Text>
         </View>
-        <Text style={styles.heroTitle}>Fraud risk becomes an action, live.</Text>
-        <Text style={styles.heroCopy}>A guided walkthrough of local transcription, explainable scoring and intervention workflow.</Text>
+        <Text style={styles.heroTitle}>See the protection workflow end to end.</Text>
+        <Text style={styles.heroCopy}>A guided walkthrough of local transcription, explainable scoring and safe intervention.</Text>
         <View style={styles.proofRow}>
           {['LOCAL-FIRST', 'RU / KZ', 'EXPLAINABLE', 'ACTIONABLE'].map((item) => <Text key={item} style={styles.proofChip}>{item}</Text>)}
         </View>
@@ -126,7 +126,7 @@ export function InvestorDemoView({ onOpenAi, onOpenEmergency, onOpenReview }: Pr
 
       <View style={styles.controls}>
         <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={running ? () => setRunning(false) : replay}>
-          <Text style={styles.primaryButtonText}>{running ? 'Pause demo' : complete ? 'Replay demo' : 'Run demo'}</Text>
+          <Text style={styles.primaryButtonText}>{running ? 'Pause walkthrough' : complete ? 'Replay walkthrough' : 'Run walkthrough'}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" disabled={complete || running} style={[styles.secondaryButton, (complete || running) && styles.disabled]} onPress={next}>
           <Text style={styles.secondaryButtonText}>Next signal</Text>
@@ -147,13 +147,13 @@ export function InvestorDemoView({ onOpenAi, onOpenEmergency, onOpenReview }: Pr
       )}
 
       <View style={styles.productProof}>
-        <Text style={styles.productProofTitle}>One product, three defensible layers</Text>
+        <Text style={styles.productProofTitle}>Protection stack</Text>
         <View style={styles.productProofRow}>
           <View style={styles.productProofItem}><Text style={styles.productProofValue}>{whisperModels.length}</Text><Text style={styles.productProofLabel}>speech models</Text></View>
           <View style={styles.productProofItem}><Text style={styles.productProofValue}>2</Text><Text style={styles.productProofLabel}>local LLM runtimes</Text></View>
           <View style={styles.productProofItem}><Text style={styles.productProofValue}>{trainingScenarios.length}</Text><Text style={styles.productProofLabel}>training drills</Text></View>
         </View>
-        <Text style={styles.disclaimer}>Product capability counts from this build. Detection output shown above uses the deterministic VoiceShield scorer and synthetic demo text, not claimed field accuracy.</Text>
+        <Text style={styles.disclaimer}>This walkthrough uses synthetic text and the deterministic on-device scorer. It demonstrates the workflow, not field accuracy.</Text>
       </View>
     </View>
   )

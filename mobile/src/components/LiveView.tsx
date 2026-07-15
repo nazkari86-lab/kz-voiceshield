@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Animated, Easing, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Alert, Animated, Easing, StyleSheet, Text, TextInput, View } from 'react-native'
 import { WaveformView } from './WaveformView'
 import type { Analysis } from '@scoring'
 import { colors, riskColor } from '../theme'
@@ -7,10 +7,12 @@ import { Card, RiskBadge } from './ui'
 import { MotionPressable } from './MotionPressable'
 import { LiveAiPanel } from './LiveAiPanel'
 import type { LiveAiAnalysisController } from '../hooks/useLiveAiAnalysis'
+import type { TranscriptEnhancement } from '../utils/transcriptEnhancer'
 
 type Props = {
   analysis: Analysis
   transcript: string
+  enhancement: TranscriptEnhancement
   source: string
   isListening: boolean
   audioLevel: number
@@ -30,9 +32,10 @@ type Props = {
   onOpenSimulator: () => void
   onOpenAi: () => void
   onUseMicrophoneFallback: () => void
+  onEndCall: () => Promise<boolean>
 }
 
-export function LiveView({ analysis, transcript, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, liveAi, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onOpenAi, onUseMicrophoneFallback }: Props) {
+export function LiveView({ analysis, transcript, enhancement, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, liveAi, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onOpenAi, onUseMicrophoneFallback, onEndCall }: Props) {
   const [pauseRemaining, setPauseRemaining] = useState(0)
   const signalScale = useRef(new Animated.Value(1)).current
   const scoreFill = useRef(new Animated.Value(0)).current
@@ -61,6 +64,14 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
   }, [isListening, signalScale])
 
   const needsPause = analysis.risk === 'critical' || analysis.risk === 'high'
+  const confirmEndCall = () => Alert.alert(
+    'End active call?',
+    'This will disconnect the current call. Use this only when you are ready to stop the conversation.',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'End call', style: 'destructive', onPress: () => { void onEndCall() } },
+    ],
+  )
 
   return (
     <View style={styles.screen}>
@@ -115,6 +126,9 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
           <Text style={styles.pauseTitle}>{pauseRemaining > 0 ? `Pause active: ${pauseRemaining}s` : 'Take a 30-second pause'}</Text>
           <Text style={styles.pauseCopy}>End the call. Do not share codes or approve payments.</Text>
           <MotionPressable style={styles.pauseButton} onPress={() => setPauseRemaining(30)}><Text style={styles.pauseButtonText}>{pauseRemaining > 0 ? 'Restart pause' : 'Start pause'}</Text></MotionPressable>
+          {isListening && (
+            <MotionPressable style={styles.endCallButton} onPress={confirmEndCall}><Text style={styles.endCallText}>End active call</Text></MotionPressable>
+          )}
           {trustedContactName && (
             <MotionPressable style={styles.trustedButton} onPress={onCallTrusted}><Text style={styles.trustedButtonText}>Call {trustedContactName}</Text></MotionPressable>
           )}
@@ -149,6 +163,20 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
         placeholderTextColor={colors.muted}
         style={styles.input}
       />
+      <View style={styles.languageLayer}>
+        <View style={styles.languageTopline}>
+          <Text style={styles.languageTitle}>KSC2 LANGUAGE LAYER</Text>
+          <Text style={styles.languageMeta}>{enhancement.packReady ? `v${enhancement.packVersion}` : 'bootstrap'} · {enhancement.dominantLanguage.toUpperCase()}</Text>
+        </View>
+        <Text style={styles.languageCopy}>
+          {enhancement.packReady
+            ? `${enhancement.lexiconCoverage === null ? 'No' : Math.round(enhancement.lexiconCoverage * 100)}% lexicon coverage · ${enhancement.corrections.length} transparent correction(s)`
+            : 'Compact KSC2 pack is not built yet; safe Unicode normalization remains active.'}
+        </Text>
+        {enhancement.normalizedTranscript !== transcript.trim() && (
+          <Text style={styles.normalizedPreview} numberOfLines={3}>Derived: {enhancement.normalizedTranscript}</Text>
+        )}
+      </View>
 
       <View style={styles.actions}>
         <MotionPressable style={[styles.primary, isListening && styles.stop]} onPress={onToggleListening}><Text style={styles.primaryText}>{isListening ? 'Stop' : 'Start protection'}</Text></MotionPressable>
@@ -196,6 +224,8 @@ const styles = StyleSheet.create({
   pauseButtonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   trustedButton: { alignSelf: 'flex-start', borderColor: '#c2410c', borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 10 },
   trustedButtonText: { color: '#9a3412', fontSize: 13, fontWeight: '900' },
+  endCallButton: { alignSelf: 'stretch', backgroundColor: '#991b1b', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11 },
+  endCallText: { color: '#fff', fontSize: 13, fontWeight: '900', textAlign: 'center' },
   quickGrid: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   quickAction: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flex: 1, flexDirection: 'row', gap: 9, padding: 12 },
   quickIcon: { backgroundColor: colors.softBrand, borderRadius: 14, color: colors.brandDark, fontSize: 18, fontWeight: '900', height: 28, lineHeight: 28, textAlign: 'center', width: 28 },
@@ -210,6 +240,12 @@ const styles = StyleSheet.create({
   transcriptHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   transcriptState: { color: colors.brandDark, fontSize: 9, fontWeight: '900', letterSpacing: 0.5, marginBottom: 6 },
   input: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, marginBottom: 12, minHeight: 150, padding: 14, textAlignVertical: 'top' },
+  languageLayer: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 5, marginBottom: 12, padding: 12 },
+  languageTopline: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  languageTitle: { color: colors.brandDark, fontSize: 10, fontWeight: '900', letterSpacing: 0 },
+  languageMeta: { color: colors.sub, fontSize: 10, fontWeight: '800' },
+  languageCopy: { color: colors.sub, fontSize: 12, lineHeight: 17 },
+  normalizedPreview: { borderTopColor: colors.border, borderTopWidth: 1, color: colors.ink, fontSize: 12, lineHeight: 18, paddingTop: 6 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   primary: { backgroundColor: colors.brand, borderRadius: 8, flexGrow: 1, paddingHorizontal: 16, paddingVertical: 13 },
   stop: { backgroundColor: colors.accent },

@@ -25,11 +25,12 @@ type Options = {
   ruleRisk: string
   ruleScore: number
   ramBytes: number
+  languageContext?: string
 }
 
 const LIVE_AI_ENABLED_KEY = 'voiceshield.live-ai.enabled.v1'
 
-export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleScore, ramBytes }: Options) {
+export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleScore, ramBytes, languageContext = '' }: Options) {
   const [enabled, setEnabledState] = useState(true)
   const [cloudLiveConsent, setCloudLiveConsent] = useState(false)
   const [cloudConsentHydrated, setCloudConsentHydrated] = useState(false)
@@ -40,6 +41,7 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
   const [analyzedAt, setAnalyzedAt] = useState<number | null>(null)
 
   const latestTranscriptRef = useRef(transcript)
+  const languageContextRef = useRef(languageContext)
   const enabledRef = useRef(true)
   const listeningRef = useRef(isListening)
   const previousListeningRef = useRef(isListening)
@@ -61,6 +63,7 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
   const previousModelIdentityRef = useRef(modelIdentity)
 
   latestTranscriptRef.current = transcript
+  languageContextRef.current = languageContext
   enabledRef.current = canRun
   listeningRef.current = isListening
 
@@ -134,7 +137,7 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
     try {
       await ai.ensureReady()
       setStatus('analyzing')
-      const request = buildLiveAiGenerationRequest(currentTranscript)
+      const request = buildLiveAiGenerationRequest(currentTranscript, languageContextRef.current)
       const full = await ai.generate({ ...request, owner: 'live', onToken: appendToken })
       tokenBufferRef.current = full
       flushDraft()

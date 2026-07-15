@@ -1,4 +1,4 @@
-import { analyzeTranscript, callSignalsFromVerification, deviceSignalsFromPackage, notificationSignalsFromId, phoneReputationSignals, redactSensitiveText } from '../src/scoring'
+import { analyzeTranscript, callSignalsFromVerification, deviceSignalsFromPackage, notificationSignalsFromId, phoneReputationSignals, redactSensitiveText, serializeCase, type SavedCase } from '../src/scoring'
 
 describe('mobile scoring', () => {
   it('flags bank OTP transfer scripts as critical', () => {
@@ -47,5 +47,39 @@ describe('mobile scoring', () => {
     expect(value).not.toContain('123456')
     expect(value).not.toContain('990101123456')
     expect(value).not.toContain('4400 1234 5678 9012')
+  })
+
+  it('redacts transcript correction provenance during dataset export', () => {
+    const transcript = 'Назовите код 123456'
+    const analysis = analyzeTranscript(transcript)
+    const item = {
+      id: analysis.caseId,
+      createdAt: '2026-07-15T00:00:00Z',
+      updatedAt: '2026-07-15T00:00:00Z',
+      fileName: 'call.txt',
+      transcript,
+      normalizedTranscript: transcript,
+      transcriptDerivation: {
+        source: 'ksc2_language_pack',
+        packVersion: '1.0.0',
+        dominantLanguage: 'ru',
+        lexiconCoverage: 0.8,
+        corrections: [{ original: transcript, replacement: transcript, confidence: 1, applied: true, source: 'normalization' }],
+      },
+      provenance: { origin: 'live', trusted: false },
+      label: 'unreviewed',
+      status: 'new',
+      assignedTo: 'Triage',
+      flags: { bankContactNeeded: false, customerCallbackNeeded: false, evidenceBundleReady: true },
+      analystNote: '',
+      decisionHistory: [],
+      auditLog: [],
+      incidentTimeline: [],
+      analysis,
+    } satisfies SavedCase
+
+    const exported = JSON.stringify(serializeCase(item))
+    expect(exported).not.toContain('123456')
+    expect(exported).toContain('[REDACTED]')
   })
 })

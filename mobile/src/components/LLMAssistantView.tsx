@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView,
@@ -22,10 +22,12 @@ import { LocalModelCatalogView } from './LocalModelCatalogView'
 import { CloudProviderCatalogView } from './CloudProviderCatalogView'
 import { Card, SectionTitle } from './ui'
 import type { AssistantEngine, OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
+import { buildKazakhIntelligenceContext, validateKazakhResponse, type KazakhResponseQuality } from '../utils/kazakhIntelligence'
+import { enhanceTranscript } from '../utils/transcriptEnhancer'
 
-type ChatMessage = { role: 'user' | 'assistant'; text: string; streaming?: boolean }
+type ChatMessage = { role: 'user' | 'assistant'; text: string; streaming?: boolean; quality?: KazakhResponseQuality }
 
-type Props = { transcript: string; modelBasePath?: string; ai: OnDeviceAiRuntime }
+type Props = { transcript: string; languageContext?: string; modelBasePath?: string; ai: OnDeviceAiRuntime }
 const GEMMA_TERMS_ACCEPTED_KEY = 'voiceshield.gemma.terms.v1'
 
 const importedModelRecord = (source: 'imported' | 'legacy', fileName: string): InstalledLocalModel => ({
@@ -42,7 +44,7 @@ const importedModelRecord = (source: 'imported' | 'legacy', fileName: string): I
   source,
 })
 
-export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
+export function LLMAssistantView({ transcript, languageContext = '', modelBasePath, ai }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [generating, setGenerating] = useState(false)
@@ -63,6 +65,10 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
   const activeLocalModelId = ai.activeLocalModelId
   const modelBusy = loadingModel || ai.loading
   const visibleError = loadError ?? ai.runtimeError
+  const modelKazakhContext = useMemo(
+    () => buildKazakhIntelligenceContext(enhanceTranscript(transcript), ai.engine, ai.modelName),
+    [ai.engine, ai.modelName, transcript],
+  )
 
   useEffect(() => {
     void AsyncStorage.getItem(GEMMA_TERMS_ACCEPTED_KEY).then(value => setTermsAccepted(value === 'accepted')).catch(() => undefined)
@@ -284,8 +290,14 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
     currentTokensRef.current = ''
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
     try {
-      const userMessage = buildUserMessage(text.trim() + '\n\n', transcript)
-      const fullPrompt = buildPrompt(SYSTEM_PROMPT, text.trim() + '\n\n', transcript)
+      const contextualQuestion = [
+        text.trim(),
+        languageContext ? `Производный KSC2-языковой контекст (не доказательство): ${languageContext.slice(0, 700)}` : '',
+        `Казахский semantic runtime: ${modelKazakhContext.slice(0, 1000)}`,
+        '',
+      ].filter(Boolean).join('\n\n')
+      const userMessage = buildUserMessage(`${contextualQuestion}\n\n`, transcript)
+      const fullPrompt = buildPrompt(SYSTEM_PROMPT, `${contextualQuestion}\n\n`, transcript)
       const full = await ai.generate({
         owner: 'assistant',
         gemmaPrompt: fullPrompt,
@@ -300,7 +312,8 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
           })
         },
       })
-      setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', text: full, streaming: false }])
+      const quality = validateKazakhResponse(transcript, full)
+      setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', text: full, streaming: false, quality }])
       setGenerating(false)
       currentTokensRef.current = ''
     } catch (e: any) {
@@ -311,7 +324,7 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
       })
       setGenerating(false)
     }
-  }, [ai, generating, modelReady, transcript])
+  }, [ai, generating, languageContext, modelKazakhContext, modelReady, transcript])
 
   const sendQuick = useCallback((q: (typeof QUICK_QUESTIONS)[number]) => {
     void send(q.prompt)
@@ -488,6 +501,14 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
             <Text style={[styles.bubbleText, msg.role === 'user' && styles.userBubbleText]}>
               {msg.text || (msg.streaming ? '…' : '')}
             </Text>
+            {msg.role === 'assistant' && msg.quality && (
+              <View style={[styles.qualityRow, msg.quality.shouldReview && styles.qualityRowWarning]}>
+                <Text style={styles.qualityScore}>KZ QUALITY {msg.quality.score}/100</Text>
+                <Text style={styles.qualityText}>
+                  {msg.quality.warnings.length > 0 ? msg.quality.warnings.join(' ') : 'Язык и критические факты сохранены.'}
+                </Text>
+              </View>
+            )}
           </View>
         ))}
       </ScrollView>
@@ -574,6 +595,10 @@ const styles = StyleSheet.create({
   bubbleText: { color: colors.ink, fontSize: 13, lineHeight: 20 },
   userBubbleText: { color: '#fff' },
   aiLabel: { color: colors.brandDark, fontSize: 9, fontWeight: '900', letterSpacing: 0.8, marginBottom: 4 },
+  qualityRow: { backgroundColor: colors.chipBg, borderRadius: 6, marginTop: 9, padding: 8 },
+  qualityRowWarning: { backgroundColor: '#fff7ed', borderColor: '#fdba74', borderWidth: 1 },
+  qualityScore: { color: colors.brandDark, fontSize: 9, fontWeight: '900', marginBottom: 3 },
+  qualityText: { color: colors.sub, fontSize: 10, lineHeight: 14 },
   inputRow: { alignItems: 'flex-end', flexDirection: 'row', gap: 8, marginTop: 8 },
   input: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 10, borderWidth: 1, color: colors.ink, flex: 1, maxHeight: 90, minHeight: 44, padding: 10 },
   sendBtn: { alignItems: 'center', backgroundColor: colors.brand, borderRadius: 10, height: 44, justifyContent: 'center', width: 44 },

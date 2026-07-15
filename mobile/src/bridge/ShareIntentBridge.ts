@@ -2,6 +2,7 @@ import { NativeEventEmitter, NativeModules } from 'react-native'
 
 type ShareIntentNativeModule = {
   consumePendingText(): Promise<string | null>
+  consumePendingLiveShield(): Promise<boolean>
 }
 
 export const ShareIntentModule = NativeModules.ShareIntentModule as ShareIntentNativeModule

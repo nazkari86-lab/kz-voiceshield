@@ -18,7 +18,15 @@ class ShareIntentModule(context: ReactApplicationContext) : ReactContextBaseJava
     promise.resolve(text)
   }
 
+  @ReactMethod
+  fun consumePendingLiveShield(promise: Promise) {
+    val requested = pendingLiveShield
+    pendingLiveShield = false
+    promise.resolve(requested)
+  }
+
   companion object {
     @Volatile var pendingText: String? = null
+    @Volatile var pendingLiveShield: Boolean = false
   }
 }

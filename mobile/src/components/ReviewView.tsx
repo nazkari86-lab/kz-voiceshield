@@ -1,14 +1,16 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Analysis } from '@scoring'
 import { colors, riskColor } from '../theme'
 import { Card, Metric, RiskBadge, SectionTitle, ui } from './ui'
 import type { PressureScore } from '../utils/pressureAnalyzer'
 import type { TemplateMatch } from '../utils/semanticMatcher'
 import type { CallbackResult } from '../utils/callbackDetector'
+import type { TranscriptEnhancement } from '../utils/transcriptEnhancer'
 
 type Props = {
   analysis: Analysis
+  enhancement?: TranscriptEnhancement
   highSignals: number
   pressureAnalysis?: PressureScore
   semanticMatches?: TemplateMatch[]
@@ -16,9 +18,12 @@ type Props = {
   repeatBonus?: { bonus: number; reason: string }
   llmAutoAnalysis?: string | null
   captureCompleteness?: number
+  onOpenEvidence?: () => void
+  onOpenTimeline?: () => void
+  onOpenChain?: () => void
 }
 
-export function ReviewView({ analysis, highSignals, pressureAnalysis, semanticMatches, callbackInfo, repeatBonus, llmAutoAnalysis, captureCompleteness }: Props) {
+export function ReviewView({ analysis, enhancement, highSignals, pressureAnalysis, semanticMatches, callbackInfo, repeatBonus, llmAutoAnalysis, captureCompleteness, onOpenEvidence, onOpenTimeline, onOpenChain }: Props) {
   const cashOut = analysis.evidence.some((item) => item.stage === 'Cash-out')
   return (
     <View>
@@ -35,6 +40,12 @@ export function ReviewView({ analysis, highSignals, pressureAnalysis, semanticMa
         <Text style={styles.next}>{analysis.nextAction}</Text>
       </Card>
 
+      <View style={styles.navigationRow}>
+        {onOpenEvidence && <Pressable style={styles.navigationButton} onPress={onOpenEvidence}><Text style={styles.navigationText}>Evidence</Text></Pressable>}
+        {onOpenTimeline && <Pressable style={styles.navigationButton} onPress={onOpenTimeline}><Text style={styles.navigationText}>Timeline</Text></Pressable>}
+        {onOpenChain && <Pressable style={styles.navigationButton} onPress={onOpenChain}><Text style={styles.navigationText}>Attack sequence</Text></Pressable>}
+      </View>
+
       <View style={ui.row}>
         <Metric value={`${Math.round(analysis.fraudProbability * 100)}%`} label="fraud prob" />
         <Metric value={analysis.harmSeverity} label="harm severity" />
@@ -50,6 +61,19 @@ export function ReviewView({ analysis, highSignals, pressureAnalysis, semanticMa
             ⚠ Неполный захват ({Math.round(captureCompleteness * 100)}%) — вероятно, слышна только одна сторона разговора. Анализ мог пропустить слова собеседника.
           </Text>
         </View>
+      )}
+
+      {enhancement && (
+        <Card>
+          <SectionTitle>KSC2 transcript provenance</SectionTitle>
+          <Text style={styles.bullet}>Pack: {enhancement.packReady ? enhancement.packVersion : 'bootstrap only'}</Text>
+          <Text style={styles.bullet}>Language: {enhancement.dominantLanguage.toUpperCase()}</Text>
+          <Text style={styles.bullet}>Lexicon coverage: {enhancement.lexiconCoverage === null ? 'not available' : `${Math.round(enhancement.lexiconCoverage * 100)}%`}</Text>
+          <Text style={styles.muted}>Raw evidence is preserved. The score uses the separately stored normalized transcript.</Text>
+          {enhancement.corrections.filter((item) => item.source === 'ksc2_lexicon').map((item, index) => (
+            <Text key={`${item.original}-${index}`} style={styles.bullet}>• {item.original} → {item.replacement} ({Math.round(item.confidence * 100)}%)</Text>
+          ))}
+        </Card>
       )}
 
       {analysis.protectiveContextApplied && (
@@ -220,6 +244,9 @@ const styles = StyleSheet.create({
   captureWarningText: { color: '#92400e', fontSize: 12, lineHeight: 18 },
   protectiveNote: { backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderRadius: 8, borderWidth: 1, marginBottom: 8, padding: 10 },
   protectiveNoteText: { color: '#1e40af', fontSize: 12, lineHeight: 18 },
+  navigationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 8 },
+  navigationButton: { backgroundColor: colors.softBrand, borderColor: colors.brand, borderRadius: 7, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 8 },
+  navigationText: { color: colors.brandDark, fontSize: 11, fontWeight: '900' },
   intentRow: { alignItems: 'center', flexDirection: 'row', gap: 8, marginBottom: 6 },
   intentId: { color: colors.ink, fontSize: 11, fontWeight: '700', width: 140 },
   intentBar: { backgroundColor: colors.chipBg, borderRadius: 3, flex: 1, height: 6, overflow: 'hidden' },

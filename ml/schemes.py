@@ -18,6 +18,9 @@ SCHEMES: dict[str, str] = {
     "fake_egov": "Fake eGov or benefit claim",
     "marketplace_scam": "Marketplace or job scam",
     "messenger_takeover": "Messenger account takeover",
+    "loan_rescue_fraud": "Fake National Bank loan rescue",
+    "fake_telecom_support": "Fake telecom support with malware",
+    "dropper_recruitment": "Dropper recruitment and bank access sale",
 }
 
 LANGS = ("ru", "kz")

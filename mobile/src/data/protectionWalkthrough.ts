@@ -15,7 +15,7 @@ export type DemoSnapshot = {
   visibleSteps: DemoStep[]
 }
 
-export const investorDemoSteps: readonly DemoStep[] = [
+export const protectionWalkthroughSteps: readonly DemoStep[] = [
   {
     id: 'incoming',
     speaker: 'system',
@@ -51,9 +51,9 @@ export const investorDemoSteps: readonly DemoStep[] = [
   },
 ]
 
-export const buildInvestorDemoSnapshot = (stepIndex: number): DemoSnapshot => {
-  const safeIndex = Math.min(Math.max(stepIndex, 0), investorDemoSteps.length - 1)
-  const visibleSteps = investorDemoSteps.slice(0, safeIndex + 1)
+export const buildProtectionWalkthroughSnapshot = (stepIndex: number): DemoSnapshot => {
+  const safeIndex = Math.min(Math.max(stepIndex, 0), protectionWalkthroughSteps.length - 1)
+  const visibleSteps = protectionWalkthroughSteps.slice(0, safeIndex + 1)
   const transcript = visibleSteps
     .filter((step) => step.speaker === 'caller')
     .map((step) => step.text)

@@ -104,7 +104,7 @@ export function NumberShieldView({
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Number Shield</Text>
-      <Text style={styles.copy}>Check a number before calling back. VoiceShield stores a device-bound HMAC identifier, not the full number. Reputation is local until a verified shared service is deployed.</Text>
+      <Text style={styles.copy}>Check a number before calling back. VoiceShield stores a device-bound HMAC identifier, not the full number. Reputation is local until a verified shared service is available.</Text>
 
       <View style={styles.panel}>
         <TextInput

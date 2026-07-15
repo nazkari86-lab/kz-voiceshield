@@ -32,9 +32,14 @@ export type LiveAiGenerationRequest = {
 
 const clean = (value: string): string => value.replace(/\s+/gu, ' ').trim()
 
-export function buildLiveAiGenerationRequest(transcript: string): LiveAiGenerationRequest {
+export function buildLiveAiGenerationRequest(transcript: string, languageContext = ''): LiveAiGenerationRequest {
   const bounded = clean(transcript).slice(-LIVE_AI_MAX_TRANSCRIPT_CHARS)
-  const userMessage = `Проанализируй только этот текущий транскрипт звонка:\n\n${bounded}`
+  const context = clean(languageContext).slice(0, 700)
+  const userMessage = [
+    'Проанализируй только этот текущий транскрипт звонка:',
+    context ? `Производный языковой контекст (не доказательство): ${context}` : '',
+    bounded,
+  ].filter(Boolean).join('\n\n')
   return {
     gemmaPrompt: buildPrompt(LIVE_AI_SYSTEM_PROMPT, `${userMessage}\n\n`, ''),
     localSystemPrompt: LIVE_AI_SYSTEM_PROMPT,

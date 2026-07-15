@@ -1,4 +1,5 @@
 import { threatRules } from '@scoring'
+import { recentKazakhstanFraudOperations } from './kazakhstanFraudOperations'
 import { trainingDataSnapshot } from './trainingDataSnapshot'
 
 // What the app truthfully shows on the "Data & Model" screen. The LIVE detector
@@ -19,6 +20,7 @@ export const modelManifest = {
     note:
       'Live protection uses a deterministic rule engine curated from KZ/RU fraud patterns. ' +
       'It does not learn from — and is never trained on — your calls. Everything runs on-device.',
+    localOperations: recentKazakhstanFraudOperations.map(({ id, title, period, source }) => ({ id, title, period, source })),
   },
   ml: {
     status: 'experimental — not used for live decisions',

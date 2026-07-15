@@ -35,6 +35,11 @@ class MainActivity : ReactActivity() {
     DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
 
   private fun receiveSharedContent(intent: Intent?) {
+    if (intent?.action == ACTION_OPEN_LIVE_PROTECTION) {
+      ShareIntentModule.pendingLiveShield = true
+      AppRegistry.sendEvent("VS_OPEN_LIVE_PROTECTION", Arguments.createMap())
+      return
+    }
     if (intent?.action != Intent.ACTION_SEND) return
     val mimeType = intent.type ?: return
     when {
@@ -62,5 +67,9 @@ class MainActivity : ReactActivity() {
     uri ?: return
     VoiceMessageModule.pendingAudioUri = uri
     AppRegistry.sendEvent("VS_SHARED_AUDIO", Arguments.createMap())
+  }
+
+  companion object {
+    const val ACTION_OPEN_LIVE_PROTECTION = "kz.voiceshield.action.OPEN_LIVE_PROTECTION"
   }
 }

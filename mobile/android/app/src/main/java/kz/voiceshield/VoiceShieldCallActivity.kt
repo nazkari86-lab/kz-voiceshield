@@ -123,8 +123,11 @@ class VoiceShieldCallActivity : Activity(), VoiceShieldCallController.Listener {
     tools.addView(mute, LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginEnd = dp(6) })
     tools.addView(speakerButton, LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginStart = dp(6) })
     root.addView(tools, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
-    root.addView(button("Open live fraud analysis", Color.rgb(37, 99, 235)) {
-      startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+    root.addView(button("Activate Live Shield", Color.rgb(37, 99, 235)) {
+      startActivity(Intent(this, MainActivity::class.java).apply {
+        action = MainActivity.ACTION_OPEN_LIVE_PROTECTION
+        addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+      })
     }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(20) })
     return ScrollView(this).apply { addView(root) }
   }

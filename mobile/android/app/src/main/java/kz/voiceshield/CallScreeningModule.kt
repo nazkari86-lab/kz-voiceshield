@@ -137,6 +137,18 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
   }
 
   @ReactMethod
+  fun endActiveCall(promise: Promise) {
+    val active = VoiceShieldCallController.call
+    if (active == null) {
+      promise.resolve(false)
+      return
+    }
+    runCatching { VoiceShieldCallController.disconnect() }
+      .onSuccess { promise.resolve(true) }
+      .onFailure { promise.reject("CALL_END_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
   fun evaluateNumber(number: String, promise: Promise) {
     runCatching {
       require(PhoneNumberUtils.normalizeNumber(number).length >= 3) { "Enter a visible phone number" }

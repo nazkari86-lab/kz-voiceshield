@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -29,7 +29,7 @@ import { ScamToolsView } from './components/ScamToolsView'
 import { SmsScannerView } from './components/SmsScannerView'
 import { TranscriptHistoryView } from './components/TranscriptHistoryView'
 import { LLMAssistantView } from './components/LLMAssistantView'
-import { InvestorDemoView } from './components/InvestorDemoView'
+import { ProtectionWalkthroughView } from './components/ProtectionWalkthroughView'
 import { EmergencyView } from './components/EmergencyView'
 import { ScreenMotion } from './components/ScreenMotion'
 import { VoiceMessageView } from './components/VoiceMessageView'
@@ -38,6 +38,7 @@ import { ShareIntentModule, shareIntentEvents } from './bridge/ShareIntentBridge
 import { VoiceMessageModule, voiceMessageEvents } from './bridge/VoiceMessageBridge'
 import { useOnDeviceAiRuntime } from './hooks/useOnDeviceAiRuntime'
 import { useLiveAiAnalysis } from './hooks/useLiveAiAnalysis'
+import { buildKazakhIntelligenceContext } from './utils/kazakhIntelligence'
 
 type Tab =
   | 'live' | 'review' | 'evidence' | 'timeline' | 'threats' | 'chain'
@@ -49,36 +50,36 @@ type Tab =
 const primaryTabs: Array<[Tab, string, string]> = [
   ['live', 'Shield', 'LIVE'],
   ['tools', 'Scan', 'SCAN'],
-  ['demo', 'Demo', 'PLAY'],
+  ['demo', 'Walkthrough', 'RUN'],
   ['simulator', 'Learn', 'LAB'],
   ['cases', 'Cases', 'CASE'],
 ]
 
 const toolTabs: Array<[Tab, string, string]> = [
-  ['demo', 'Investor demo', 'Run the complete protection story in one guided flow'],
-  ['review', 'Review', 'Explain live risk and response steps'],
-  ['evidence', 'Evidence', 'Inspect matched signals and context'],
-  ['timeline', 'Timeline', 'Follow risk escalation over time'],
-  ['threats', 'Threat lab', 'Explore active fraud patterns'],
-  ['chain', 'Attack chain', 'See the manipulation sequence'],
+  ['demo', 'Protection walkthrough', 'Run the complete protection workflow with synthetic data'],
+  ['review', 'Case review', 'Explain live risk, evidence and response steps'],
+  ['evidence', 'Evidence & signals', 'Inspect matched signals and device context'],
+  ['timeline', 'Incident timeline', 'Follow risk escalation sentence by sentence'],
+  ['threats', 'Threat library', 'Explore active fraud patterns'],
+  ['chain', 'Attack sequence', 'See the manipulation sequence'],
   ['emergency', 'Emergency', 'Recover after sharing information'],
   ['voiceMsg', 'Voice messages', 'Transcribe forwarded audio locally'],
   ['operations', 'Operations', 'Reviewer queues and escalation'],
-  ['dataset', 'Dataset', 'Quality and export controls'],
+  ['dataset', 'Training dataset', 'Quality and export controls'],
   ['playbook', 'Playbook', 'Response playbooks'],
   ['family', 'Family', 'Trusted contact protection'],
   ['number', 'Number shield', 'Local call-safety controls'],
   ['verify', 'Verify', 'Official callback directory'],
-  ['model', 'Data & model', 'Transparent detector details'],
+  ['model', 'Models & data', 'Transparent detector details'],
   ['stats', 'Statistics', 'Session and case analytics'],
   ['sms', 'SMS scanner', 'Scan SMS for scam patterns'],
   ['history', 'Call history', 'Transcript history and past calls'],
-  ['llm', 'AI assistant', 'Ask an on-device AI about suspicious calls'],
+  ['llm', 'AI analysis', 'Ask a local or connected AI about suspicious calls'],
   ['setup', 'Setup', 'Privacy, model and device access'],
 ]
 
 const tabMeta: Record<Tab, { label: string; group: string }> = {
-  demo: { label: 'Guided demo', group: 'Showcase' },
+  demo: { label: 'Protection walkthrough', group: 'Learn' },
   live: { label: 'Live shield', group: 'Protect' }, review: { label: 'Review', group: 'Investigate' },
   evidence: { label: 'Evidence', group: 'Investigate' }, timeline: { label: 'Timeline', group: 'Investigate' },
   threats: { label: 'Threat lab', group: 'Learn' }, chain: { label: 'Attack chain', group: 'Learn' },
@@ -119,9 +120,15 @@ function AppContent() {
   const lastAlertRiskRef = useRef<string>('')
   const ai = useOnDeviceAiRuntime()
   const w = useWorkspace()
+  const { isListening, startListening } = w
+  const liveLanguageContext = useMemo(() => [
+    w.ksc2LanguageContext,
+    buildKazakhIntelligenceContext(w.transcriptEnhancement, ai.engine, ai.modelName),
+  ].filter(Boolean).join(' '), [ai.engine, ai.modelName, w.ksc2LanguageContext, w.transcriptEnhancement])
   const liveAi = useLiveAiAnalysis({
     ai,
-    transcript: w.transcript,
+    transcript: w.analysisTranscript,
+    languageContext: liveLanguageContext,
     isListening: w.isListening,
     ruleRisk: w.analysis.risk,
     ruleScore: w.analysis.score,
@@ -135,6 +142,16 @@ function AppContent() {
       setOnboardingDone(value === 'done')
     }).catch(() => setOnboardingDone(true))
   }, [])
+
+  useEffect(() => {
+    const activate = () => {
+      selectTab('live')
+      if (!isListening) void startListening()
+    }
+    const sub = shareIntentEvents.addListener('VS_OPEN_LIVE_PROTECTION', activate)
+    void ShareIntentModule?.consumePendingLiveShield?.().then((pending) => { if (pending) activate() }).catch(() => undefined)
+    return () => sub.remove()
+  }, [isListening, startListening])
 
   useEffect(() => {
     if (w.hydrated && !w.privacyConsent) selectTab('setup')
@@ -189,8 +206,8 @@ function AppContent() {
   const primaryActive = primaryTabs.some(([key]) => key === tab) && !hubOpen
   const content = (
     <>
-      {tab === 'live' && <LiveView analysis={w.analysis} transcript={w.transcript} source={w.source} isListening={w.isListening} audioLevel={w.audioLevel} error={w.captureError} notice={w.captureNotice} callStatus={w.callStatus} storageError={w.storageError} trustedContactName={w.trustedContact?.name} callbackWarning={w.callbackInfo?.warning} liveAi={liveAi} onChangeTranscript={w.setTranscript} onToggleListening={() => { void (w.isListening ? w.stopListening() : w.startListening()) }} onUseMicrophoneFallback={() => { void w.switchToMicrophoneFallback() }} onSave={w.saveCurrentCase} onExportReport={w.exportReport} onCallTrusted={() => { void w.callTrustedContact() }} onOpenEmergency={() => selectTab('emergency')} onOpenSimulator={() => selectTab('simulator')} onOpenAi={() => selectTab('llm')} />}
-      {tab === 'review' && <ReviewView analysis={w.analysis} highSignals={w.highSignals} pressureAnalysis={w.pressureAnalysis} semanticMatches={w.semanticMatches} callbackInfo={w.callbackInfo} repeatBonus={w.repeatBonusData ?? undefined} llmAutoAnalysis={liveAi.result?.raw ?? w.llmAutoAnalysis} captureCompleteness={w.captureCompleteness} />}
+      {tab === 'live' && <LiveView analysis={w.analysis} transcript={w.transcript} enhancement={w.transcriptEnhancement} source={w.source} isListening={w.isListening} audioLevel={w.audioLevel} error={w.captureError} notice={w.captureNotice} callStatus={w.callStatus} storageError={w.storageError} trustedContactName={w.trustedContact?.name} callbackWarning={w.callbackInfo?.warning} liveAi={liveAi} onChangeTranscript={w.setTranscript} onToggleListening={() => { void (w.isListening ? w.stopListening() : w.startListening()) }} onUseMicrophoneFallback={() => { void w.switchToMicrophoneFallback() }} onEndCall={w.endActiveCall} onSave={w.saveCurrentCase} onExportReport={w.exportReport} onCallTrusted={() => { void w.callTrustedContact() }} onOpenEmergency={() => selectTab('emergency')} onOpenSimulator={() => selectTab('simulator')} onOpenAi={() => selectTab('llm')} />}
+      {tab === 'review' && <ReviewView analysis={w.analysis} enhancement={w.transcriptEnhancement} highSignals={w.highSignals} pressureAnalysis={w.pressureAnalysis} semanticMatches={w.semanticMatches} callbackInfo={w.callbackInfo} repeatBonus={w.repeatBonusData ?? undefined} llmAutoAnalysis={liveAi.result?.raw ?? w.llmAutoAnalysis} captureCompleteness={w.captureCompleteness} onOpenEvidence={() => selectTab('evidence')} onOpenTimeline={() => selectTab('timeline')} onOpenChain={() => selectTab('chain')} />}
       {tab === 'evidence' && <EvidenceView analysis={w.analysis} />}
       {tab === 'timeline' && <TimelineView timeline={w.timeline} />}
       {tab === 'threats' && <ThreatsView />}
@@ -209,10 +226,10 @@ function AppContent() {
       {tab === 'stats' && <StatsView cases={w.cases} />}
       {tab === 'sms' && <SmsScannerView />}
       {tab === 'history' && <TranscriptHistoryView />}
-      {tab === 'llm' && <LLMAssistantView transcript={w.transcript} ai={ai} />}
-      {tab === 'demo' && <InvestorDemoView
-        onOpenReview={(transcript) => { w.setTranscript(transcript); w.setFileName('investor-demo.txt'); selectTab('review') }}
-        onOpenAi={(transcript) => { w.setTranscript(transcript); w.setFileName('investor-demo.txt'); selectTab('llm') }}
+      {tab === 'llm' && <LLMAssistantView transcript={w.analysisTranscript} languageContext={w.ksc2LanguageContext} ai={ai} />}
+      {tab === 'demo' && <ProtectionWalkthroughView
+        onOpenReview={(transcript) => { w.setTranscript(transcript); w.setFileName('protection-walkthrough.txt'); selectTab('review') }}
+        onOpenAi={(transcript) => { w.setTranscript(transcript); w.setFileName('protection-walkthrough.txt'); selectTab('llm') }}
         onOpenEmergency={() => selectTab('emergency')}
       />}
       {tab === 'model' && <ModelView />}

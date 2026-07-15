@@ -72,6 +72,29 @@ describe('scam scoring — classic bank fraud', () => {
   })
 })
 
+describe('scam scoring — recent Kazakhstan operations', () => {
+  it('recognizes fake National Bank loan rescue pressure', () => {
+    const result = analyzeTranscript('Это Национальный банк. На ваше имя оформлен онлайн-кредит. Чтобы отменить кредит, возьмите новый кредит и переведите деньги на безопасный счет.')
+    expect(result.scheme).toBe('loan_rescue_fraud')
+    expect(result.risk).toBe('critical')
+    expect(result.evidence.map((item) => item.id)).toContain('loan-rescue')
+  })
+
+  it('recognizes telecom impersonation with malicious APK delivery', () => {
+    const result = analyzeTranscript('Это Казахтелеком. Срок договора истекает, интернет отключат. Скачайте файл и установите APK для скидки.')
+    expect(result.scheme).toBe('fake_telecom_support')
+    expect(['high', 'critical']).toContain(result.risk)
+    expect(result.responseChecklist.some((item) => item.includes('APK'))).toBe(true)
+  })
+
+  it('recognizes dropper recruitment through bank-access and payment language', () => {
+    const result = analyzeTranscript('Есть легкий заработок: сдайте банковскую карту в аренду, передайте доступ к онлайн банкингу и получите оплату за каждую операцию. Куратор в Telegram.')
+    expect(result.scheme).toBe('dropper_recruitment')
+    expect(['high', 'critical']).toContain(result.risk)
+    expect(result.responseChecklist.some((item) => item.includes('рент') || item.includes('rent') || item.includes('аренд'))).toBe(true)
+  })
+})
+
 describe('scam scoring — device context', () => {
   it('does not flag a banking app by itself', () => {
     const signals = deviceSignalsFromPackage('kz.kaspi.mobile')

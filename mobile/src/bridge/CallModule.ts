@@ -59,6 +59,7 @@ type CallNativeModule = {
   exportProtectionData(): Promise<string>
   importProtectionData(payload: string): Promise<boolean>
   clearProtectionData(): Promise<boolean>
+  endActiveCall(): Promise<boolean>
 }
 
 export const CallModule = NativeModules.CallScreeningModule as CallNativeModule

@@ -33,10 +33,10 @@ type Props = {
 type Status = { accessibility: boolean; battery: boolean; callRole: boolean; dialerRole: boolean; microphone: boolean; notificationAccess: boolean; notifications: boolean; overlay: boolean }
 const emptyStatus: Status = { accessibility: false, battery: false, callRole: false, dialerRole: false, microphone: false, notificationAccess: false, notifications: false, overlay: false }
 
-const Step = ({ label, status, disabled, onPress }: { label: string; status: boolean; disabled?: boolean; onPress: () => void }) => (
+const Step = ({ label, status, statusLabel, disabled, onPress }: { label: string; status: boolean; statusLabel?: string; disabled?: boolean; onPress: () => void }) => (
   <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.step, disabled && styles.disabled]}>
     <Text style={styles.stepTitle}>{label}</Text>
-    <Text style={[styles.status, status && styles.statusReady]}>{status ? 'Ready' : 'Set up'}</Text>
+    <Text style={[styles.status, status && styles.statusReady]}>{statusLabel ?? (status ? 'Ready' : 'Set up')}</Text>
   </Pressable>
 )
 
@@ -159,7 +159,7 @@ export function SetupScreen({
       <Step label="OTP notification type detection" status={status.notificationAccess} disabled={!privacyConsent} onPress={() => NotificationAccess.openSettings()} />
       <Step label="Battery optimization exemption" status={status.battery} disabled={!privacyConsent} onPress={() => DeviceSettings.requestBatteryOptimizationExemption()} />
       {device?.manufacturer.toLowerCase().includes('xiaomi') || device?.manufacturer.toLowerCase().includes('redmi') ? (
-        <Step label="Xiaomi/HyperOS autostart" status={false} disabled={!privacyConsent} onPress={() => DeviceSettings.openAutostartSettings()} />
+        <Step label="Xiaomi/HyperOS autostart settings" status={false} statusLabel="Open" disabled={!privacyConsent} onPress={() => DeviceSettings.openAutostartSettings()} />
       ) : null}
 
       <Text style={styles.section}>Optional phone integration</Text>

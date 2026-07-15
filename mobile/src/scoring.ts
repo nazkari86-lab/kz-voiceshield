@@ -50,6 +50,9 @@ export type ScamScheme =
   | 'fake_egov'
   | 'marketplace_scam'
   | 'messenger_takeover'
+  | 'loan_rescue_fraud'
+  | 'fake_telecom_support'
+  | 'dropper_recruitment'
   | 'unclassified'
 
 export type DetectedIntent = {
@@ -122,6 +125,14 @@ export type SavedCase = {
   updatedAt: string
   fileName: string
   transcript: string
+  normalizedTranscript?: string
+  transcriptDerivation?: {
+    source: 'ksc2_language_pack'
+    packVersion: string
+    dominantLanguage: 'kk' | 'ru' | 'mixed' | 'unknown'
+    lexiconCoverage: number | null
+    corrections: Array<{ original: string; replacement: string; confidence: number; applied: boolean; source: string }>
+  }
   provenance: CaseProvenance
   label: CaseLabel
   status: CaseStatus
@@ -246,6 +257,9 @@ const schemeLabels: Record<ScamScheme, string> = {
   fake_egov: 'Fake eGov or benefit claim',
   marketplace_scam: 'Marketplace or job scam',
   messenger_takeover: 'Messenger account takeover',
+  loan_rescue_fraud: 'Fake National Bank loan rescue',
+  fake_telecom_support: 'Fake telecom support with malware',
+  dropper_recruitment: 'Dropper recruitment and bank access sale',
   unclassified: 'Unclassified risk pattern',
 }
 
@@ -342,6 +356,58 @@ export const threatRules: ThreatRule[] = [
       'судебный приказ',
     ],
     advice: 'Do not discuss money or accounts by phone. Verify through official published numbers.',
+  },
+  {
+    id: 'loan-rescue',
+    title: 'Fake National Bank or loan-rescue operation',
+    tactic: 'Regulator impersonation + credit pressure',
+    stage: 'Cash-out',
+    severity: 'critical',
+    weight: 30,
+    minHits: 2,
+    terms: [
+      'национальный банк', 'национального банка', 'нацбанк', 'онлайн кредит на ваше имя',
+      'онлайн-кредит на ваше имя', 'кредит оформлен на ваше имя', 'заявка на кредит',
+      'для отмены кредита', 'переоформить кредит', 'взять новый кредит',
+      'подтвердить непричастность', 'безопасный счет', 'ұлттық банк',
+      'атыңызға онлайн несие', 'несиені жою үшін', 'жаңа несие алыңыз', 'несие рәсімделді',
+    ],
+    advice: 'Do not take a new loan or transfer money. End the call and contact the bank and National Bank through official channels.',
+  },
+  {
+    id: 'fake-telecom',
+    title: 'Kazakhtelecom or telecom support impersonation',
+    tactic: 'Service impersonation + malware delivery',
+    stage: 'Takeover',
+    severity: 'critical',
+    weight: 29,
+    minHits: 2,
+    terms: [
+      'казахтелеком', 'kazakhtelecom', 'срок договора истекает', 'договор истекает',
+      'скидка на интернет', 'акция от казахтелеком', 'интернет отключат', 'оператор связи',
+      'вредоносный файл', 'скачайте файл', 'установите apk', 'файл для подтверждения',
+      'қазақтелеком', 'шарт мерзімі аяқталды', 'интернет өшеді', 'жеңілдік',
+      'файлды жүктеңіз', 'қосымша орнатыңыз',
+    ],
+    advice: 'Do not open the file or install an APK. Disconnect the device from the internet if opened, then call the operator and bank using official contacts.',
+  },
+  {
+    id: 'dropper-recruitment',
+    title: 'Dropper recruitment or bank-access sale',
+    tactic: 'Money laundering recruitment',
+    stage: 'Cash-out',
+    severity: 'critical',
+    weight: 30,
+    minHits: 2,
+    terms: [
+      'дроппер', 'дроппером', 'сдам карту', 'сдайте карту', 'аренда карты',
+      'передайте доступ к онлайн банкингу', 'доступ к интернет банкингу', 'за каждую операцию',
+      'легкий заработок', 'вывод средств', 'обналичить', 'криптовалюту',
+      'телеграм куратор', 'анонимный куратор', 'студентам', 'несовершеннолетним',
+      'картаны жалға бер', 'банкке кіру деректерін бер', 'оңай ақша', 'әр операция үшін',
+      'телеграмдағы куратор', 'криптовалютаға айырбастау',
+    ],
+    advice: 'Never rent out a card or share online-banking access. Stop contact, notify the bank and report the recruitment to law enforcement.',
   },
   {
     id: 'otp-code',
@@ -796,6 +862,10 @@ export const threatRules: ThreatRule[] = [
       'мы звоним с номера который указан',
       'наш номер есть на сайте',
       'убедитесь что номер настоящий',
+      'международный звонок',
+      'подменный номер',
+      'виртуальная телефонная станция',
+      'номер выглядит как местный',
       'нөміріміз сайтта бар',
       'ресми нөмірімізден қоңырау шалып тұрмыз',
     ],
@@ -894,6 +964,9 @@ const buildResponseChecklist = (risk: Severity, evidence: Evidence[], contextSig
   if (evidence.some((item) => item.id === 'smishing-bridge')) checklist.push('Do not open any SMS links while on an unsolicited call — this is a multi-channel attack designed to force quick action.')
   if (evidence.some((item) => item.id === 'caller-id-spoof')) checklist.push('Caller ID can be faked — hang up and dial the official number yourself from the bank\'s website or card.')
   if (evidence.some((item) => item.id === 'pretexting')) checklist.push('You did not file that request — the backstory is fabricated. Verify any claim through official channels independently.')
+  if (evidence.some((item) => item.id === 'loan-rescue')) checklist.push('Do not take a new loan or move money to cancel a loan. Call your bank using the number in its official app or on the card.')
+  if (evidence.some((item) => item.id === 'fake-telecom')) checklist.push('Do not open files or install APKs sent by a telecom caller. Disconnect internet if opened and contact the operator and bank independently.')
+  if (evidence.some((item) => item.id === 'dropper-recruitment')) checklist.push('Do not sell or rent your card, SIM or online-banking access. Freeze the account and report the recruitment.')
   if (contextSignals.some((item) => item.id === 'remote_access_app_open')) checklist.push('Close the remote-access app now. Never reveal a connection code or approve screen control during a financial call.')
   if (contextSignals.some((item) => item.id === 'bank_app_open')) checklist.push('Do not approve payments or sign-in prompts in the bank app while the caller is still on the line.')
   if (contextSignals.some((item) => item.id === 'otp_notification')) checklist.push('An OTP arrived during the call. Do not read, forward, enter or approve that code for the caller.')
@@ -903,6 +976,9 @@ const buildResponseChecklist = (risk: Severity, evidence: Evidence[], contextSig
 
 const classifyScheme = (evidence: Evidence[]): ScamScheme => {
   const ids = new Set(evidence.map((item) => item.id))
+  if (ids.has('dropper-recruitment')) return 'dropper_recruitment'
+  if (ids.has('fake-telecom')) return 'fake_telecom_support'
+  if (ids.has('loan-rescue')) return 'loan_rescue_fraud'
   if (ids.has('remote-access')) return 'remote_access'
   if (ids.has('sim-swap')) return 'sim_swap'
   if (ids.has('law-enforcement')) return 'fake_police'
@@ -979,7 +1055,13 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
   const matchedTerms = evidence.reduce((total, item) => total + item.matches.length, 0)
   const has = (id: string) => evidence.some((item) => item.id === id)
   const comboBonus =
-    has('otp-code') && has('safe-account')
+    has('fake-telecom')
+      ? 24
+      : has('dropper-recruitment')
+        ? 24
+        : has('loan-rescue')
+          ? 22
+          : has('otp-code') && has('safe-account')
       ? 22
       : has('remote-access') && has('bank-security')
         ? 18
@@ -1176,6 +1258,17 @@ export const serializeCase = (item: SavedCase) => ({
     score: evidence.score,
   })),
   transcript: redactSensitiveText(item.transcript),
+  normalizedTranscript: item.normalizedTranscript ? redactSensitiveText(item.normalizedTranscript) : undefined,
+  transcriptDerivation: item.transcriptDerivation
+    ? {
+        ...item.transcriptDerivation,
+        corrections: item.transcriptDerivation.corrections.map((correction) => ({
+          ...correction,
+          original: redactSensitiveText(correction.original),
+          replacement: redactSensitiveText(correction.replacement),
+        })),
+      }
+    : undefined,
 })
 
 export const buildEvidenceBundle = (item: SavedCase) => [
@@ -1188,6 +1281,7 @@ export const buildEvidenceBundle = (item: SavedCase) => [
   `Risk: ${item.analysis.risk.toUpperCase()} (${item.analysis.score}/100)`,
   `Confidence: ${item.analysis.confidence}/100`,
   `Provenance: ${item.provenance.origin} · ${item.provenance.trusted ? 'reviewer trusted' : 'untrusted'}`,
+  `Transcript layer: ${item.transcriptDerivation ? `KSC2 ${item.transcriptDerivation.packVersion} · ${item.transcriptDerivation.dominantLanguage}` : 'raw only'}`,
   '',
   'Workflow flags:',
   `- Bank contact needed: ${item.flags.bankContactNeeded ? 'yes' : 'no'}`,
@@ -1210,6 +1304,9 @@ export const buildEvidenceBundle = (item: SavedCase) => [
   '',
   'Transcript:',
   redactSensitiveText(item.transcript) || '[empty]',
+  ...(item.normalizedTranscript && item.normalizedTranscript !== item.transcript
+    ? ['', 'Derived normalized transcript:', redactSensitiveText(item.normalizedTranscript)]
+    : []),
 ].join('\n')
 
 export const exportJsonl = (cases: SavedCase[]) => cases.map((item) => JSON.stringify(serializeCase(item))).join('\n')

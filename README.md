@@ -7,7 +7,7 @@
 
 KZ VoiceShield is a local-first anti-scam call review workspace for Kazakh and Russian conversations.
 
-It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. Version 1.1.0 is a private-beta system: the web and Android apps can run locally, and the optional FastAPI backend supports authenticated case sync, reviewer workflow, audit logging, queued audio transcription, and experimental ML comparison. It is still not a production anti-fraud platform until public deployment, real RU/KZ validation, durable storage/queues, and production identity are in place.
+It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. Version 1.7.0 is a private-beta system: the web and Android apps can run locally, and the optional FastAPI backend supports authenticated case sync, reviewer workflow, audit logging, queued audio transcription, and experimental ML comparison. It is still not a production anti-fraud platform until public deployment, real RU/KZ validation, durable storage/queues, and production identity are in place.
 
 ## Core Workflow
 
@@ -28,6 +28,8 @@ The repository also includes a React Native Android prototype in `mobile/`:
 
 - Kotlin native modules for call screening, accessibility transcript reading, overlay badge, audio capture, Whisper JNI, and model download.
 - React Native live screen, setup wizard, bridge wrappers, and local RU/KZ scoring.
+- Live on-device AI analysis runs the selected Gemma or public GGUF model alongside speech recognition, streams a structured risk/scheme/evidence/action result, and highlights rules-vs-AI disagreement.
+- The AI assistant and live protection share one model context; generation is serialized, transcript updates are coalesced, and RAM-aware limits prevent oversized models from competing with live ASR.
 - Context-aware mobile scoring: a suspicious transcript is strengthened when a banking, remote-access, or screen-sharing app is opened during an active protection session.
 - Detected scam scheme, device-context evidence, and a 30-second anti-pressure pause for high-risk calls.
 - Explicit privacy consent, session-gated caption access, Android Keystore case storage, secret redaction, and full local-data deletion.
@@ -53,6 +55,7 @@ Android Gradle builds require JDK 17. The checked-in Gradle wrapper lives in `mo
 - Privacy-preserving device context: the Android app observes package names and notification risk types only during an active session; it does not upload audio, expose OTP values, retain raw phone numbers, or retain bank-screen content.
 - Verified Whisper model download with a pinned size and SHA-256 digest, progress reporting, and corrupted-model cleanup.
 - Verified on-device FastConformer KZ/RU INT8 download, with a pinned GitHub Release asset, SHA-256 verification, and Sherpa-ONNX runtime for Android phones.
+- Optional on-device Gemma/GGUF analysis of the evolving live transcript without uploading audio or text; automatic analysis is debounced and can be disabled per device.
 - Dataset provenance and reviewer trust state; untrusted imported cases are excluded from train/dev/test split exports.
 - Reproducible multilingual transfer baseline in `ml/` using character TF-IDF and logistic regression, with an optional sentence-embedding mode, duplicate/provenance gates, and explicit rules-vs-ML disagreement output.
 - Live browser speech-to-text when supported by the browser.
@@ -166,6 +169,16 @@ the APK; the app checks its SHA-256 before activation. The reproducible Android
 build downloads the matching Sherpa-ONNX JNI release using a pinned checksum.
 See [`docs/MOBILE_PILOT_TEST_PLAN.md`](docs/MOBILE_PILOT_TEST_PLAN.md) for the
 required Xiaomi/Samsung validation matrix before a broader pilot.
+
+## Mobile 1.7.0
+
+The live protection screen can use the same selected local model as the AI
+assistant. During an active session, speech recognition remains the transcript
+source while the LLM periodically analyzes a bounded transcript snapshot and
+shows its risk, suspected scheme, evidence, immediate action, and disagreement
+with deterministic rules. Only one LLM context is kept in memory. Devices with
+insufficient RAM are asked to choose a smaller model instead of attempting an
+unsafe concurrent load.
 
 ## Tech Stack
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Linking, Share, Vibration } from 'react-native'
+import { Linking, PermissionsAndroid, Platform, Share, Vibration } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { accessibilityEvents, AccessibilityModule } from '@bridge/AccessibilityBridge'
 import { callEvents, CallModule } from '@bridge/CallModule'
@@ -14,10 +14,8 @@ import { matchSemanticTemplates } from '../utils/semanticMatcher'
 import { getRepeatRiskBonus, recordCall } from '../utils/callMemory'
 import { saveTranscriptEntry } from '../utils/transcriptHistory'
 import { addFineTuneExample } from '../utils/fineTuneDataCollector'
-import { LLMModule } from '../bridge/LLMBridge'
 import { modelFor, recommendedModel, whisperModels } from '../data/whisperModels'
 import type { ModelStorageInfo, WhisperModelChoice } from '../data/whisperModels'
-import { buildPrompt, QUICK_QUESTIONS, SYSTEM_PROMPT } from '../utils/llmPrompts'
 import {
   analyzeTranscript,
   buildEvidenceBundle,
@@ -47,6 +45,14 @@ const privacyConsentKey = 'voiceshield.privacy-consent.v1'
 const donationConsentKey = 'voiceshield.donation-consent.v1'
 const trustedContactKey = 'voiceshield.trusted-contact.v1'
 const autoDeleteTranscriptKey = 'voiceshield.auto-delete-transcript.v1'
+
+const ensureMicrophonePermission = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') return true
+  const permission = PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+  if (await PermissionsAndroid.check(permission)) return true
+  const result = await PermissionsAndroid.request(permission)
+  return result === PermissionsAndroid.RESULTS.GRANTED
+}
 
 export type TrustedContact = { name: string; phone: string }
 
@@ -111,7 +117,7 @@ export function useWorkspace() {
   const [cases, setCases] = useState<SavedCase[]>([])
   const [hydrated, setHydrated] = useState(false)
   const [repeatBonusData, setRepeatBonusData] = useState<{ bonus: number; reason: string } | null>(null)
-  const [llmAutoAnalysis, setLlmAutoAnalysis] = useState<string | null>(null)
+  const llmAutoAnalysis: string | null = null
 
   const analysis = useMemo(() => analyzeTranscript(transcript, { signals: deviceSignals, captureCompleteness }), [deviceSignals, transcript, captureCompleteness])
   const pressureAnalysis = useMemo(() => analyzePressure(transcript), [transcript])
@@ -430,8 +436,18 @@ export function useWorkspace() {
       return
     }
     try {
+      const overlayReady = await OverlayModule.canDrawOverlays()
+      if (!overlayReady) {
+        setCaptureError('Enable the VoiceShield risk overlay in Setup before starting protection.')
+        return
+      }
       const accessibilityEnabled = await AccessibilityModule.isEnabled()
       if (!accessibilityEnabled) {
+        const microphoneReady = await ensureMicrophonePermission()
+        if (!microphoneReady) {
+          setCaptureError('Microphone access is required for local Whisper protection. Enable it in Setup or Android app settings.')
+          return
+        }
         // A downloaded model is only a file. After an app restart, its native
         // Whisper context must be recreated before audio chunks can be decoded.
         const nativeModelReady = await WhisperModule.isInitialized()
@@ -464,6 +480,16 @@ export function useWorkspace() {
   const switchToMicrophoneFallback = useCallback(async () => {
     setCaptureError(null)
     try {
+      const overlayReady = await OverlayModule.canDrawOverlays()
+      if (!overlayReady) {
+        setCaptureError('Enable the VoiceShield risk overlay in Setup before using microphone fallback.')
+        return
+      }
+      const microphoneReady = await ensureMicrophonePermission()
+      if (!microphoneReady) {
+        setCaptureError('Microphone access is required for fallback transcription. Enable it in Setup or Android app settings.')
+        return
+      }
       const nativeModelReady = await WhisperModule.isInitialized()
       if (!nativeModelReady) await prepareWhisper()
       await WhisperModule.resetBuffer()
@@ -496,17 +522,6 @@ export function useWorkspace() {
     const ftLabel = snap.risk === 'critical' || snap.risk === 'high' ? 'scam' : snap.risk === 'low' ? 'safe' : 'uncertain'
     // labelSource='auto_rules' — weight 0.2; user must confirm before gold training
     void addFineTuneExample(transcript, ftLabel, snap.schemeLabel, snap.score, 'auto_rules')
-    // Auto-run LLM analysis when risk is high/critical and LLM is loaded
-    if ((snap.risk === 'critical' || snap.risk === 'high') && transcript.trim().length > 30) {
-      void LLMModule?.isReady().then(ready => {
-        if (!ready) return
-        setLlmAutoAnalysis(null)
-        const q = QUICK_QUESTIONS[0]
-        if (!q) return
-        const prompt = buildPrompt(SYSTEM_PROMPT, q.prompt, transcript)
-        void LLMModule?.generateResponse(prompt).then(result => setLlmAutoAnalysis(result)).catch(() => undefined)
-      })
-    }
     await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
     await AudioCaptureModule.stopCapture().catch(() => undefined)
     await WhisperModule.stopStreaming().catch(() => undefined)

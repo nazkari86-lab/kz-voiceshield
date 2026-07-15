@@ -5,6 +5,8 @@ import type { Analysis } from '@scoring'
 import { colors, riskColor } from '../theme'
 import { Card, RiskBadge } from './ui'
 import { MotionPressable } from './MotionPressable'
+import { LiveAiPanel } from './LiveAiPanel'
+import type { LiveAiAnalysisController } from '../hooks/useLiveAiAnalysis'
 
 type Props = {
   analysis: Analysis
@@ -18,6 +20,7 @@ type Props = {
   storageError: string | null
   trustedContactName?: string
   callbackWarning?: string | null
+  liveAi: LiveAiAnalysisController
   onChangeTranscript: (text: string) => void
   onToggleListening: () => void
   onSave: () => void
@@ -25,10 +28,11 @@ type Props = {
   onCallTrusted: () => void
   onOpenEmergency: () => void
   onOpenSimulator: () => void
+  onOpenAi: () => void
   onUseMicrophoneFallback: () => void
 }
 
-export function LiveView({ analysis, transcript, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onUseMicrophoneFallback }: Props) {
+export function LiveView({ analysis, transcript, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, liveAi, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onOpenAi, onUseMicrophoneFallback }: Props) {
   const [pauseRemaining, setPauseRemaining] = useState(0)
   const signalScale = useRef(new Animated.Value(1)).current
   const scoreFill = useRef(new Animated.Value(0)).current
@@ -133,6 +137,8 @@ export function LiveView({ analysis, transcript, source, isListening, audioLevel
           ))}
         </View>
       )}
+
+      <LiveAiPanel controller={liveAi} hasTranscript={transcript.trim().length > 0} onOpenAssistant={onOpenAi} />
 
       <View style={styles.transcriptHeading}><Text style={styles.transcriptLabel}>LIVE TRANSCRIPT</Text>{isListening && source === 'Whisper' ? <Text style={styles.transcriptState}>{audioLevel >= 0.015 ? 'MICROPHONE HEARS AUDIO' : 'WAITING FOR SPEAKER AUDIO'}</Text> : null}</View>
       <TextInput

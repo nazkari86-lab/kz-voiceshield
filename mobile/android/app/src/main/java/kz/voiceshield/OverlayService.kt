@@ -1,11 +1,13 @@
 package kz.voiceshield
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.pm.ServiceInfo
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
@@ -14,10 +16,12 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 
 class OverlayService : Service() {
   private var view: TextView? = null
@@ -32,6 +36,9 @@ class OverlayService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    val requestedMicrophone = intent?.getBooleanExtra(EXTRA_USE_MICROPHONE, false) == true
+    val microphoneAllowed = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    val overlayAllowed = Settings.canDrawOverlays(this)
     val notification = NotificationCompat.Builder(this, "vs_overlay")
       .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle(getString(R.string.overlay_notification_title))
@@ -41,15 +48,20 @@ class OverlayService : Service() {
       .setAutoCancel(false)
       .build()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      val useMicrophone = intent?.getBooleanExtra(EXTRA_USE_MICROPHONE, false) == true
       val serviceType = when {
-        useMicrophone -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        requestedMicrophone && microphoneAllowed -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
         else -> 0
       }
       startForeground(7, notification, serviceType)
     } else {
       startForeground(7, notification)
+    }
+    // Permissions can be revoked between the bridge preflight and service startup.
+    // Enter foreground safely, then stop instead of crashing the application process.
+    if (!overlayAllowed || (requestedMicrophone && !microphoneAllowed)) {
+      stopSelf(startId)
+      return START_NOT_STICKY
     }
     // The phone application covers the React Native activity during a call.
     // Show a neutral badge immediately so the user can confirm protection is
@@ -62,6 +74,7 @@ class OverlayService : Service() {
     // WindowManager.addView / updateViewLayout MUST run on the main/UI thread.
     // The RN bridge calls this from a background thread → wrap in Handler(mainLooper).
     Handler(Looper.getMainLooper()).post {
+      if (!Settings.canDrawOverlays(this)) return@post
       val badge = view ?: TextView(this).also {
         it.setTextColor(android.graphics.Color.WHITE)
         it.textSize = 14f

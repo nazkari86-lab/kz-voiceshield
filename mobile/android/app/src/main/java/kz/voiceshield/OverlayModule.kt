@@ -1,6 +1,8 @@
 package kz.voiceshield
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import com.facebook.react.bridge.Promise
@@ -25,9 +27,21 @@ class OverlayModule(private val context: ReactApplicationContext) : ReactContext
 
   @ReactMethod
   fun show(useMicrophone: Boolean, promise: Promise) {
-    val intent = Intent(context, OverlayService::class.java).putExtra(OverlayService.EXTRA_USE_MICROPHONE, useMicrophone)
-    ContextCompat.startForegroundService(context, intent)
-    promise.resolve(null)
+    if (!Settings.canDrawOverlays(context)) {
+      promise.reject("OVERLAY_PERMISSION_MISSING", "Risk overlay permission is required before protection can start")
+      return
+    }
+    if (useMicrophone && ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+      promise.reject("MICROPHONE_PERMISSION_MISSING", "Microphone permission is required before local transcription can start")
+      return
+    }
+    try {
+      val intent = Intent(context, OverlayService::class.java).putExtra(OverlayService.EXTRA_USE_MICROPHONE, useMicrophone)
+      ContextCompat.startForegroundService(context, intent)
+      promise.resolve(null)
+    } catch (error: Throwable) {
+      promise.reject("OVERLAY_START_FAILED", error)
+    }
   }
 
   @ReactMethod

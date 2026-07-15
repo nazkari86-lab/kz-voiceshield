@@ -9,6 +9,8 @@ It keeps the existing web workspace intact and adds a separate mobile app under 
 - React Native 0.79 Android scaffold with Hermes and New Architecture flags.
 - Kotlin native modules for call screening, accessibility transcript reading, overlay badge, audio capture, model download, and Whisper JNI bridge.
 - Local TypeScript scoring pipeline shared by live transcript and manual review.
+- Shared on-device Gemma/GGUF runtime for the AI assistant and automatic live transcript analysis, with streamed risk, scheme, evidence, action, and rules disagreement.
+- Debounced/coalesced live inference, one serialized LLM generation at a time, and RAM-aware model limits so speech recognition keeps priority.
 - Context-aware risk amplification from package-name-only signals for banking, remote-access, and screen-sharing apps during an active protection session.
 - Scheme classification, visible device-context evidence, and a local 30-second anti-pressure pause for high-risk calls.
 - Explicit privacy consent and session-gated Accessibility/notification processing.
@@ -18,6 +20,15 @@ It keeps the existing web workspace intact and adds a separate mobile app under 
 - Setup status for overlay, call screening, microphone, notifications, battery optimization, Xiaomi/Android app settings, and Whisper preparation.
 - Pinned Whisper model size/SHA-256 verification and download progress.
 - CMake/JNI bridge that automatically links `whisper.cpp` when the sources are fetched.
+
+## Live AI Analysis
+
+Select and load Gemma or a downloaded public GGUF model in the AI assistant.
+When live protection is active, the same model analyzes new Whisper or Live
+Caption text after a short pause and updates the Live AI panel. The feature is
+local-only, can be switched off from the panel, and never loads a second copy of
+the selected model. Models that are too large for concurrent ASR and LLM use are
+rejected with a smaller-model recommendation.
 
 ## Run
 

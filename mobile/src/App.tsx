@@ -36,6 +36,8 @@ import { VoiceMessageView } from './components/VoiceMessageView'
 import { MotionPressable } from './components/MotionPressable'
 import { ShareIntentModule, shareIntentEvents } from './bridge/ShareIntentBridge'
 import { VoiceMessageModule, voiceMessageEvents } from './bridge/VoiceMessageBridge'
+import { useOnDeviceAiRuntime } from './hooks/useOnDeviceAiRuntime'
+import { useLiveAiAnalysis } from './hooks/useLiveAiAnalysis'
 
 type Tab =
   | 'live' | 'review' | 'evidence' | 'timeline' | 'threats' | 'chain'
@@ -115,7 +117,16 @@ function AppContent() {
   const [hubOpen, setHubOpen] = useState(false)
   const [onboardingDone, setOnboardingDone] = useState(true)
   const lastAlertRiskRef = useRef<string>('')
+  const ai = useOnDeviceAiRuntime()
   const w = useWorkspace()
+  const liveAi = useLiveAiAnalysis({
+    ai,
+    transcript: w.transcript,
+    isListening: w.isListening,
+    ruleRisk: w.analysis.risk,
+    ruleScore: w.analysis.score,
+    ramBytes: w.modelStorage?.ramBytes ?? 0,
+  })
   const selectTab = (next: Tab) => { setHubOpen(false); setTab(next) }
 
   // Check if onboarding has been completed
@@ -178,8 +189,8 @@ function AppContent() {
   const primaryActive = primaryTabs.some(([key]) => key === tab) && !hubOpen
   const content = (
     <>
-      {tab === 'live' && <LiveView analysis={w.analysis} transcript={w.transcript} source={w.source} isListening={w.isListening} audioLevel={w.audioLevel} error={w.captureError} notice={w.captureNotice} callStatus={w.callStatus} storageError={w.storageError} trustedContactName={w.trustedContact?.name} callbackWarning={w.callbackInfo?.warning} onChangeTranscript={w.setTranscript} onToggleListening={() => { void (w.isListening ? w.stopListening() : w.startListening()) }} onUseMicrophoneFallback={() => { void w.switchToMicrophoneFallback() }} onSave={w.saveCurrentCase} onExportReport={w.exportReport} onCallTrusted={() => { void w.callTrustedContact() }} onOpenEmergency={() => selectTab('emergency')} onOpenSimulator={() => selectTab('simulator')} />}
-      {tab === 'review' && <ReviewView analysis={w.analysis} highSignals={w.highSignals} pressureAnalysis={w.pressureAnalysis} semanticMatches={w.semanticMatches} callbackInfo={w.callbackInfo} repeatBonus={w.repeatBonusData ?? undefined} llmAutoAnalysis={w.llmAutoAnalysis} captureCompleteness={w.captureCompleteness} />}
+      {tab === 'live' && <LiveView analysis={w.analysis} transcript={w.transcript} source={w.source} isListening={w.isListening} audioLevel={w.audioLevel} error={w.captureError} notice={w.captureNotice} callStatus={w.callStatus} storageError={w.storageError} trustedContactName={w.trustedContact?.name} callbackWarning={w.callbackInfo?.warning} liveAi={liveAi} onChangeTranscript={w.setTranscript} onToggleListening={() => { void (w.isListening ? w.stopListening() : w.startListening()) }} onUseMicrophoneFallback={() => { void w.switchToMicrophoneFallback() }} onSave={w.saveCurrentCase} onExportReport={w.exportReport} onCallTrusted={() => { void w.callTrustedContact() }} onOpenEmergency={() => selectTab('emergency')} onOpenSimulator={() => selectTab('simulator')} onOpenAi={() => selectTab('llm')} />}
+      {tab === 'review' && <ReviewView analysis={w.analysis} highSignals={w.highSignals} pressureAnalysis={w.pressureAnalysis} semanticMatches={w.semanticMatches} callbackInfo={w.callbackInfo} repeatBonus={w.repeatBonusData ?? undefined} llmAutoAnalysis={liveAi.result?.raw ?? w.llmAutoAnalysis} captureCompleteness={w.captureCompleteness} />}
       {tab === 'evidence' && <EvidenceView analysis={w.analysis} />}
       {tab === 'timeline' && <TimelineView timeline={w.timeline} />}
       {tab === 'threats' && <ThreatsView />}
@@ -198,7 +209,7 @@ function AppContent() {
       {tab === 'stats' && <StatsView cases={w.cases} />}
       {tab === 'sms' && <SmsScannerView />}
       {tab === 'history' && <TranscriptHistoryView />}
-      {tab === 'llm' && <LLMAssistantView transcript={w.transcript} />}
+      {tab === 'llm' && <LLMAssistantView transcript={w.transcript} ai={ai} />}
       {tab === 'demo' && <InvestorDemoView
         onOpenReview={(transcript) => { w.setTranscript(transcript); w.setFileName('investor-demo.txt'); selectTab('review') }}
         onOpenAi={(transcript) => { w.setTranscript(transcript); w.setFileName('investor-demo.txt'); selectTab('llm') }}

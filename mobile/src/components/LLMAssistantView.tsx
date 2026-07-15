@@ -5,13 +5,13 @@ import {
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native'
 import {
-  llmEvents, LLMModule, GEMMA_MODEL_BYTES, GEMMA_MODEL_FILE, GEMMA_MODEL_SHA256,
-  GEMMA_CONTEXT_TOKENS, GEMMA_MODEL_SIZE_MB, GEMMA_MODEL_URL, GEMMA_TERMS_URL,
+  GEMMA_MODEL_BYTES, GEMMA_MODEL_FILE, GEMMA_MODEL_SHA256,
+  GEMMA_MODEL_SIZE_MB, GEMMA_MODEL_URL, GEMMA_TERMS_URL,
 } from '../bridge/LLMBridge'
 import { modelEvents, ModelDownloader } from '../bridge/WhisperBridge'
 import {
-  generateLocalResponse, LEGACY_GGUF_MODEL_FILE, LOCAL_IMPORTED_MODEL_FILE,
-  LOCAL_MODELS_STORAGE_KEY, loadLocalGgufModel, parseInstalledLocalModels,
+  LEGACY_GGUF_MODEL_FILE, LOCAL_IMPORTED_MODEL_FILE,
+  LOCAL_MODELS_STORAGE_KEY, parseInstalledLocalModels,
   type InstalledLocalModel,
 } from '../bridge/LocalLlmBridge'
 import type { GgufVariant, PublicGgufModel } from '../data/huggingFaceCatalog'
@@ -20,11 +20,11 @@ import { buildPrompt, buildUserMessage, QUICK_QUESTIONS, SYSTEM_PROMPT } from '.
 import { colors } from '../theme'
 import { LocalModelCatalogView } from './LocalModelCatalogView'
 import { Card, SectionTitle } from './ui'
+import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
 
 type ChatMessage = { role: 'user' | 'assistant'; text: string; streaming?: boolean }
-type AssistantEngine = 'gemma' | 'local'
 
-type Props = { transcript: string; modelBasePath?: string }
+type Props = { transcript: string; modelBasePath?: string; ai: OnDeviceAiRuntime }
 const GEMMA_TERMS_ACCEPTED_KEY = 'voiceshield.gemma.terms.v1'
 
 const importedModelRecord = (source: 'imported' | 'legacy', fileName: string): InstalledLocalModel => ({
@@ -41,27 +41,28 @@ const importedModelRecord = (source: 'imported' | 'legacy', fileName: string): I
   source,
 })
 
-export function LLMAssistantView({ transcript, modelBasePath }: Props) {
+export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [generating, setGenerating] = useState(false)
-  const [modelReady, setModelReady] = useState(false)
   const [loadingModel, setLoadingModel] = useState(false)
+  const [showCatalog, setShowCatalog] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [modelPath, setModelPath] = useState<string | null>(modelBasePath ?? null)
   const [installedModels, setInstalledModels] = useState<InstalledLocalModel[]>([])
-  const [activeLocalModelId, setActiveLocalModelId] = useState<string | null>(null)
   const [downloadingVariantId, setDownloadingVariantId] = useState<string | null>(null)
   const [storageInfo, setStorageInfo] = useState<ModelStorageInfo>({ availableBytes: 0, totalBytes: 0, ramBytes: 0 })
-  const [engine, setEngine] = useState<AssistantEngine>('gemma')
-  const localContext = useRef<Awaited<ReturnType<typeof loadLocalGgufModel>> | null>(null)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null)
   const scrollRef = useRef<ScrollView>(null)
   const currentTokensRef = useRef('')
+  const modelReady = ai.modelReady
+  const engine = ai.engine
+  const activeLocalModelId = ai.activeLocalModelId
+  const modelBusy = loadingModel || ai.loading
+  const visibleError = loadError ?? ai.runtimeError
 
   useEffect(() => {
-    void LLMModule?.isReady().then(setModelReady).catch(() => setModelReady(false))
     void AsyncStorage.getItem(GEMMA_TERMS_ACCEPTED_KEY).then(value => setTermsAccepted(value === 'accepted')).catch(() => undefined)
     if (!modelBasePath) {
       void ModelDownloader.getVerifiedModelPath(GEMMA_MODEL_FILE, GEMMA_MODEL_SHA256, GEMMA_MODEL_BYTES)
@@ -95,8 +96,6 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     })().catch(() => undefined)
   }, [modelBasePath])
 
-  useEffect(() => () => { void localContext.current?.release() }, [])
-
   useEffect(() => {
     const progressSub = modelEvents.addListener('VS_MODEL_DOWNLOAD_PROGRESS', (payload: { progress?: number }) => {
       setDownloadProgress(payload.progress ?? null)
@@ -104,56 +103,20 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     return () => progressSub.remove()
   }, [])
 
-  // Streaming token listener
-  useEffect(() => {
-    if (!llmEvents) return
-    const tokenSub = llmEvents.addListener('VS_LLM_TOKEN', (token: string) => {
-      currentTokensRef.current += token
-      setMessages(prev => {
-        const last = prev[prev.length - 1]
-        if (!last || last.role !== 'assistant' || !last.streaming) return prev
-        return [...prev.slice(0, -1), { ...last, text: currentTokensRef.current }]
-      })
-    })
-    const doneSub = llmEvents.addListener('VS_LLM_DONE', (full: string) => {
-      setMessages(prev => {
-        const last = prev[prev.length - 1]
-        if (!last || last.role !== 'assistant') return prev
-        return [...prev.slice(0, -1), { role: 'assistant', text: full, streaming: false }]
-      })
-      setGenerating(false)
-      currentTokensRef.current = ''
-    })
-    const errSub = llmEvents.addListener('VS_LLM_ERROR', (msg: string) => {
-      setMessages(prev => [...prev, { role: 'assistant', text: `⚠ ${msg}` }])
-      setGenerating(false)
-      currentTokensRef.current = ''
-    })
-    const stoppedSub = llmEvents.addListener('VS_LLM_STOPPED', (msg: string) => {
-      setModelReady(false)
-      setLoadingModel(false)
-      setGenerating(false)
-      setLoadError(msg)
-      currentTokensRef.current = ''
-    })
-    return () => { tokenSub.remove(); doneSub.remove(); errSub.remove(); stoppedSub.remove() }
-  }, [])
-
   const loadModel = useCallback(async () => {
-    if (!LLMModule) { setLoadError('LLM module not available on this build'); return }
     setLoadingModel(true)
     setLoadError(null)
     try {
       const path = modelPath ?? (modelBasePath ? `${modelBasePath}${modelBasePath.endsWith('/') ? '' : '/'}${GEMMA_MODEL_FILE}` : null)
       if (!path) throw new Error('Download Gemma first, then import the .task file from Downloads.')
-      await LLMModule.loadModel(path, GEMMA_CONTEXT_TOKENS)
-      setModelReady(true)
+      await ai.loadGemma(path)
+      setShowCatalog(false)
     } catch (e: any) {
       setLoadError(e?.message ?? 'Failed to load model')
     } finally {
       setLoadingModel(false)
     }
-  }, [modelBasePath, modelPath])
+  }, [ai, modelBasePath, modelPath])
 
   const importModel = useCallback(async () => {
     setLoadingModel(true)
@@ -161,16 +124,15 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     try {
       const path = await ModelDownloader.importGemmaModel()
       setModelPath(path)
-      if (!LLMModule) throw new Error('LLM module not available on this build')
-      await LLMModule.loadModel(path, GEMMA_CONTEXT_TOKENS)
-      setModelReady(true)
+      await ai.loadGemma(path)
+      setShowCatalog(false)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not import the Gemma model'
       if (!message.includes('MODEL_IMPORT_CANCELLED')) setLoadError(message)
     } finally {
       setLoadingModel(false)
     }
-  }, [])
+  }, [ai])
 
   const persistInstalledModels = useCallback(async (next: InstalledLocalModel[]) => {
     setInstalledModels(next)
@@ -184,22 +146,13 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
   const startLocalModel = useCallback(async (model: InstalledLocalModel, knownPath?: string) => {
     const path = knownPath ?? await ModelDownloader.getModelPath(model.fileName)
     if (!path) throw new Error('Локальный файл модели не найден.')
-    await LLMModule?.unloadModel().catch(() => undefined)
-    await localContext.current?.release()
-    localContext.current = null
-    setActiveLocalModelId(null)
-    setModelReady(false)
-    const context = await loadLocalGgufModel(path)
-    localContext.current = context
-    setActiveLocalModelId(model.id)
-    setEngine('local')
-    setModelReady(true)
-  }, [])
+    await ai.loadLocalModel(model, path)
+    setShowCatalog(false)
+  }, [ai])
 
   const loadLocalModel = useCallback(async (model: InstalledLocalModel) => {
-    if (activeLocalModelId === model.id && localContext.current) {
-      setEngine('local')
-      setModelReady(true)
+    if (engine === 'local' && activeLocalModelId === model.id && modelReady) {
+      setShowCatalog(false)
       return
     }
     setLoadingModel(true)
@@ -211,7 +164,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     } finally {
       setLoadingModel(false)
     }
-  }, [activeLocalModelId, startLocalModel])
+  }, [activeLocalModelId, engine, modelReady, startLocalModel])
 
   const importLocalModel = useCallback(async () => {
     setLoadingModel(true)
@@ -271,10 +224,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     setLoadError(null)
     try {
       if (activeLocalModelId === model.id) {
-        await localContext.current?.release()
-        localContext.current = null
-        setActiveLocalModelId(null)
-        setModelReady(false)
+        await ai.clearLocalModel(model.id)
       }
       const deleted = await ModelDownloader.deleteModel(model.fileName)
       if (!deleted) throw new Error('Не удалось удалить файл модели.')
@@ -285,7 +235,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     } finally {
       setLoadingModel(false)
     }
-  }, [activeLocalModelId, installedModels, persistInstalledModels, refreshStorage])
+  }, [activeLocalModelId, ai, installedModels, persistInstalledModels, refreshStorage])
 
   const downloadModel = useCallback(async () => {
     if (!termsAccepted) {
@@ -303,9 +253,8 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
         GEMMA_MODEL_BYTES,
       )
       setModelPath(path)
-      if (!LLMModule) throw new Error('LLM module not available on this build')
-      await LLMModule.loadModel(path, GEMMA_CONTEXT_TOKENS)
-      setModelReady(true)
+      await ai.loadGemma(path)
+      setShowCatalog(false)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Не удалось скачать модель Gemma'
       setLoadError(message)
@@ -313,7 +262,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
       setLoadingModel(false)
       setDownloadProgress(null)
     }
-  }, [termsAccepted])
+  }, [ai, termsAccepted])
 
   const acceptTerms = useCallback(async () => {
     const nextValue = !termsAccepted
@@ -322,7 +271,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
   }, [termsAccepted])
 
   const send = useCallback(async (text: string) => {
-    if (!text.trim() || generating || !modelReady) return
+    if (!text.trim() || generating || ai.generating || !modelReady) return
     const userMsg: ChatMessage = { role: 'user', text: text.trim() }
     setMessages(prev => [...prev, userMsg, { role: 'assistant', text: '', streaming: true }])
     setInputText('')
@@ -330,25 +279,25 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     currentTokensRef.current = ''
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
     try {
-      if (engine === 'local') {
-        const context = localContext.current
-        if (!context) throw new Error('GGUF-модель не загружена')
-        const userMessage = buildUserMessage(text.trim() + '\n\n', transcript)
-        const full = await generateLocalResponse(context, SYSTEM_PROMPT, userMessage, (token) => {
+      const userMessage = buildUserMessage(text.trim() + '\n\n', transcript)
+      const fullPrompt = buildPrompt(SYSTEM_PROMPT, text.trim() + '\n\n', transcript)
+      const full = await ai.generate({
+        owner: 'assistant',
+        gemmaPrompt: fullPrompt,
+        localSystemPrompt: SYSTEM_PROMPT,
+        localUserMessage: userMessage,
+        onToken: (token) => {
           currentTokensRef.current += token
           setMessages(prev => {
             const last = prev[prev.length - 1]
             if (!last || last.role !== 'assistant' || !last.streaming) return prev
             return [...prev.slice(0, -1), { ...last, text: currentTokensRef.current }]
           })
-        })
-        setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', text: full, streaming: false }])
-        setGenerating(false)
-        currentTokensRef.current = ''
-      } else {
-        const fullPrompt = buildPrompt(SYSTEM_PROMPT, text.trim() + '\n\n', transcript)
-        await LLMModule!.generateResponse(fullPrompt)
-      }
+        },
+      })
+      setMessages(prev => [...prev.slice(0, -1), { role: 'assistant', text: full, streaming: false }])
+      setGenerating(false)
+      currentTokensRef.current = ''
     } catch (e: any) {
       setMessages(prev => {
         const last = prev[prev.length - 1]
@@ -357,34 +306,29 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
       })
       setGenerating(false)
     }
-  }, [engine, generating, modelReady, transcript])
+  }, [ai, generating, modelReady, transcript])
 
   const sendQuick = useCallback((q: (typeof QUICK_QUESTIONS)[number]) => {
     void send(q.prompt)
   }, [send])
 
   const stop = useCallback(() => {
-    if (engine === 'local') void localContext.current?.stopCompletion()
-    else void LLMModule?.cancelGeneration()
+    void ai.stopGeneration('assistant')
     setGenerating(false)
-  }, [engine])
+  }, [ai])
 
-  const selectEngine = useCallback(async (next: AssistantEngine) => {
+  const selectEngine = useCallback(async (next: 'gemma' | 'local') => {
     setLoadError(null)
+    await ai.selectEngine(next)
     if (next === 'gemma') {
-      await localContext.current?.release()
-      localContext.current = null
-      setActiveLocalModelId(null)
-      setEngine('gemma')
-      setModelReady(false)
+      setShowCatalog(false)
       await loadModel()
       return
     }
-    setEngine('local')
-    setModelReady(Boolean(activeLocalModelId && localContext.current))
-  }, [activeLocalModelId, loadModel])
+    setShowCatalog(true)
+  }, [ai, loadModel])
 
-  if (!modelReady) {
+  if (!modelReady || showCatalog) {
     return (
       <View style={styles.root}>
         <SectionTitle>VoiceShield AI</SectionTitle>
@@ -402,10 +346,10 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
             activeModelId={activeLocalModelId}
             availableBytes={storageInfo.availableBytes}
             ramBytes={storageInfo.ramBytes}
-            busy={loadingModel}
+            busy={modelBusy}
             downloadingVariantId={downloadingVariantId}
             downloadProgress={downloadProgress}
-            error={loadError}
+            error={visibleError}
             onDelete={deleteLocalModel}
             onDownload={downloadLocalModel}
             onImport={importLocalModel}
@@ -419,40 +363,39 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
             Данные не покидают телефон.
           </Text>
           <Text style={styles.setupSteps}>Загрузка происходит прямо в приложении. Файл проверяется по точному размеру и SHA-256 перед запуском.</Text>
-          <TouchableOpacity style={styles.termsRow} onPress={() => { void acceptTerms() }} disabled={loadingModel}>
+          <TouchableOpacity style={styles.termsRow} onPress={() => { void acceptTerms() }} disabled={modelBusy}>
             <View style={[styles.checkbox, termsAccepted && styles.checkboxChecked]}>
               {termsAccepted && <Text style={styles.checkboxMark}>✓</Text>}
             </View>
             <Text style={styles.termsText}>Я принимаю условия использования Gemma</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => { void Linking.openURL(GEMMA_TERMS_URL) }} disabled={loadingModel}>
+          <TouchableOpacity onPress={() => { void Linking.openURL(GEMMA_TERMS_URL) }} disabled={modelBusy}>
             <Text style={styles.termsLink}>Открыть условия Gemma</Text>
           </TouchableOpacity>
-          {loadError && <Text style={styles.error}>{loadError}</Text>}
-          {loadError && (
+          {visibleError && <Text style={styles.error}>{visibleError}</Text>}
+          {visibleError && (
             <TouchableOpacity
               style={styles.importBtn}
               onPress={() => {
-                void LLMModule?.unloadModel().catch(() => undefined)
-                setEngine('local')
                 setLoadError(null)
+                void ai.selectEngine('local').then(() => setShowCatalog(true))
               }}
-              disabled={loadingModel}
+              disabled={modelBusy}
             >
               <Text style={styles.importBtnText}>Открыть стабильный каталог GGUF</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={[styles.loadBtn, loadingModel && styles.loadBtnDisabled]}
+            style={[styles.loadBtn, modelBusy && styles.loadBtnDisabled]}
             onPress={modelPath ? loadModel : downloadModel}
-            disabled={loadingModel}
+            disabled={modelBusy}
           >
-            {loadingModel
+            {modelBusy
               ? <ActivityIndicator color="#fff" />
               : <Text style={styles.loadBtnText}>{modelPath ? 'Запустить AI assistant' : `Скачать AI assistant (${GEMMA_MODEL_SIZE_MB} МБ)`}</Text>}
           </TouchableOpacity>
           {downloadProgress !== null && <Text style={styles.progressText}>Загрузка: {downloadProgress}%</Text>}
-          <TouchableOpacity style={[styles.importBtn, loadingModel && styles.loadBtnDisabled]} onPress={importModel} disabled={loadingModel}>
+          <TouchableOpacity style={[styles.importBtn, modelBusy && styles.loadBtnDisabled]} onPress={importModel} disabled={modelBusy}>
             <Text style={styles.importBtnText}>Уже скачан файл? Импортировать</Text>
           </TouchableOpacity>
           </Card>
@@ -474,7 +417,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
       </View>
 
       {engine === 'local' && (
-        <TouchableOpacity style={styles.switchModelButton} onPress={() => setModelReady(false)} disabled={generating}>
+        <TouchableOpacity style={styles.switchModelButton} onPress={() => setShowCatalog(true)} disabled={generating || ai.generating}>
           <Text style={styles.switchModelText}>Сменить локальную модель</Text>
         </TouchableOpacity>
       )}
@@ -489,7 +432,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
       {messages.length === 0 && (
         <View style={styles.quickGrid}>
           {QUICK_QUESTIONS.map(q => (
-            <TouchableOpacity key={q.id} style={styles.quickChip} onPress={() => sendQuick(q)} disabled={generating}>
+            <TouchableOpacity key={q.id} style={styles.quickChip} onPress={() => sendQuick(q)} disabled={generating || ai.generating}>
               <Text style={styles.quickChipText}>{q.label}</Text>
             </TouchableOpacity>
           ))}
@@ -514,7 +457,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
         ))}
       </ScrollView>
 
-      {messages.length > 0 && !generating && (
+      {messages.length > 0 && !generating && !ai.generating && (
         <View style={styles.quickGridSmall}>
           {QUICK_QUESTIONS.slice(0, 3).map(q => (
             <TouchableOpacity key={q.id} style={styles.quickChipSmall} onPress={() => sendQuick(q)}>
@@ -533,7 +476,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
           placeholderTextColor={colors.muted}
           multiline
           maxLength={500}
-          editable={!generating}
+          editable={!generating && !ai.generating}
           onSubmitEditing={() => { void send(inputText) }}
         />
         {generating
@@ -541,9 +484,9 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
               <Text style={styles.stopBtnText}>■</Text>
             </TouchableOpacity>
           : <TouchableOpacity
-              style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
+              style={[styles.sendBtn, (!inputText.trim() || ai.generating) && styles.sendBtnDisabled]}
               onPress={() => { void send(inputText) }}
-              disabled={!inputText.trim()}
+              disabled={!inputText.trim() || ai.generating}
             >
               <Text style={styles.sendBtnText}>→</Text>
             </TouchableOpacity>

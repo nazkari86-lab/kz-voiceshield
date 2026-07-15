@@ -8,7 +8,7 @@ import android.telecom.Connection
 class CallScreeningService : CallScreeningService() {
   override fun onScreenCall(callDetails: Call.Details) {
     val direction = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && callDetails.callDirection == Call.Details.DIRECTION_INCOMING) "incoming" else "unknown"
-    val verificationStatus = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    val verificationStatus = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       when (callDetails.callerNumberVerificationStatus) {
         Connection.VERIFICATION_STATUS_PASSED -> "passed"
         Connection.VERIFICATION_STATUS_FAILED -> "failed"
@@ -21,7 +21,7 @@ class CallScreeningService : CallScreeningService() {
       val event = SafeCallEvent(direction, verificationStatus, System.currentTimeMillis())
       CallEventStore.save(this, event)
       AppRegistry.sendEvent("VS_CALL_INCOMING", event.toWritableMap())
-      respondToCall(callDetails, CallResponse.Builder().setDisallowCall(false).setRejectCall(false).setSilenceCall(false).build())
+      respondToCall(callDetails, response(shouldBlock = false))
       return
     }
     val assessment = PhoneReputationStore.assess(this, callDetails.handle?.schemeSpecificPart, verificationStatus, true)
@@ -30,13 +30,14 @@ class CallScreeningService : CallScreeningService() {
     CallEventStore.save(this, event)
     AppRegistry.sendEvent("VS_CALL_INCOMING", event.toWritableMap())
     val shouldBlock = assessment.result.action == "block"
-    respondToCall(
-      callDetails,
-      CallResponse.Builder()
-        .setDisallowCall(shouldBlock)
-        .setRejectCall(shouldBlock)
-        .setSilenceCall(false)
-        .build(),
-    )
+    respondToCall(callDetails, response(shouldBlock))
+  }
+
+  private fun response(shouldBlock: Boolean): CallResponse {
+    val builder = CallResponse.Builder()
+      .setDisallowCall(shouldBlock)
+      .setRejectCall(shouldBlock)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setSilenceCall(false)
+    return builder.build()
   }
 }

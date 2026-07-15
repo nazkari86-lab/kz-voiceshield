@@ -30,8 +30,8 @@ type Props = {
   onDeleteAllData: () => Promise<void>
 }
 
-type Status = { accessibility: boolean; battery: boolean; callRole: boolean; microphone: boolean; notificationAccess: boolean; notifications: boolean; overlay: boolean }
-const emptyStatus: Status = { accessibility: false, battery: false, callRole: false, microphone: false, notificationAccess: false, notifications: false, overlay: false }
+type Status = { accessibility: boolean; battery: boolean; callRole: boolean; dialerRole: boolean; microphone: boolean; notificationAccess: boolean; notifications: boolean; overlay: boolean }
+const emptyStatus: Status = { accessibility: false, battery: false, callRole: false, dialerRole: false, microphone: false, notificationAccess: false, notifications: false, overlay: false }
 
 const Step = ({ label, status, disabled, onPress }: { label: string; status: boolean; disabled?: boolean; onPress: () => void }) => (
   <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.step, disabled && styles.disabled]}>
@@ -69,16 +69,17 @@ export function SetupScreen({
     const notificationPermission = Platform.OS === 'android' && Platform.Version >= 33
       ? await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)
       : true
-    const [accessibility, overlay, callRole, microphone, battery, notificationAccess, deviceInfo] = await Promise.all([
+    const [accessibility, overlay, callRole, dialerRole, microphone, battery, notificationAccess, deviceInfo] = await Promise.all([
       AccessibilityModule.isEnabled().catch(() => false),
       OverlayModule.canDrawOverlays().catch(() => false),
       CallModule.isRoleHeld().catch(() => false),
+      CallModule.isDialerRoleHeld().catch(() => false),
       PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO).catch(() => false),
       DeviceSettings.isIgnoringBatteryOptimizations().catch(() => false),
       NotificationAccess.isEnabled().catch(() => false),
       DeviceSettings.getDeviceInfo().catch(() => null),
     ])
-    setStatus({ accessibility, battery, callRole, microphone, notificationAccess, notifications: notificationPermission, overlay })
+    setStatus({ accessibility, battery, callRole, dialerRole, microphone, notificationAccess, notifications: notificationPermission, overlay })
     setDevice(deviceInfo)
   }, [])
 
@@ -162,8 +163,9 @@ export function SetupScreen({
       ) : null}
 
       <Text style={styles.section}>Optional phone integration</Text>
-      <Text style={styles.copy}>Call screening can warn about numbers before answer. Default-phone settings do not grant access to call audio, but are available for device diagnostics.</Text>
-      <Step label="Open default phone apps" status={status.callRole} disabled={!privacyConsent} onPress={() => DeviceSettings.openDefaultAppsSettings()} />
+      <Text style={styles.copy}>As the default phone app, VoiceShield can show its own incoming and active SIM-call screen with number risk, family labels and private comments. The caller does not need VoiceShield. Android still does not expose the other party's raw call audio, so live transcription continues to use captions or the microphone fallback.</Text>
+      <Step label="Use VoiceShield as default phone" status={status.dialerRole} disabled={!privacyConsent} onPress={() => { void CallModule.requestDialerRole().then(refresh).catch(() => refresh()) }} />
+      <Step label="Open default phone apps" status={status.dialerRole} disabled={!privacyConsent} onPress={() => DeviceSettings.openDefaultAppsSettings()} />
 
       <Text style={styles.section}>On-device speech model</Text>
       <Text style={styles.copy}>All recognition remains on this device. The recommendation accounts for free storage, temporary download space and RAM. Downloads resume after a network interruption and every completed model is verified before use. Large models may not keep up with a live call.</Text>

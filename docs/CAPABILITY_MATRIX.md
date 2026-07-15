@@ -1,15 +1,17 @@
 # VoiceShield Capability Matrix
 
-Status as of 1.8.1. "Implemented" means code and deterministic tests exist in this repository; it does not imply public deployment or production validation.
+Status as of 1.9.0. "Implemented" means code and deterministic tests exist in this repository; it does not imply public deployment or production validation.
 
 ## Implemented locally
 
 - Call screening role and warning before answer through a high-priority Android notification.
+- Optional default-phone role with a native incoming/active SIM-call screen and answer, reject, hang-up, mute, and speaker controls.
 - Phone Reputation Score with reasons and actions: allow, warn, suggest reject, block.
 - Device-local complaints, complaint count/date, trusted list, block list, manual lookup.
 - Critical-only automatic blocking, hidden/international/repeated/night-call rules.
 - Same-number frequency and rapidly-changing-number burst detection.
 - Device-bound HMAC number identifiers; raw numbers are not retained or exported.
+- Encrypted per-number labels, relationship types, 0-5 personal ratings, comments, and protected-family status.
 - Rule backup/import. Number identifiers in a backup remain valid only on the originating device.
 - Conversation scheme classification, phrase evidence, OTP/bank notification context.
 - Banking, remote-access, and screen-sharing app context.
@@ -34,4 +36,4 @@ Status as of 1.8.1. "Implemented" means code and deterministic tests exist in th
 - Shared verified organization caller identity requires signed bank/operator data feeds.
 - Malware reputation requires a licensed provider or a maintained internal analysis pipeline.
 - Government/regional warning feeds require an authoritative signed feed and freshness monitoring.
-- Ending an active system call programmatically requires default-dialer/InCallService privileges; VoiceShield does not request that role.
+- Raw remote-call audio remains unavailable to ordinary default-dialer apps; captions or acoustic microphone capture are still required for transcription.

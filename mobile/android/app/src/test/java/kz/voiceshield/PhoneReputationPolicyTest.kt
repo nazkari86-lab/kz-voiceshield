@@ -52,4 +52,45 @@ class PhoneReputationPolicyTest {
     assertTrue(result.score >= 35)
     assertEquals("warn", result.action)
   }
+
+  @Test fun familyProtectionBypassesNightRuleButNotVerificationFailure() {
+    val allowed = PhoneReputationPolicy.evaluate(
+      PhoneRiskInput(verificationStatus = "passed", familyProtected = true, quietHours = true, blockUnknownAtNight = true),
+    )
+    assertEquals(0, allowed.score)
+    assertEquals("family", allowed.category)
+    assertEquals("allow", allowed.action)
+
+    val failed = PhoneReputationPolicy.evaluate(
+      PhoneRiskInput(verificationStatus = "failed", familyProtected = true),
+    )
+    assertTrue(failed.score >= 65)
+    assertEquals("suggest_reject", failed.action)
+  }
+
+  @Test fun personalRatingsInfluenceUnknownNumberWithoutOverridingHardBlock() {
+    val low = PhoneReputationPolicy.evaluate(PhoneRiskInput(verificationStatus = "unverified", userRating = 1))
+    val high = PhoneReputationPolicy.evaluate(PhoneRiskInput(verificationStatus = "unverified", userRating = 5))
+    assertTrue(low.score > high.score)
+
+    val blocked = PhoneReputationPolicy.evaluate(
+      PhoneRiskInput(verificationStatus = "passed", blocked = true, userRating = 5),
+    )
+    assertTrue(blocked.score >= 85)
+    assertEquals("blocked", blocked.category)
+  }
+
+  @Test fun familyLabelDoesNotOverrideComplaintsOrLowPersonalRating() {
+    val complained = PhoneReputationPolicy.evaluate(
+      PhoneRiskInput(verificationStatus = "unverified", familyProtected = true, complaintCount = 4),
+    )
+    assertEquals("reported_spam", complained.category)
+    assertTrue(complained.score >= 65)
+
+    val lowRated = PhoneReputationPolicy.evaluate(
+      PhoneRiskInput(verificationStatus = "unverified", familyProtected = true, userRating = 1),
+    )
+    assertTrue(lowRated.score >= 35)
+    assertEquals("warn", lowRated.action)
+  }
 }

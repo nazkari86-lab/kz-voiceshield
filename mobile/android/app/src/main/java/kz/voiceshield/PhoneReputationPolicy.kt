@@ -4,6 +4,8 @@ data class PhoneRiskInput(
   val verificationStatus: String,
   val trusted: Boolean = false,
   val blocked: Boolean = false,
+  val familyProtected: Boolean = false,
+  val userRating: Int = 0,
   val hidden: Boolean = false,
   val international: Boolean = false,
   val complaintCount: Int = 0,
@@ -53,6 +55,13 @@ object PhoneReputationPolicy {
       score += minOf(60, input.complaintCount * 18)
       reasons += "${input.complaintCount} local complaint(s)"
     }
+    if (input.userRating in 1..2) {
+      score += if (input.userRating == 1) 30 else 18
+      reasons += "Low personal rating for this number"
+    } else if (input.userRating in 4..5) {
+      score -= if (input.userRating == 5) 15 else 8
+      reasons += "Positive personal rating for this number"
+    }
     if (input.recentCallCount >= 4) {
       score += if (input.blockRepeated && input.recentCallCount >= 7) 55 else 25
       reasons += "Repeated calls in a short period"
@@ -61,7 +70,7 @@ object PhoneReputationPolicy {
       score += 30
       reasons += "Burst of calls from rapidly changing numbers"
     }
-    if (input.quietHours && input.blockUnknownAtNight && !input.trusted) {
+    if (input.quietHours && input.blockUnknownAtNight && !input.trusted && !input.familyProtected) {
       score = maxOf(score, 85)
       reasons += "Unknown caller during protected night hours"
     }
@@ -70,10 +79,21 @@ object PhoneReputationPolicy {
       reasons.clear()
       reasons += "Number is on the local trusted list"
     }
+    val familyTrusted = input.familyProtected &&
+      !input.blocked &&
+      input.verificationStatus != "failed" &&
+      input.complaintCount == 0 &&
+      input.userRating !in 1..2
+    if (familyTrusted) {
+      score = minOf(score, 5)
+      reasons.clear()
+      reasons += "Protected family number; caller ID can still be spoofed"
+    }
 
     score = score.coerceIn(0, 100)
     val category = when {
       input.blocked -> "blocked"
+      familyTrusted && score < 65 -> "family"
       input.trusted && score < 65 -> "trusted"
       input.complaintCount > 0 -> "reported_spam"
       score >= 65 -> "suspected_spam"

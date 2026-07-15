@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Pressable, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native'
 import { CallModule } from '@bridge/CallModule'
-import type { PhoneAssessment, PhoneProtectionConfig } from '@bridge/CallModule'
+import type { PhoneAssessment, PhoneProtectionConfig, PhoneRelationship } from '@bridge/CallModule'
 import { checkScamNumber } from '../data/scamNumbers'
 import type { ScamEntry } from '../data/scamNumbers'
 import { colors } from '../theme'
@@ -30,6 +30,13 @@ const Setting = ({ label, value, onChange }: { label: string; value: boolean; on
   </View>
 )
 
+const relationships: { id: PhoneRelationship; label: string }[] = [
+  { id: 'family', label: 'Family' }, { id: 'friend', label: 'Friend' },
+  { id: 'work', label: 'Work' }, { id: 'bank', label: 'Bank' },
+  { id: 'delivery', label: 'Delivery' }, { id: 'medical', label: 'Medical' },
+  { id: 'government', label: 'Government' }, { id: 'unknown', label: 'Other' },
+]
+
 export function NumberShieldView({
   autoDeleteTranscript,
   onSetAutoDeleteTranscript,
@@ -43,6 +50,11 @@ export function NumberShieldView({
   const [config, setConfig] = useState<PhoneProtectionConfig>(defaultConfig)
   const [backup, setBackup] = useState('')
   const [status, setStatus] = useState('Local reputation is ready')
+  const [rating, setRating] = useState(0)
+  const [comment, setComment] = useState('')
+  const [label, setLabel] = useState('')
+  const [relationship, setRelationship] = useState<PhoneRelationship>('unknown')
+  const [familyProtected, setFamilyProtected] = useState(false)
 
   useEffect(() => {
     void CallModule.getProtectionConfig().then(setConfig).catch(() => setStatus('Call screening is not available on this build'))
@@ -52,6 +64,11 @@ export function NumberShieldView({
     try {
       const result = await operation()
       setAssessment(result)
+      setRating(result.annotation.rating)
+      setComment(result.annotation.comment)
+      setLabel(result.annotation.label)
+      setRelationship(result.annotation.relationship)
+      setFamilyProtected(result.annotation.familyProtected)
       setStatus(message)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Number operation failed')
@@ -124,9 +141,39 @@ export function NumberShieldView({
           </View>
           <Text style={styles.actionLabel}>Action: {assessment.action.replace('_', ' ')}</Text>
           <Text style={styles.meta}>Trust {assessment.trustRating}/100 · {assessment.complaintCount} local complaint(s)</Text>
+          {assessment.annotation.label ? <Text style={styles.annotationTitle}>{assessment.annotation.label} · {assessment.annotation.rating || '—'}/5</Text> : null}
+          {assessment.annotation.comment ? <Text style={styles.annotationComment}>{assessment.annotation.comment}</Text> : null}
           {assessment.reasons.map((reason) => <Text key={reason} style={styles.reason}>• {reason}</Text>)}
         </View>
       )}
+
+      <Text style={styles.section}>Private number profile</Text>
+      <Text style={styles.copy}>Your label, rating and comment are encrypted with Android Keystore. They appear on the VoiceShield call screen and never enter the exported rules backup.</Text>
+      <View style={styles.panel}>
+        <TextInput accessibilityLabel="Contact label" maxLength={80} onChangeText={setLabel} placeholder="Name or label" placeholderTextColor={colors.muted} style={styles.input} value={label} />
+        <Text style={styles.fieldLabel}>Your rating</Text>
+        <View style={styles.ratingRow}>
+          {[1, 2, 3, 4, 5].map((value) => (
+            <Pressable accessibilityLabel={`Rate ${value} of 5`} key={value} onPress={() => setRating(value === rating ? 0 : value)} style={[styles.star, value <= rating && styles.starActive]}>
+              <Text style={[styles.starText, value <= rating && styles.starTextActive]}>★</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.fieldLabel}>Number type</Text>
+        <View style={styles.row}>
+          {relationships.map((item) => (
+            <Pressable key={item.id} onPress={() => { setRelationship(item.id); if (item.id === 'family') setFamilyProtected(true) }} style={[styles.chip, relationship === item.id && styles.chipActive]}>
+              <Text style={[styles.chipText, relationship === item.id && styles.chipTextActive]}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <TextInput accessibilityLabel="Private number comment" maxLength={500} multiline onChangeText={setComment} placeholder="What should you or a family member know about this caller?" placeholderTextColor={colors.muted} style={[styles.input, styles.comment]} value={comment} />
+        <Setting label="Protected family number" value={familyProtected} onChange={setFamilyProtected} />
+        <View style={styles.row}>
+          <Action label="Save profile" tone="primary" onPress={() => { void run(() => CallModule.annotateNumber(number, rating, comment, relationship, label, familyProtected), 'Encrypted number profile saved') }} />
+          <Action label="Clear profile" onPress={() => { void run(() => CallModule.clearNumberAnnotation(number), 'Private number profile removed') }} />
+        </View>
+      </View>
 
       <Text style={styles.section}>Automatic call rules</Text>
       <Setting label="Block only critical reputation" value={config.autoBlockCritical} onChange={(value) => { void updateConfig({ autoBlockCritical: value }) }} />
@@ -177,6 +224,8 @@ const styles = StyleSheet.create({
   scoreLabel: { color: '#991b1b', fontSize: 10, fontWeight: '800' },
   actionLabel: { color: colors.ink, fontSize: 14, fontWeight: '900' },
   meta: { color: colors.sub, fontSize: 12 },
+  annotationTitle: { color: colors.ink, fontSize: 13, fontWeight: '900' },
+  annotationComment: { backgroundColor: '#f8fafc', borderRadius: 6, color: colors.sub, fontSize: 13, lineHeight: 19, padding: 10 },
   reason: { color: '#334155', fontSize: 12, lineHeight: 18 },
   section: { color: colors.ink, fontSize: 15, fontWeight: '900', marginTop: 5 },
   setting: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 52, paddingHorizontal: 13 },
@@ -186,4 +235,15 @@ const styles = StyleSheet.create({
   scamTitle: { color: '#991b1b', fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
   scamReason: { color: colors.ink, fontSize: 13, lineHeight: 19 },
   scamSource: { color: colors.muted, fontSize: 11 },
+  fieldLabel: { color: colors.ink, fontSize: 12, fontWeight: '900' },
+  ratingRow: { flexDirection: 'row', gap: 8 },
+  star: { alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 8, height: 44, justifyContent: 'center', width: 44 },
+  starActive: { backgroundColor: '#fef3c7' },
+  starText: { color: '#94a3b8', fontSize: 24 },
+  starTextActive: { color: '#d97706' },
+  chip: { backgroundColor: '#f1f5f9', borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 9 },
+  chipActive: { backgroundColor: '#e0f2fe', borderColor: colors.brand },
+  chipText: { color: colors.sub, fontSize: 12, fontWeight: '800' },
+  chipTextActive: { color: colors.brand },
+  comment: { minHeight: 92, textAlignVertical: 'top' },
 })

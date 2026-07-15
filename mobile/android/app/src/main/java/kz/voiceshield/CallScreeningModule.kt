@@ -17,13 +17,23 @@ import com.facebook.react.bridge.BaseActivityEventListener
 
 class CallScreeningModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private var rolePromise: Promise? = null
+  private var dialerRolePromise: Promise? = null
   private val roleListener: ActivityEventListener = object : BaseActivityEventListener() {
     override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
-      if (requestCode != CALL_SCREENING_ROLE_REQUEST) return
-      val promise = rolePromise ?: return
-      rolePromise = null
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
       val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
-      promise.resolve(roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING))
+      when (requestCode) {
+        CALL_SCREENING_ROLE_REQUEST -> {
+          val promise = rolePromise ?: return
+          rolePromise = null
+          promise.resolve(roleManager.isRoleHeld(RoleManager.ROLE_CALL_SCREENING))
+        }
+        DIALER_ROLE_REQUEST -> {
+          val promise = dialerRolePromise ?: return
+          dialerRolePromise = null
+          promise.resolve(roleManager.isRoleHeld(RoleManager.ROLE_DIALER))
+        }
+      }
     }
   }
 
@@ -73,15 +83,52 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
     activity.startActivityForResult(intent, CALL_SCREENING_ROLE_REQUEST)
   }
 
+  @ReactMethod
+  fun isDialerRoleHeld(promise: Promise) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+      promise.resolve(false)
+      return
+    }
+    val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
+    promise.resolve(roleManager.isRoleHeld(RoleManager.ROLE_DIALER))
+  }
+
+  @ReactMethod
+  fun requestDialerRole(promise: Promise) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+      promise.resolve(false)
+      return
+    }
+    if (dialerRolePromise != null) {
+      promise.reject("ROLE_REQUEST_BUSY", "A default phone role request is already open")
+      return
+    }
+    val activity = currentActivity
+    if (activity == null) {
+      promise.reject("ACTIVITY_UNAVAILABLE", "Open VoiceShield before requesting the default phone role")
+      return
+    }
+    val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
+    if (roleManager.isRoleHeld(RoleManager.ROLE_DIALER)) {
+      promise.resolve(true)
+      return
+    }
+    dialerRolePromise = promise
+    activity.startActivityForResult(roleManager.createRequestRoleIntent(RoleManager.ROLE_DIALER), DIALER_ROLE_REQUEST)
+  }
+
   override fun invalidate() {
     rolePromise?.reject("ROLE_REQUEST_CANCELLED", "Call screening role request was cancelled")
     rolePromise = null
+    dialerRolePromise?.reject("ROLE_REQUEST_CANCELLED", "Default phone role request was cancelled")
+    dialerRolePromise = null
     context.removeActivityEventListener(roleListener)
     super.invalidate()
   }
 
   companion object {
     private const val CALL_SCREENING_ROLE_REQUEST = 4110
+    private const val DIALER_ROLE_REQUEST = 4111
   }
 
   @ReactMethod
@@ -112,6 +159,28 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
     runCatching { PhoneReputationStore.report(context, number, category).toWritableMap() }
       .onSuccess(promise::resolve)
       .onFailure { promise.reject("PHONE_REPORT_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
+  fun annotateNumber(
+    number: String,
+    rating: Int,
+    comment: String,
+    relationship: String,
+    label: String,
+    familyProtected: Boolean,
+    promise: Promise,
+  ) {
+    runCatching {
+      PhoneReputationStore.annotate(context, number, rating, comment, relationship, label, familyProtected).toWritableMap()
+    }.onSuccess(promise::resolve).onFailure { promise.reject("PHONE_ANNOTATION_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
+  fun clearNumberAnnotation(number: String, promise: Promise) {
+    runCatching { PhoneReputationStore.clearAnnotation(context, number).toWritableMap() }
+      .onSuccess(promise::resolve)
+      .onFailure { promise.reject("PHONE_ANNOTATION_FAILED", it.message, it) }
   }
 
   @ReactMethod

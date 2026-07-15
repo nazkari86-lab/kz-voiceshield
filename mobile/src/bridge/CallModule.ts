@@ -12,11 +12,23 @@ export type PhoneAssessment = {
   maskedNumber: string
   score: number
   trustRating: number
-  category: 'trusted' | 'blocked' | 'reported_spam' | 'suspected_spam' | 'unknown'
+  category: 'family' | 'trusted' | 'blocked' | 'reported_spam' | 'suspected_spam' | 'unknown'
   action: 'allow' | 'warn' | 'suggest_reject' | 'block'
   reasons: string[]
   complaintCount: number
   lastComplaintAt: number
+  annotation: PhoneAnnotation
+}
+
+export type PhoneRelationship = 'unknown' | 'family' | 'friend' | 'work' | 'bank' | 'delivery' | 'medical' | 'government'
+
+export type PhoneAnnotation = {
+  rating: number
+  comment: string
+  label: string
+  relationship: PhoneRelationship
+  familyProtected: boolean
+  updatedAt: number
 }
 
 export type PhoneProtectionConfig = {
@@ -34,10 +46,14 @@ type CallNativeModule = {
   isAvailable(): Promise<boolean>
   isRoleHeld(): Promise<boolean>
   requestRole(): Promise<boolean>
+  isDialerRoleHeld(): Promise<boolean>
+  requestDialerRole(): Promise<boolean>
   consumePendingCall(): Promise<SafeCallEvent | null>
   evaluateNumber(number: string): Promise<PhoneAssessment>
   setNumberDisposition(number: string, disposition: 'trusted' | 'blocked' | 'neutral'): Promise<PhoneAssessment>
   reportNumber(number: string, category: string): Promise<PhoneAssessment>
+  annotateNumber(number: string, rating: number, comment: string, relationship: PhoneRelationship, label: string, familyProtected: boolean): Promise<PhoneAssessment>
+  clearNumberAnnotation(number: string): Promise<PhoneAssessment>
   getProtectionConfig(): Promise<PhoneProtectionConfig>
   updateProtectionConfig(config: Partial<PhoneProtectionConfig>): Promise<PhoneProtectionConfig>
   exportProtectionData(): Promise<string>

@@ -33,6 +33,7 @@ data class PhoneAssessment(
   val result: PhoneRiskResult,
   val complaintCount: Int,
   val lastComplaintAt: Long,
+  val annotation: PhoneAnnotation = PhoneAnnotation(),
 ) {
   fun toWritableMap(): WritableMap = Arguments.createMap().apply {
     putString("numberKey", numberKey)
@@ -44,6 +45,36 @@ data class PhoneAssessment(
     putInt("complaintCount", complaintCount)
     putDouble("lastComplaintAt", lastComplaintAt.toDouble())
     putArray("reasons", Arguments.fromList(result.reasons))
+    putMap("annotation", annotation.toWritableMap())
+  }
+}
+
+data class PhoneAnnotation(
+  val rating: Int = 0,
+  val comment: String = "",
+  val label: String = "",
+  val relationship: String = "unknown",
+  val familyProtected: Boolean = false,
+  val updatedAt: Long = 0,
+) {
+  fun toWritableMap(): WritableMap = Arguments.createMap().apply {
+    putInt("rating", rating)
+    putString("comment", comment)
+    putString("label", label)
+    putString("relationship", relationship)
+    putBoolean("familyProtected", familyProtected)
+    putDouble("updatedAt", updatedAt.toDouble())
+  }
+
+  fun toJson(includePrivateText: Boolean = true): JSONObject = JSONObject().apply {
+    put("rating", rating)
+    if (includePrivateText) {
+      put("comment", comment)
+      put("label", label)
+    }
+    put("relationship", relationship)
+    put("familyProtected", familyProtected)
+    put("updatedAt", updatedAt)
   }
 }
 
@@ -52,6 +83,8 @@ object PhoneReputationStore {
   private const val HMAC_ALIAS = "voiceshield_phone_hmac_v1"
   private const val WINDOW_MS = 10 * 60 * 1000L
   private const val MAX_HISTORY_AGE_MS = 24 * 60 * 60 * 1000L
+  private const val ANNOTATIONS_KEY = "phone.annotations.v2"
+  private val relationships = setOf("unknown", "family", "friend", "work", "bank", "delivery", "medical", "government")
 
   private fun preferences(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -80,6 +113,26 @@ object PhoneReputationStore {
   private fun mask(number: String?): String {
     val normalized = normalize(number)
     return if (normalized.isEmpty()) "Hidden number" else "•••${normalized.takeLast(4)}"
+  }
+
+  private fun annotations(context: Context): JSONObject = runCatching {
+    JSONObject(EncryptedLocalStore.get(context, ANNOTATIONS_KEY) ?: "{}")
+  }.getOrDefault(JSONObject())
+
+  private fun annotation(context: Context, key: String): PhoneAnnotation {
+    return annotationFromJson(annotations(context).optJSONObject(key))
+  }
+
+  private fun annotationFromJson(item: JSONObject?): PhoneAnnotation {
+    item ?: return PhoneAnnotation()
+    return PhoneAnnotation(
+      rating = item.optInt("rating", 0).coerceIn(0, 5),
+      comment = item.optString("comment", "").take(500),
+      label = item.optString("label", "").take(80),
+      relationship = item.optString("relationship", "unknown").takeIf(relationships::contains) ?: "unknown",
+      familyProtected = item.optBoolean("familyProtected", false),
+      updatedAt = item.optLong("updatedAt", 0).coerceAtLeast(0),
+    )
   }
 
   fun config(context: Context): PhoneProtectionConfig {
@@ -145,6 +198,7 @@ object PhoneReputationStore {
 
     val trusted = prefs.getStringSet("trusted", emptySet()).orEmpty().contains(key)
     val blocked = prefs.getStringSet("blocked", emptySet()).orEmpty().contains(key)
+    val annotation = annotation(context, key)
     val normalized = normalize(number)
     val cfg = config(context)
     val hour = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) LocalTime.now().hour else 12
@@ -155,6 +209,8 @@ object PhoneReputationStore {
         verificationStatus = verificationStatus,
         trusted = trusted,
         blocked = blocked,
+        familyProtected = annotation.familyProtected,
+        userRating = annotation.rating,
         hidden = normalized.isEmpty(),
         international = normalized.startsWith("+") && !normalized.startsWith("+7"),
         complaintCount = complaint?.optInt("count", 0) ?: 0,
@@ -168,7 +224,47 @@ object PhoneReputationStore {
         autoBlockCritical = cfg.autoBlockCritical,
       ),
     )
-    return PhoneAssessment(key, mask(number), result, complaint?.optInt("count", 0) ?: 0, complaint?.optLong("lastAt", 0) ?: 0)
+    return PhoneAssessment(key, mask(number), result, complaint?.optInt("count", 0) ?: 0, complaint?.optLong("lastAt", 0) ?: 0, annotation)
+  }
+
+  @Synchronized
+  fun annotate(
+    context: Context,
+    number: String,
+    rating: Int,
+    comment: String,
+    relationship: String,
+    label: String,
+    familyProtected: Boolean,
+  ): PhoneAssessment {
+    val key = fingerprint(number)
+    require(key != "hidden") { "Enter a visible phone number" }
+    require(rating in 0..5) { "Rating must be between 0 and 5" }
+    require(relationship in relationships) { "Unsupported relationship" }
+    val item = PhoneAnnotation(
+      rating = rating,
+      comment = comment.trim().take(500),
+      label = label.trim().take(80),
+      relationship = relationship,
+      familyProtected = familyProtected || relationship == "family",
+      updatedAt = System.currentTimeMillis(),
+    )
+    val values = annotations(context)
+    values.put(key, item.toJson())
+    EncryptedLocalStore.put(context, ANNOTATIONS_KEY, values.toString())
+    if (item.familyProtected) setDisposition(context, number, "trusted")
+    return assess(context, number, "unverified", false)
+  }
+
+  @Synchronized
+  fun clearAnnotation(context: Context, number: String): PhoneAssessment {
+    val key = fingerprint(number)
+    require(key != "hidden") { "Enter a visible phone number" }
+    val values = annotations(context)
+    values.remove(key)
+    if (values.length() == 0) EncryptedLocalStore.remove(context, ANNOTATIONS_KEY)
+    else EncryptedLocalStore.put(context, ANNOTATIONS_KEY, values.toString())
+    return assess(context, number, "unverified", false)
   }
 
   @Synchronized
@@ -223,7 +319,16 @@ object PhoneReputationStore {
       put("trusted", JSONArray(prefs.getStringSet("trusted", emptySet()).orEmpty().toList()))
       put("blocked", JSONArray(prefs.getStringSet("blocked", emptySet()).orEmpty().toList()))
       put("complaints", JSONObject(prefs.getString("complaints", "{}") ?: "{}"))
-      put("privacy", "Contains device-bound HMAC identifiers, never raw phone numbers")
+      put("annotationSummary", JSONObject().apply {
+        val source = annotations(context)
+        val keys = source.keys()
+        while (keys.hasNext()) {
+          val key = keys.next()
+          val item = annotationFromJson(source.optJSONObject(key))
+          put(key, item.toJson(includePrivateText = false))
+        }
+      })
+      put("privacy", "Contains device-bound HMAC identifiers. Encrypted labels and comments are intentionally excluded.")
     }.toString(2)
   }
 
@@ -256,7 +361,28 @@ object PhoneReputationStore {
       .putStringSet("blocked", arraySet("blocked"))
       .putString("complaints", safeComplaints.toString())
       .apply()
+    val importedAnnotations = payload.optJSONObject("annotationSummary") ?: JSONObject()
+    val safeAnnotations = JSONObject()
+    val annotationKeys = importedAnnotations.keys()
+    var acceptedAnnotations = 0
+    while (annotationKeys.hasNext() && acceptedAnnotations < 5000) {
+      val key = annotationKeys.next()
+      val item = importedAnnotations.optJSONObject(key) ?: continue
+      if (key.length !in 8..64) continue
+      val relationship = item.optString("relationship", "unknown").takeIf(relationships::contains) ?: "unknown"
+      safeAnnotations.put(key, PhoneAnnotation(
+        rating = item.optInt("rating", 0).coerceIn(0, 5),
+        relationship = relationship,
+        familyProtected = item.optBoolean("familyProtected", false),
+        updatedAt = item.optLong("updatedAt", 0).coerceAtLeast(0),
+      ).toJson())
+      acceptedAnnotations += 1
+    }
+    if (safeAnnotations.length() > 0) EncryptedLocalStore.put(context, ANNOTATIONS_KEY, safeAnnotations.toString())
   }
 
-  fun clear(context: Context) = preferences(context).edit().clear().apply()
+  fun clear(context: Context) {
+    preferences(context).edit().clear().apply()
+    runCatching { EncryptedLocalStore.remove(context, ANNOTATIONS_KEY) }
+  }
 }

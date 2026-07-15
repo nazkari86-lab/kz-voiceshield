@@ -43,6 +43,7 @@ import type { CaseLabel, CaseStatus, RiskSignal, SavedCase, WorkflowFlags } from
 const validStatuses: CaseStatus[] = ['new', 'reviewing', 'escalated', 'closed']
 
 const modelSizeKey = 'voiceshield.model-size.v1'
+const recognitionLanguageKey = 'voiceshield.recognition-language.v1'
 const privacyConsentKey = 'voiceshield.privacy-consent.v1'
 const donationConsentKey = 'voiceshield.donation-consent.v1'
 const trustedContactKey = 'voiceshield.trusted-contact.v1'
@@ -91,6 +92,7 @@ export function useWorkspace() {
   // ---- model size preference ----
   const [modelSizePref, setModelSizePref] = useState<WhisperModelChoice>('auto')
   const [modelStorage, setModelStorage] = useState<ModelStorageInfo | null>(null)
+  const [recognitionLanguage, setRecognitionLanguage] = useState<'auto' | 'ru' | 'kk'>('auto')
 
   // ---- live capture ----
   const [isListening, setIsListening] = useState(false)
@@ -182,11 +184,13 @@ export function useWorkspace() {
       SecureStorage.getItem(donationConsentKey).catch(() => null),
       SecureStorage.getItem(autoDeleteTranscriptKey).catch(() => null),
       AsyncStorage.getItem(modelSizeKey).catch(() => null),
+      AsyncStorage.getItem(recognitionLanguageKey).catch(() => null),
     ])
-      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete, storedModelSize]) => {
+      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete, storedModelSize, storedRecognitionLanguage]) => {
         if (storedModelSize === 'auto' || whisperModels.some((model) => model.id === storedModelSize)) {
           setModelSizePref(storedModelSize as WhisperModelChoice)
         }
+        if (storedRecognitionLanguage === 'auto' || storedRecognitionLanguage === 'ru' || storedRecognitionLanguage === 'kk') setRecognitionLanguage(storedRecognitionLanguage)
         if (!active) return
         const stored = encryptedCases ?? legacyCases
         if (stored) {
@@ -416,6 +420,12 @@ export function useWorkspace() {
     setModelReady(false)
   }, [])
 
+  const updateRecognitionLanguage = useCallback(async (language: 'auto' | 'ru' | 'kk') => {
+    setRecognitionLanguage(language)
+    await AsyncStorage.setItem(recognitionLanguageKey, language)
+    setModelReady(false)
+  }, [])
+
   const prepareWhisper = useCallback(async () => {
     const cfg = modelSizePref === 'auto' ? recommendedModel(modelStorage) : modelFor(modelSizePref)
     setCaptureError(null)
@@ -427,7 +437,7 @@ export function useWorkspace() {
         throw new Error('Import the verified FastConformer INT8 model from Setup before preparing it.')
       }
       const path = existing ?? (await ModelDownloader.downloadModel(cfg.url, cfg.file, cfg.sha256, cfg.size))
-      await WhisperModule.initialize(path, 'auto')
+      await WhisperModule.initialize(path, recognitionLanguage)
       await ModelDownloader.setActiveWhisperModel(cfg.file)
       setModelReady(true)
       setModelProgress(null)
@@ -438,7 +448,7 @@ export function useWorkspace() {
       setCaptureError(error instanceof Error ? error.message : 'Could not prepare the speech model. Check internet access and free storage.')
       throw error
     }
-  }, [modelSizePref, modelStorage])
+  }, [modelSizePref, modelStorage, recognitionLanguage])
 
   const startListening = useCallback(async () => {
     setCaptureError(null)
@@ -464,7 +474,7 @@ export function useWorkspace() {
         // A downloaded model is only a file. After an app restart, its native
         // Whisper context must be recreated before audio chunks can be decoded.
         const nativeModelReady = await WhisperModule.isInitialized()
-        if (!nativeModelReady) await prepareWhisper()
+        if (!nativeModelReady || !modelReady) await prepareWhisper()
         await WhisperModule.resetBuffer()
       }
       await OverlayModule.show(!accessibilityEnabled)
@@ -488,7 +498,7 @@ export function useWorkspace() {
       setIsListening(false)
       setCaptureError('Protection could not start. Enable microphone, overlay and accessibility permissions in setup.')
     }
-  }, [prepareWhisper, privacyConsent])
+  }, [modelReady, prepareWhisper, privacyConsent])
 
   const endActiveCall = useCallback(async () => {
     try {
@@ -512,7 +522,7 @@ export function useWorkspace() {
         return
       }
       const nativeModelReady = await WhisperModule.isInitialized()
-      if (!nativeModelReady) await prepareWhisper()
+      if (!nativeModelReady || !modelReady) await prepareWhisper()
       await WhisperModule.resetBuffer()
       await WhisperModule.startStreaming()
       await AudioCaptureModule.startCapture()
@@ -524,7 +534,7 @@ export function useWorkspace() {
     } catch {
       setCaptureError('Microphone fallback could not start. Check the microphone permission and Whisper model in Setup.')
     }
-  }, [prepareWhisper])
+  }, [modelReady, prepareWhisper])
 
   const stopListening = useCallback(async () => {
     // Record fingerprint before stopping for cross-call memory
@@ -791,7 +801,7 @@ export function useWorkspace() {
     isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript, modelStorage,
     startListening, stopListening, prepareWhisper, switchToMicrophoneFallback,
     endActiveCall,
-    modelSizePref, updateModelSize,
+    modelSizePref, updateModelSize, recognitionLanguage, updateRecognitionLanguage,
     repeatBonusData, llmAutoAnalysis, captureCompleteness,
     // computed
     analysis, pressureAnalysis, semanticMatches, callbackInfo,

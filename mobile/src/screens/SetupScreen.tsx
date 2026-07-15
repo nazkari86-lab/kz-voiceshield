@@ -18,6 +18,7 @@ type Props = {
   modelReady: boolean
   modelProgress: number | null
   modelSizePref: WhisperModelChoice
+  recognitionLanguage: 'auto' | 'ru' | 'kk'
   modelStorage: ModelStorageInfo | null
   privacyConsent: boolean
   storageError: string | null
@@ -25,6 +26,7 @@ type Props = {
   caseCount: number
   onPrepareWhisper: () => void
   onSetModelSize: (size: WhisperModelChoice) => Promise<void>
+  onSetRecognitionLanguage: (language: 'auto' | 'ru' | 'kk') => Promise<void>
   onAcceptPrivacy: () => Promise<void>
   onDeclinePrivacy: () => Promise<void>
   onDeleteAllData: () => Promise<void>
@@ -44,6 +46,7 @@ export function SetupScreen({
   modelReady,
   modelProgress,
   modelSizePref,
+  recognitionLanguage,
   modelStorage,
   privacyConsent,
   storageError,
@@ -51,6 +54,7 @@ export function SetupScreen({
   caseCount,
   onPrepareWhisper,
   onSetModelSize,
+  onSetRecognitionLanguage,
   onAcceptPrivacy,
   onDeclinePrivacy,
   onDeleteAllData,
@@ -168,6 +172,14 @@ export function SetupScreen({
       <Step label="Open default phone apps" status={status.dialerRole} disabled={!privacyConsent} onPress={() => DeviceSettings.openDefaultAppsSettings()} />
 
       <Text style={styles.section}>On-device speech model</Text>
+      <Text style={styles.copy}>Recognition language</Text>
+      <View style={styles.toggleRow}>
+        {(['auto', 'ru', 'kk'] as const).map((language) => (
+          <Pressable key={language} style={[styles.toggleChip, recognitionLanguage === language && styles.toggleChipActive]} onPress={() => { void onSetRecognitionLanguage(language) }}>
+            <Text style={[styles.toggleText, recognitionLanguage === language && styles.toggleTextActive]}>{language === 'auto' ? 'Auto / mixed' : language === 'ru' ? 'Русский' : 'Қазақша'}</Text>
+          </Pressable>
+        ))}
+      </View>
       <Text style={styles.copy}>All recognition remains on this device. The recommendation accounts for free storage, temporary download space and RAM. Downloads resume after a network interruption and every completed model is verified before use. Large models may not keep up with a live call.</Text>
       <View style={styles.recommendation}>
         <Text style={styles.recommendationTitle}>Recommended: {automaticModel.title}</Text>

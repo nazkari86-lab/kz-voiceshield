@@ -439,6 +439,32 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     }
   }, [modelSizePref, modelStorage])
 
+  // Re-open the selected verified model after an app restart without starting
+  // a download. The native context is process-local, so the Ready badge must
+  // be restored from the on-device model file on every fresh process.
+  useEffect(() => {
+    if (!hydrated || !modelStorage) return
+    let active = true
+    const restoreWhisper = async () => {
+      const cfg = modelSizePref === 'auto' ? recommendedModel(modelStorage) : modelFor(modelSizePref)
+      try {
+        const path = await ModelDownloader.getVerifiedModelPath(cfg.file, cfg.sha256, cfg.size)
+        if (!path) {
+          if (active) setModelReady(false)
+          return
+        }
+        await WhisperModule.initialize(path, 'auto')
+        if (active) setModelReady(true)
+      } catch {
+        if (active) setModelReady(false)
+      }
+    }
+    void restoreWhisper()
+    return () => {
+      active = false
+    }
+  }, [hydrated, modelSizePref, modelStorage])
+
   const startListening = useCallback(async () => {
     setCaptureError(null)
     setCaptureNotice(null)

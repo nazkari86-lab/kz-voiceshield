@@ -306,6 +306,12 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
       setSource('Whisper')
       setTranscript((current) => `${current} ${event.text}`.trim())
     })
+    const whisperErrorSub = whisperEvents.addListener('VS_WHISPER_ERROR', (event: { message?: string }) => {
+      if (event.message) {
+        setCaptureError(`Speech recognition failed: ${event.message}`)
+        void recordKnowledgeDiagnostic('whisper_decode', event.message)
+      }
+    })
     const levelSub = audioEvents.addListener('VS_AUDIO_LEVEL', (event: { level?: number }) => {
       const level = event.level ?? 0
       if (level >= 0.015) lastAudibleAtRef.current = Date.now()
@@ -342,6 +348,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     return () => {
       liveCaptionSub.remove()
       whisperSub.remove()
+      whisperErrorSub.remove()
       levelSub.remove()
       audioErrorSub.remove()
       audioStartedSub.remove()

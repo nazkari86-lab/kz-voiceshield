@@ -57,7 +57,10 @@ export const plannedKazakhPackBytes = kazakhQualityPackComponents.reduce((total,
 export function recommendedQoldaVariant(ramBytes: number, availableBytes: number): GgufVariant | null {
   const reserve = 512 * 1024 ** 2
   const usable = Math.max(0, availableBytes - reserve)
-  if (ramBytes >= 7 * 1024 ** 3 && qoldaVariants.maximum.size <= usable) return qoldaVariants.maximum
+  // 8 GB phones commonly report 6.5-7.5 GiB to Android. Keep the Q5
+  // recommendation available on those devices while retaining the storage
+  // reserve needed by llama.cpp during load.
+  if (ramBytes >= 6.5 * 1024 ** 3 && qoldaVariants.maximum.size <= usable) return qoldaVariants.maximum
   if (ramBytes >= 6 * 1024 ** 3 && qoldaVariants.balanced.size <= usable) return qoldaVariants.balanced
   return null
 }

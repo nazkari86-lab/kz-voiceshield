@@ -21,4 +21,11 @@ describe('speech model manifest', () => {
     expect(fitsDevice(fast, { availableBytes: fast.size, totalBytes: fast.size, ramBytes: 8_000_000_000 })).toBe(false)
     expect(recommendedModel({ availableBytes: 100_000_000, totalBytes: 1_000_000_000, ramBytes: 1_000_000_000 }).id).toBe('tiny')
   })
+
+  it('allows Turbo Q5 on an 8 GB phone reported as 7 GB by Android', () => {
+    const sevenGbPhone = { availableBytes: 4_000_000_000, totalBytes: 8_000_000_000, ramBytes: 7_000_000_000 }
+    expect(fitsDevice(modelFor('turboQ5'), sevenGbPhone)).toBe(true)
+    expect(fitsDevice(modelFor('turboQ8'), sevenGbPhone)).toBe(false)
+    expect(fitsDevice(modelFor('turboFull'), sevenGbPhone)).toBe(false)
+  })
 })

@@ -15,12 +15,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 class WhisperModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private var whisper: WhisperContext? = null
   private var fastConformer: FastConformerContext? = null
   private val modelLock = Any()
+  private val decoding = AtomicBoolean(false)
   private var streamJob: Job? = null
   private var lastTranscript = ""
 
@@ -72,7 +74,11 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   }
 
   fun pushAudio(chunk: ShortArray) {
+    // Inference can take seconds on mobile. Never block AudioRecord while the
+    // native decoder owns the model; the next PCM chunk will be processed.
+    if (decoding.get()) return
     synchronized(modelLock) {
+      if (decoding.get()) return
       whisper?.process(chunk)
       fastConformer?.process(chunk)
     }
@@ -89,20 +95,39 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     streamJob = scope.launch {
       while (true) {
         delay(3000)
-        val bufferedSamples = synchronized(modelLock) {
-          whisper?.bufferSize() ?: fastConformer?.bufferSize() ?: 0
-        }
-        if (bufferedSamples >= 32000) {
-          val startedAt = System.currentTimeMillis()
-          val text = synchronized(modelLock) {
-            (whisper?.transcribe() ?: fastConformer?.transcribe().orEmpty()).trim()
+        try {
+          val bufferedSamples = synchronized(modelLock) {
+            whisper?.bufferSize() ?: fastConformer?.bufferSize() ?: 0
           }
-          if (text.isEmpty() || text == lastTranscript) continue
-          lastTranscript = text
+          val status = Arguments.createMap()
+          status.putInt("bufferedSamples", bufferedSamples)
+          status.putBoolean("modelReady", bufferedSamples > 0 || synchronized(modelLock) { whisper != null || fastConformer != null })
+          AppRegistry.sendEvent("VS_WHISPER_STATUS", status)
+          // Decode after one second of PCM. Short speech segments are common in
+          // calls; waiting for two seconds and dropping an empty window made the
+          // phone appear active while silently losing the phrase.
+          if (bufferedSamples >= 16_000) {
+            val startedAt = System.currentTimeMillis()
+            if (!decoding.compareAndSet(false, true)) continue
+            val text = try {
+              synchronized(modelLock) {
+                (whisper?.transcribe() ?: fastConformer?.transcribe().orEmpty()).trim()
+              }
+            } finally {
+              decoding.set(false)
+            }
+            if (text.isEmpty() || text == lastTranscript) continue
+            lastTranscript = text
+            val payload = Arguments.createMap()
+            payload.putString("text", text)
+            payload.putDouble("latencyMs", (System.currentTimeMillis() - startedAt).toDouble())
+            AppRegistry.sendEvent("VS_WHISPER_TRANSCRIPT", payload)
+          }
+        } catch (error: Throwable) {
+          Log.e(TAG, "Speech decode failed", error)
           val payload = Arguments.createMap()
-          payload.putString("text", text)
-          payload.putDouble("latencyMs", (System.currentTimeMillis() - startedAt).toDouble())
-          AppRegistry.sendEvent("VS_WHISPER_TRANSCRIPT", payload)
+          payload.putString("message", error.message ?: "Speech model failed to decode microphone audio")
+          AppRegistry.sendEvent("VS_WHISPER_ERROR", payload)
         }
       }
     }

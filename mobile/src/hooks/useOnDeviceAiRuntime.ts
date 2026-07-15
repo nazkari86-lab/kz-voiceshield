@@ -23,6 +23,7 @@ import {
   type CloudProviderId,
 } from '../data/cloudAiProviders'
 import { generateCloudResponse, hasProviderApiKey, hasProviderDataConsent } from '../services/cloudAiClient'
+import type { CloudAttachment } from '../services/cloudAiClient'
 
 export type AssistantEngine = 'gemma' | 'local' | 'cloud'
 export type AiGenerationOwner = 'assistant' | 'live' | 'correction'
@@ -32,6 +33,7 @@ export type AiGenerationRequest = {
   gemmaPrompt: string
   localSystemPrompt: string
   localUserMessage: string
+  attachments?: CloudAttachment[]
   onToken?: (token: string) => void
 }
 
@@ -375,6 +377,7 @@ export function useOnDeviceAiRuntime() {
           request.localSystemPrompt,
           request.localUserMessage,
           controller.signal,
+          request.attachments,
         )
         request.onToken?.(response)
         return response

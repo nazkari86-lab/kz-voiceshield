@@ -7,7 +7,6 @@ import { useI18n } from '../I18nContext'
 import { Card, RiskBadge } from './ui'
 import { MotionPressable } from './MotionPressable'
 import { LiveAiPanel } from './LiveAiPanel'
-import { ProtectionIntelligencePanel } from './ProtectionIntelligencePanel'
 import type { LiveAiAnalysisController } from '../hooks/useLiveAiAnalysis'
 import type { TranscriptEnhancement } from '../utils/transcriptEnhancer'
 import type { TranscriptCorrectionState } from '../hooks/useTranscriptCorrection'
@@ -19,7 +18,6 @@ type Props = {
   transcript: string
   enhancement: TranscriptEnhancement
   source: string
-  modelReady?: boolean
   isListening: boolean
   audioLevel: number
   error: string | null
@@ -41,7 +39,7 @@ type Props = {
   onEndCall: () => Promise<boolean>
 }
 
-export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, enhancement, source, modelReady = false, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, liveAi, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onOpenAi, onUseMicrophoneFallback, onEndCall }: Props) {
+export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, enhancement, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, liveAi, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onOpenAi, onUseMicrophoneFallback, onEndCall }: Props) {
   const { t } = useI18n()
   const [pauseRemaining, setPauseRemaining] = useState(0)
   const signalScale = useRef(new Animated.Value(1)).current
@@ -175,13 +173,6 @@ export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, e
       )}
 
       <LiveAiPanel controller={liveAi} hasTranscript={transcript.trim().length > 0} onOpenAssistant={onOpenAi} />
-
-      <ProtectionIntelligencePanel
-        analysis={analysis}
-        transcript={transcript}
-        liveAi={liveAi.result}
-        device={{ audioLevel, modelReady, isListening, source, captureError: error }}
-      />
 
       <View style={styles.transcriptHeading}><Text style={styles.transcriptLabel}>{t.live.liveTranscript}</Text>{isListening && source === 'Whisper' ? <Text style={styles.transcriptState}>{audioLevel >= 0.015 ? t.live.microphoneState : t.live.waitingSpeaker}</Text> : null}</View>
       <TextInput

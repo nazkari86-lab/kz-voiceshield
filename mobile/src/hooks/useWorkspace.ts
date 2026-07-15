@@ -560,6 +560,18 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     }
   }, [prepareWhisper])
 
+  // Some Xiaomi/HyperOS builds report the caption accessibility service as
+  // enabled but never emit caption text during a phone call. Keep captions as
+  // the preferred source, then recover automatically to the local microphone
+  // path instead of leaving Live Shield silently idle.
+  useEffect(() => {
+    if (!isListening || source !== 'Live Caption' || transcript.trim()) return undefined
+    const timeout = setTimeout(() => {
+      void switchToMicrophoneFallback()
+    }, 6000)
+    return () => clearTimeout(timeout)
+  }, [isListening, source, switchToMicrophoneFallback, transcript])
+
   const stopListening = useCallback(async () => {
     // Record fingerprint before stopping for cross-call memory
     const snap = analyzeTranscript(analysisTranscript, { signals: deviceSignals })

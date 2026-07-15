@@ -8,7 +8,7 @@ import { trainingDataSnapshot } from './trainingDataSnapshot'
 // and not used for live decisions. Composition numbers come from ml/model_card.py
 // (regenerate the snapshot; never hand-edit its numbers).
 
-export const APP_VERSION = '1.9.8'
+export const APP_VERSION = '1.9.9'
 
 export type SourceRef = { name: string; role: string; link?: string }
 

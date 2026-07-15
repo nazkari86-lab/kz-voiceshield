@@ -1,18 +1,42 @@
-import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import React, { useMemo, useState } from 'react'
+import { StyleSheet, TextInput, View } from 'react-native'
 import { colors } from '../theme'
 import { Card, Metric, SectionTitle, ui } from './ui'
 import { modelManifest } from '../data/modelManifest'
 import { kazakhQualityPackComponents } from '../data/kazakhQualityPack'
+import { LocalizedText as Text } from './LocalizedText'
+import { buildKnowledgeGraph, relatedKnowledge, searchKnowledge, type KnowledgeNode } from '../data/knowledgeGraph'
 
 export function ModelView() {
   const { activeDetector, ml, privacy } = modelManifest
   const snap = ml.trainedOn
   const origins = Object.entries(snap.byOrigin ?? {})
   const langs = Object.entries(snap.byLanguage ?? {})
+  const [query, setQuery] = useState('')
+  const graph = useMemo(() => buildKnowledgeGraph(), [])
+  const graphResults = useMemo(() => searchKnowledge(graph, query).filter((node) => node.type !== 'app').slice(0, 12), [graph, query])
+  const statusLabel = (node: KnowledgeNode) => node.status === 'active' ? 'ACTIVE' : node.status === 'available' ? 'AVAILABLE' : node.status === 'downloadable' ? 'DOWNLOAD' : node.status === 'experimental' ? 'EXPERIMENTAL' : 'BLOCKED'
 
   return (
     <View>
+      <SectionTitle>Knowledge graph</SectionTitle>
+      <Card tone="low">
+        <Text style={styles.body}>Version {graph.schemaVersion} · app {graph.appVersion} · {graph.nodes.length} nodes · {graph.edges.length} links</Text>
+        <TextInput value={query} onChangeText={setQuery} placeholder="Search models, functions, datasets or advice" placeholderTextColor={colors.muted} style={styles.search} />
+        {graphResults.map((node) => {
+          const related = relatedKnowledge(graph, node.id).slice(0, 2)
+          return (
+            <View key={node.id} style={styles.graphRow}>
+              <View style={styles.graphCopy}>
+                <Text style={styles.title}>{node.title}</Text>
+                <Text style={styles.meta}>{node.type.toUpperCase()} · {statusLabel(node)}{node.version ? ` · v${node.version}` : ''}</Text>
+                <Text style={styles.body}>{node.summary}</Text>
+                {related.length > 0 && <Text style={styles.graphLinks}>Связи: {related.map((item) => item.title).join(' · ')}</Text>}
+              </View>
+            </View>
+          )
+        })}
+      </Card>
       <SectionTitle>Active detector</SectionTitle>
       <Card>
         <Text style={styles.title}>{activeDetector.name}</Text>
@@ -136,4 +160,8 @@ const styles = StyleSheet.create({
   bundled: { backgroundColor: '#dcfce7', borderColor: '#86efac', color: '#166534' },
   downloadable: { backgroundColor: '#dbeafe', borderColor: '#93c5fd', color: '#1d4ed8' },
   external: { backgroundColor: '#fef3c7', borderColor: '#fcd34d', color: '#92400e' },
+  search: { backgroundColor: '#fff', borderColor: '#d6e4df', borderRadius: 8, borderWidth: 1, color: colors.ink, fontSize: 14, marginVertical: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  graphRow: { borderTopColor: '#dce9e4', borderTopWidth: 1, paddingVertical: 10 },
+  graphCopy: { gap: 3 },
+  graphLinks: { color: colors.brandDark, fontSize: 11, lineHeight: 16 },
 })

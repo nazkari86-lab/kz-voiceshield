@@ -15,6 +15,7 @@ import { matchSemanticTemplates } from '../utils/semanticMatcher'
 import { getRepeatRiskBonus, recordCall } from '../utils/callMemory'
 import { saveTranscriptEntry } from '../utils/transcriptHistory'
 import { addFineTuneExample } from '../utils/fineTuneDataCollector'
+import { assessTranscriptQuality } from '../utils/transcriptQuality'
 import { modelFor, recommendedModel, whisperModels } from '../data/whisperModels'
 import type { ModelStorageInfo, WhisperModelChoice } from '../data/whisperModels'
 import {
@@ -292,6 +293,11 @@ export function useWorkspace() {
     })
     const whisperSub = whisperEvents.addListener('VS_WHISPER_TRANSCRIPT', (event: { text?: string }) => {
       if (!event.text) return
+      const quality = assessTranscriptQuality(event.text)
+      if (!quality.accepted) {
+        setCaptureNotice('Speech segment was too noisy or repetitive and was ignored. Keep the speakerphone close and try again.')
+        return
+      }
       const incoming = event.text.trim().toLowerCase().slice(-60)
       // Dedup: skip if Live Caption recently produced the same text
       if (lastLiveCaptionRef.current && incoming && lastLiveCaptionRef.current.includes(incoming)) return

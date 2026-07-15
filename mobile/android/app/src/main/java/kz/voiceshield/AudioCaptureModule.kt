@@ -21,6 +21,7 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private var recorder: AudioRecord? = null
   private var job: Job? = null
+  private val preprocessor = AudioPreprocessor()
 
   override fun getName(): String = "AudioCaptureModule"
 
@@ -57,7 +58,7 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
         while (recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
           val read = recorder?.read(buffer, 0, buffer.size) ?: 0
           if (read > 0) {
-            AppRegistry.whisperModule?.pushAudio(buffer.copyOf(read))
+            AppRegistry.whisperModule?.pushAudio(preprocessor.process(buffer.copyOf(read)))
             val payload = Arguments.createMap()
             payload.putDouble("level", buffer.take(read).maxOf { abs(it.toInt()) } / 32768.0)
             AppRegistry.sendEvent("VS_AUDIO_LEVEL", payload)

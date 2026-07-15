@@ -20,6 +20,21 @@ import java.net.URI
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
+internal object ModelDownloadPolicy {
+  const val GEMMA_RELEASE_ASSET_FILE = "gemma3-1b-it-int4.task"
+
+  fun isApproved(url: String): Boolean {
+    val uri = runCatching { URI(url) }.getOrNull() ?: return false
+    if (uri.scheme != "https") return false
+    val isWhisperRelease = uri.host == "huggingface.co" && uri.path.startsWith("/ggerganov/whisper.cpp/resolve/")
+    val isFastConformerRelease = uri.host == "github.com" &&
+      uri.path == "/nazkari86-lab/kz-voiceshield/releases/download/fastconformer-v1.1.0/${ModelDownloader.FASTCONFORMER_MODEL_FILE}"
+    val isGemmaRelease = uri.host == "github.com" &&
+      uri.path == "/nazkari86-lab/kz-voiceshield/releases/download/gemma-v1.0.0/$GEMMA_RELEASE_ASSET_FILE"
+    return isWhisperRelease || isFastConformerRelease || isGemmaRelease
+  }
+}
+
 class ModelDownloader(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   // Model downloads can take several minutes on mobile data. The default
   // 10-second idle read timeout produced false failures on slower networks.
@@ -323,12 +338,7 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
   }
 
   private fun validateUrl(url: String) {
-    val uri = URI(url)
-    require(uri.scheme == "https") { "Model URL must use HTTPS" }
-    val isWhisperRelease = uri.host == "huggingface.co" && uri.path.startsWith("/ggerganov/whisper.cpp/resolve/")
-    val isFastConformerRelease = uri.host == "github.com" && uri.path == "/nazkari86-lab/kz-voiceshield/releases/download/fastconformer-v1.1.0/$FASTCONFORMER_MODEL_FILE"
-    val isGemmaRelease = uri.host == "github.com" && uri.path == "/nazkari86-lab/kz-voiceshield/releases/download/gemma-v1.0.0/$GEMMA_MODEL_FILE"
-    require(isWhisperRelease || isFastConformerRelease || isGemmaRelease) { "Model URL is not an approved release artifact" }
+    require(ModelDownloadPolicy.isApproved(url)) { "Model URL is not an approved release artifact" }
   }
 
   private fun validateExpectation(expectedSha256: String, expectedSize: Long) {

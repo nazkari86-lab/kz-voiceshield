@@ -174,7 +174,11 @@ export function LiveView({ analysis, transcript, enhancement, source, isListenin
             : 'Compact KSC2 pack is not built yet; safe Unicode normalization remains active.'}
         </Text>
         {enhancement.normalizedTranscript !== transcript.trim() && (
-          <Text style={styles.normalizedPreview} numberOfLines={3}>Derived: {enhancement.normalizedTranscript}</Text>
+          <View style={styles.normalizedBox}>
+            <Text style={styles.normalizedTitle}>KSC2 corrected transcript</Text>
+            <Text style={styles.normalizedPreview} numberOfLines={5}>{enhancement.normalizedTranscript}</Text>
+            <Text style={styles.normalizedMeta}>{enhancement.corrections.filter((item) => item.applied).length} correction(s) · raw transcript preserved for evidence</Text>
+          </View>
         )}
       </View>
 
@@ -246,6 +250,9 @@ const styles = StyleSheet.create({
   languageMeta: { color: colors.sub, fontSize: 10, fontWeight: '800' },
   languageCopy: { color: colors.sub, fontSize: 12, lineHeight: 17 },
   normalizedPreview: { borderTopColor: colors.border, borderTopWidth: 1, color: colors.ink, fontSize: 12, lineHeight: 18, paddingTop: 6 },
+  normalizedBox: { backgroundColor: '#f0fdf4', borderColor: '#86efac', borderRadius: 8, borderWidth: 1, gap: 3, marginTop: 8, padding: 10 },
+  normalizedTitle: { color: '#166534', fontSize: 11, fontWeight: '900' },
+  normalizedMeta: { color: '#4d7c5a', fontSize: 10 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   primary: { backgroundColor: colors.brand, borderRadius: 8, flexGrow: 1, paddingHorizontal: 16, paddingVertical: 13 },
   stop: { backgroundColor: colors.accent },

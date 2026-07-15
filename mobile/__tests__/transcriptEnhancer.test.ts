@@ -33,4 +33,13 @@ describe('KSC2 transcript enhancer', () => {
     expect(result.lexiconCoverage).toBeNull()
     expect(buildKsc2LanguageContext(result)).toContain('not built')
   })
+
+  it('repairs common Kazakh ASR spellings with the generated pack', () => {
+    const result = enhanceTranscript('Қауіпсі кодты айтпаныз. Казір кодынызды сұрайды.')
+    expect(result.packReady).toBe(true)
+    expect(result.normalizedTranscript).toContain('Қауіпсіз')
+    expect(result.normalizedTranscript).toContain('айтпаңыз')
+    expect(result.normalizedTranscript).toContain('Қазір')
+    expect(result.corrections.filter((item) => item.source === 'ksc2_lexicon').length).toBeGreaterThanOrEqual(3)
+  })
 })

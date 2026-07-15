@@ -68,9 +68,11 @@ export function ReviewView({ analysis, enhancement, highSignals, pressureAnalysi
           <SectionTitle>KSC2 transcript provenance</SectionTitle>
           <Text style={styles.bullet}>Pack: {enhancement.packReady ? enhancement.packVersion : 'bootstrap only'}</Text>
           <Text style={styles.bullet}>Language: {enhancement.dominantLanguage.toUpperCase()}</Text>
+          <Text style={styles.bullet}>Language confidence: {Math.round(enhancement.languageConfidence * 100)}%</Text>
+          <Text style={styles.bullet}>Word labels: {enhancement.wordLanguages.slice(0, 10).map((item) => `${item.word}=${item.language.toUpperCase()}`).join(' · ') || 'not available'}</Text>
           <Text style={styles.bullet}>Lexicon coverage: {enhancement.lexiconCoverage === null ? 'not available' : `${Math.round(enhancement.lexiconCoverage * 100)}%`}</Text>
           <Text style={styles.muted}>Raw evidence is preserved. The score uses the separately stored normalized transcript.</Text>
-          {enhancement.corrections.filter((item) => item.source === 'ksc2_lexicon').map((item, index) => (
+          {enhancement.corrections.filter((item) => item.source === 'ksc2_lexicon' || item.source === 'gec').map((item, index) => (
             <Text key={`${item.original}-${index}`} style={styles.bullet}>• {item.original} → {item.replacement} ({Math.round(item.confidence * 100)}%)</Text>
           ))}
         </Card>

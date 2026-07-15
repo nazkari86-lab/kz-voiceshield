@@ -173,6 +173,7 @@ export function LiveView({ analysis, transcript, enhancement, source, isListenin
             ? `${enhancement.lexiconCoverage === null ? 'No' : Math.round(enhancement.lexiconCoverage * 100)}% lexicon coverage · ${enhancement.corrections.length} transparent correction(s)`
             : 'Compact KSC2 pack is not built yet; safe Unicode normalization remains active.'}
         </Text>
+        <Text style={styles.languageMeta}>Word language: {enhancement.dominantLanguage.toUpperCase()} · confidence {Math.round(enhancement.languageConfidence * 100)}%</Text>
         {enhancement.normalizedTranscript !== transcript.trim() && (
           <View style={styles.normalizedBox}>
             <Text style={styles.normalizedTitle}>KSC2 corrected transcript</Text>

@@ -1,4 +1,6 @@
 import generatedPack from '../data/ksc2LanguagePack.generated.json'
+import { detectTranscriptLanguage, identifyWordLanguages, languageConfidence, type DetectedWordLanguage, type DetectedLanguage } from './kazakhLanguageIdentifier'
+import { applyKazakhGec } from './kazakhGec'
 
 export type TranscriptLanguage = 'kk' | 'ru' | 'mixed' | 'unknown'
 
@@ -7,7 +9,7 @@ export type TranscriptCorrection = {
   replacement: string
   confidence: number
   applied: boolean
-  source: 'ksc2_lexicon' | 'normalization'
+  source: 'ksc2_lexicon' | 'normalization' | 'gec'
 }
 
 export type LanguageSegment = {
@@ -21,6 +23,8 @@ export type TranscriptEnhancement = {
   corrections: TranscriptCorrection[]
   languageSegments: LanguageSegment[]
   dominantLanguage: TranscriptLanguage
+  languageConfidence: number
+  wordLanguages: Array<{ word: string; language: DetectedWordLanguage; confidence: number }>
   lexiconCoverage: number | null
   packVersion: string
   packReady: boolean
@@ -98,18 +102,11 @@ const editDistanceAtMostOne = (left: string, right: string): boolean => {
   return edits + Number(a < left.length || b < right.length) === 1
 }
 
-const inferLanguage = (text: string): TranscriptLanguage => {
-  const tokens = text.toLowerCase().match(tokenPattern) ?? []
-  if (tokens.length === 0) return 'unknown'
-  const kazakh = tokens.filter((token) => kazakhChars.test(token)).length
-  if (kazakh === 0) return 'ru'
-  const ratio = kazakh / tokens.length
-  return ratio >= 0.3 ? 'kk' : 'mixed'
-}
+const mapLanguage = (language: DetectedLanguage): TranscriptLanguage => language
 
-const splitLanguageSegments = (text: string): LanguageSegment[] => {
+const splitLanguageSegments = (text: string, vocabulary: Set<string>): LanguageSegment[] => {
   const chunks = text.match(/[^.!?]+[.!?]?/gu)?.map((item) => item.trim()).filter(Boolean) ?? []
-  return chunks.map((chunk) => ({ text: chunk, language: inferLanguage(chunk) }))
+  return chunks.map((chunk) => ({ text: chunk, language: mapLanguage(detectTranscriptLanguage(chunk, vocabulary)) }))
 }
 
 const bucketVocabulary = (languagePack: Ksc2LanguagePack): Map<string, string[]> => {
@@ -191,15 +188,30 @@ export function enhanceTranscript(text: string, languagePack: Ksc2LanguagePack =
     })
   }
 
+  const detectedBeforeGec = mapLanguage(detectTranscriptLanguage(normalizedTranscript, vocabulary))
+  const gec = applyKazakhGec(normalizedTranscript, detectedBeforeGec)
+  normalizedTranscript = gec.text
+  corrections.push(...gec.corrections.map((item) => ({
+    original: item.original,
+    replacement: item.replacement,
+    confidence: item.confidence,
+    applied: true,
+    source: 'gec' as const,
+  })))
+
   const tokens = normalizedTranscript.toLowerCase().match(tokenPattern) ?? []
   const covered = packReady ? tokens.filter((token) => vocabulary.has(token)).length : 0
-  const languageSegments = splitLanguageSegments(normalizedTranscript)
+  const dominantLanguage = mapLanguage(detectTranscriptLanguage(normalizedTranscript, vocabulary))
+  const languageResults = identifyWordLanguages(normalizedTranscript, vocabulary)
+  const languageSegments = splitLanguageSegments(normalizedTranscript, vocabulary)
   return {
     rawTranscript,
     normalizedTranscript,
     corrections,
     languageSegments,
-    dominantLanguage: inferLanguage(normalizedTranscript),
+    dominantLanguage,
+    languageConfidence: languageConfidence(normalizedTranscript, vocabulary),
+    wordLanguages: languageResults.map(({ word, language, confidence }) => ({ word, language, confidence })),
     lexiconCoverage: packReady && tokens.length > 0 ? covered / tokens.length : null,
     packVersion: languagePack.packVersion,
     packReady,
@@ -217,7 +229,7 @@ export function buildKsc2LanguageContext(enhancement: TranscriptEnhancement): st
         : 'unknown'
   const coverage = enhancement.lexiconCoverage === null ? 'unavailable' : `${Math.round(enhancement.lexiconCoverage * 100)}%`
   const applied = enhancement.corrections
-    .filter((item) => item.applied && item.source === 'ksc2_lexicon')
+    .filter((item) => item.applied && (item.source === 'ksc2_lexicon' || item.source === 'gec'))
     .map((item) => `${item.original} -> ${item.replacement}`)
     .slice(0, 5)
   return [

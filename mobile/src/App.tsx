@@ -39,6 +39,7 @@ import { VoiceMessageModule, voiceMessageEvents } from './bridge/VoiceMessageBri
 import { useOnDeviceAiRuntime } from './hooks/useOnDeviceAiRuntime'
 import { useLiveAiAnalysis } from './hooks/useLiveAiAnalysis'
 import { buildKazakhIntelligenceContext } from './utils/kazakhIntelligence'
+import { useI18n } from './I18nContext'
 
 type Tab =
   | 'live' | 'review' | 'evidence' | 'timeline' | 'threats' | 'chain'
@@ -112,6 +113,7 @@ export default function App() {
 
 function AppContent() {
   const { colors } = useTheme()
+  const { t } = useI18n()
   const [tab, setTab] = useState<Tab>('live')
   const [sharedText, setSharedText] = useState('')
   const [pendingSharedAudio, setPendingSharedAudio] = useState(false)
@@ -135,6 +137,7 @@ function AppContent() {
     ramBytes: w.modelStorage?.ramBytes ?? 0,
   })
   const selectTab = (next: Tab) => { setHubOpen(false); setTab(next) }
+  const primaryLabel = (key: Tab) => key === 'live' ? t.nav.live : key === 'tools' ? t.nav.scan : key === 'simulator' ? t.nav.learn : key === 'cases' ? t.nav.cases : t.nav.more
 
   // Check if onboarding has been completed
   useEffect(() => {
@@ -251,18 +254,18 @@ function AppContent() {
       <View style={{ alignItems: 'center', backgroundColor: colors.brandDark, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 17 }}>
         <View style={styles.headerText}>
           <Text style={styles.brand}>KZ VOICESHIELD</Text>
-          <Text style={styles.title}>{hubOpen ? 'Protection center' : tabMeta[tab].label}</Text>
-          <Text style={styles.subtitle}>{hubOpen ? 'ALL PROTECTION, REVIEW AND RECOVERY TOOLS' : tabMeta[tab].group.toUpperCase()}</Text>
+          <Text style={styles.title}>{hubOpen ? t.app.tagline : tabMeta[tab].label}</Text>
+          <Text style={styles.subtitle}>{hubOpen ? t.nav.more : tabMeta[tab].group.toUpperCase()}</Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: riskColor[w.analysis.risk] }]}><Text style={styles.badgeText}>{w.analysis.score}</Text><Text style={styles.badgeLabel}>RISK</Text></View>
+        <View style={[styles.badge, { backgroundColor: riskColor[w.analysis.risk] }]}><Text style={styles.badgeText}>{w.analysis.score}</Text><Text style={styles.badgeLabel}>{t.risk[w.analysis.risk]}</Text></View>
       </View>
 
       <View style={{ backgroundColor: colors.card, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', gap: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
-        {primaryTabs.map(([key, label, glyph]) => {
+        {primaryTabs.map(([key, , glyph]) => {
           const active = !hubOpen && tab === key
-          return <Pressable key={key} onPress={() => selectTab(key)} style={[styles.navItem, active && { backgroundColor: colors.softBrand }]}><Text style={[styles.navGlyph, { color: active ? colors.brandDark : colors.muted }]}>{glyph}</Text><Text style={[styles.navText, { color: active ? colors.brandDark : colors.sub, fontWeight: active ? '900' : '800' }]}>{label}</Text></Pressable>
+          return <Pressable key={key} onPress={() => selectTab(key)} style={[styles.navItem, active && { backgroundColor: colors.softBrand }]}><Text style={[styles.navGlyph, { color: active ? colors.brandDark : colors.muted }]}>{glyph}</Text><Text style={[styles.navText, { color: active ? colors.brandDark : colors.sub, fontWeight: active ? '900' : '800' }]}>{primaryLabel(key)}</Text></Pressable>
         })}
-        {(() => { const active = !primaryActive || hubOpen; return <Pressable onPress={() => setHubOpen((current) => !current)} style={[styles.navItem, active && { backgroundColor: colors.softBrand }]}><Text style={[styles.navGlyph, { color: active ? colors.brandDark : colors.muted }]}>ALL</Text><Text style={[styles.navText, { color: active ? colors.brandDark : colors.sub, fontWeight: active ? '900' : '800' }]}>More</Text></Pressable> })()}
+        {(() => { const active = !primaryActive || hubOpen; return <Pressable onPress={() => setHubOpen((current) => !current)} style={[styles.navItem, active && { backgroundColor: colors.softBrand }]}><Text style={[styles.navGlyph, { color: active ? colors.brandDark : colors.muted }]}>ALL</Text><Text style={[styles.navText, { color: active ? colors.brandDark : colors.sub, fontWeight: active ? '900' : '800' }]}>{t.nav.more}</Text></Pressable> })()}
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">

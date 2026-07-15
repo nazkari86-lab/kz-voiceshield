@@ -3,6 +3,7 @@ import { Alert, Animated, Easing, StyleSheet, Text, TextInput, View } from 'reac
 import { WaveformView } from './WaveformView'
 import type { Analysis } from '@scoring'
 import { colors, riskColor } from '../theme'
+import { useI18n } from '../I18nContext'
 import { Card, RiskBadge } from './ui'
 import { MotionPressable } from './MotionPressable'
 import { LiveAiPanel } from './LiveAiPanel'
@@ -39,6 +40,7 @@ type Props = {
 }
 
 export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, enhancement, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, liveAi, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onOpenAi, onUseMicrophoneFallback, onEndCall }: Props) {
+  const { t } = useI18n()
   const [pauseRemaining, setPauseRemaining] = useState(0)
   const signalScale = useRef(new Animated.Value(1)).current
   const scoreFill = useRef(new Animated.Value(0)).current
@@ -68,11 +70,11 @@ export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, e
 
   const needsPause = analysis.risk === 'critical' || analysis.risk === 'high'
   const confirmEndCall = () => Alert.alert(
-    'End active call?',
-    'This will disconnect the current call. Use this only when you are ready to stop the conversation.',
+    t.live.endCallTitle,
+    t.live.endCallCopy,
     [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'End call', style: 'destructive', onPress: () => { void onEndCall() } },
+      { text: t.setup.cancel, style: 'cancel' },
+      { text: t.live.endCall, style: 'destructive', onPress: () => { void onEndCall() } },
     ],
   )
 
@@ -80,17 +82,17 @@ export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, e
     <View style={styles.screen}>
       <View style={styles.statusBar}>
         <Animated.View style={[styles.liveDot, isListening && { transform: [{ scale: signalScale }] }, { backgroundColor: isListening ? colors.accent : colors.muted }]} />
-        <Text style={styles.statusText}>{isListening ? 'LIVE PROTECTION ACTIVE' : 'PROTECTION STANDBY'}</Text>
+        <Text style={styles.statusText}>{isListening ? t.live.active : t.live.standby}</Text>
         <Text style={styles.statusSource}>{source}</Text>
       </View>
       <Card tone={analysis.risk}>
         <View style={styles.topline}>
           <RiskBadge risk={analysis.risk} />
-          <Text style={styles.source}>{analysis.evidence.length} signals</Text>
+          <Text style={styles.source}>{analysis.evidence.length} {t.live.signals}</Text>
         </View>
         <View style={styles.scoreRow}>
           <Text style={[styles.score, { color: riskColor[analysis.risk] }]}>{analysis.score}<Text style={styles.scoreMax}>/100</Text></Text>
-          <View style={[styles.riskOrb, { borderColor: riskColor[analysis.risk] }]}><Text style={[styles.riskOrbText, { color: riskColor[analysis.risk] }]}>{analysis.risk.toUpperCase()}</Text></View>
+          <View style={[styles.riskOrb, { borderColor: riskColor[analysis.risk] }]}><Text style={[styles.riskOrbText, { color: riskColor[analysis.risk] }]}>{t.risk[analysis.risk]}</Text></View>
         </View>
         <View style={styles.scoreTrack}><Animated.View style={[styles.scoreFill, { backgroundColor: riskColor[analysis.risk], width: scoreFill.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) }]} /></View>
         <Text style={styles.scheme}>{analysis.schemeLabel}</Text>
@@ -104,9 +106,9 @@ export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, e
 
       {modelCorrection && modelCorrection.status === 'ready' && modelCorrection.corrections.length > 0 && (
         <View style={styles.correctionBanner}>
-          <Text style={styles.correctionTitle}>AI correction applied</Text>
+          <Text style={styles.correctionTitle}>{t.live.correction}</Text>
           <Text style={styles.correctionText}>{modelCorrection.corrections.map((item) => `${item.original} → ${item.replacement}`).join(' · ')}</Text>
-          {rawAnalysis && (rawAnalysis.risk !== analysis.risk || rawAnalysis.score !== analysis.score) && <Text style={styles.correctionText}>Raw/corrected disagreement: {rawAnalysis.score} → {analysis.score}</Text>}
+          {rawAnalysis && (rawAnalysis.risk !== analysis.risk || rawAnalysis.score !== analysis.score) && <Text style={styles.correctionText}>{t.live.rawDisagreement.replace('{from}', String(rawAnalysis.score)).replace('{to}', String(analysis.score))}</Text>}
         </View>
       )}
 
@@ -114,8 +116,8 @@ export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, e
       {notice && <Text style={styles.notice}>{notice}</Text>}
       {isListening && source === 'Live Caption' && (
         <MotionPressable style={styles.fallbackButton} onPress={onUseMicrophoneFallback}>
-          <Text style={styles.fallbackTitle}>No caption text?</Text>
-          <Text style={styles.fallbackCopy}>Use microphone + speakerphone instead</Text>
+          <Text style={styles.fallbackTitle}>{t.live.noCaption}</Text>
+          <Text style={styles.fallbackCopy}>{t.live.microphoneFallback}</Text>
         </MotionPressable>
       )}
       {storageError && <Text style={styles.error}>{storageError}</Text>}
@@ -134,11 +136,11 @@ export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, e
 
       {needsPause && (
         <View style={styles.pauseCard}>
-          <Text style={styles.pauseTitle}>{pauseRemaining > 0 ? `Pause active: ${pauseRemaining}s` : 'Take a 30-second pause'}</Text>
+          <Text style={styles.pauseTitle}>{pauseRemaining > 0 ? `${t.live.startPause}: ${pauseRemaining}s` : t.live.pauseTitle}</Text>
           <Text style={styles.pauseCopy}>End the call. Do not share codes or approve payments.</Text>
-          <MotionPressable style={styles.pauseButton} onPress={() => setPauseRemaining(30)}><Text style={styles.pauseButtonText}>{pauseRemaining > 0 ? 'Restart pause' : 'Start pause'}</Text></MotionPressable>
+          <MotionPressable style={styles.pauseButton} onPress={() => setPauseRemaining(30)}><Text style={styles.pauseButtonText}>{pauseRemaining > 0 ? t.live.restartPause : t.live.startPause}</Text></MotionPressable>
           {isListening && (
-            <MotionPressable style={styles.endCallButton} onPress={confirmEndCall}><Text style={styles.endCallText}>End active call</Text></MotionPressable>
+            <MotionPressable style={styles.endCallButton} onPress={confirmEndCall}><Text style={styles.endCallText}>{t.live.endCall}</Text></MotionPressable>
           )}
           {trustedContactName && (
             <MotionPressable style={styles.trustedButton} onPress={onCallTrusted}><Text style={styles.trustedButtonText}>Call {trustedContactName}</Text></MotionPressable>
@@ -147,13 +149,13 @@ export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, e
       )}
 
       <View style={styles.quickGrid}>
-        <MotionPressable style={styles.quickAction} onPress={onOpenEmergency}><Text style={styles.quickIcon}>!</Text><View><Text style={styles.quickTitle}>I shared data</Text><Text style={styles.quickCopy}>Immediate recovery plan</Text></View></MotionPressable>
-        <MotionPressable style={styles.quickAction} onPress={onOpenSimulator}><Text style={styles.quickIcon}>+</Text><View><Text style={styles.quickTitle}>Practice</Text><Text style={styles.quickCopy}>Learn scam patterns</Text></View></MotionPressable>
+        <MotionPressable style={styles.quickAction} onPress={onOpenEmergency}><Text style={styles.quickIcon}>!</Text><View><Text style={styles.quickTitle}>{t.live.sharedData}</Text><Text style={styles.quickCopy}>{t.live.recoveryPlan}</Text></View></MotionPressable>
+        <MotionPressable style={styles.quickAction} onPress={onOpenSimulator}><Text style={styles.quickIcon}>+</Text><View><Text style={styles.quickTitle}>{t.live.practice}</Text><Text style={styles.quickCopy}>{t.live.scamPatterns}</Text></View></MotionPressable>
       </View>
 
       {analysis.responseChecklist.length > 0 && (
         <View style={styles.actionCard}>
-          <Text style={styles.actionTitle}>Do this now</Text>
+          <Text style={styles.actionTitle}>{t.live.doThisNow}</Text>
           {analysis.responseChecklist.slice(0, 3).map((item, index) => (
             <View key={item} style={styles.actionRow}>
               <Text style={styles.actionNumber}>{index + 1}</Text>
@@ -165,12 +167,12 @@ export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, e
 
       <LiveAiPanel controller={liveAi} hasTranscript={transcript.trim().length > 0} onOpenAssistant={onOpenAi} />
 
-      <View style={styles.transcriptHeading}><Text style={styles.transcriptLabel}>LIVE TRANSCRIPT</Text>{isListening && source === 'Whisper' ? <Text style={styles.transcriptState}>{audioLevel >= 0.015 ? 'MICROPHONE HEARS AUDIO' : 'WAITING FOR SPEAKER AUDIO'}</Text> : null}</View>
+      <View style={styles.transcriptHeading}><Text style={styles.transcriptLabel}>{t.live.liveTranscript}</Text>{isListening && source === 'Whisper' ? <Text style={styles.transcriptState}>{audioLevel >= 0.015 ? t.live.microphoneState : t.live.waitingSpeaker}</Text> : null}</View>
       <TextInput
         multiline
         value={transcript}
         onChangeText={onChangeTranscript}
-        placeholder="Live transcript will appear here. You can also paste a conversation."
+        placeholder={t.live.transcriptPlaceholder}
         placeholderTextColor={colors.muted}
         style={styles.input}
       />
@@ -195,9 +197,9 @@ export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, e
       </View>
 
       <View style={styles.actions}>
-        <MotionPressable style={[styles.primary, isListening && styles.stop]} onPress={onToggleListening}><Text style={styles.primaryText}>{isListening ? 'Stop' : 'Start protection'}</Text></MotionPressable>
-        <MotionPressable style={styles.secondary} onPress={onSave}><Text style={styles.secondaryText}>Save case</Text></MotionPressable>
-        <MotionPressable style={styles.secondary} onPress={onExportReport}><Text style={styles.secondaryText}>Share report</Text></MotionPressable>
+        <MotionPressable style={[styles.primary, isListening && styles.stop]} onPress={onToggleListening}><Text style={styles.primaryText}>{isListening ? t.live.stop : t.live.start}</Text></MotionPressable>
+        <MotionPressable style={styles.secondary} onPress={onSave}><Text style={styles.secondaryText}>{t.live.saveCase}</Text></MotionPressable>
+        <MotionPressable style={styles.secondary} onPress={onExportReport}><Text style={styles.secondaryText}>{t.live.shareReport}</Text></MotionPressable>
       </View>
 
       {analysis.responseChecklist.slice(3).map((item) => <Text key={item} style={styles.check}>• {item}</Text>)}

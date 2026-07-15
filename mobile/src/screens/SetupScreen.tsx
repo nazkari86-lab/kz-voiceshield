@@ -33,12 +33,15 @@ type Props = {
 type Status = { accessibility: boolean; battery: boolean; callRole: boolean; dialerRole: boolean; microphone: boolean; notificationAccess: boolean; notifications: boolean; overlay: boolean }
 const emptyStatus: Status = { accessibility: false, battery: false, callRole: false, dialerRole: false, microphone: false, notificationAccess: false, notifications: false, overlay: false }
 
-const Step = ({ label, status, statusLabel, disabled, onPress }: { label: string; status: boolean; statusLabel?: string; disabled?: boolean; onPress: () => void }) => (
-  <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.step, disabled && styles.disabled]}>
-    <Text style={styles.stepTitle}>{label}</Text>
-    <Text style={[styles.status, status && styles.statusReady]}>{statusLabel ?? (status ? 'Ready' : 'Set up')}</Text>
-  </Pressable>
-)
+const Step = ({ label, status, statusLabel, disabled, onPress }: { label: string; status: boolean; statusLabel?: string; disabled?: boolean; onPress: () => void }) => {
+  const { t } = useI18n()
+  return (
+    <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={[styles.step, disabled && styles.disabled]}>
+      <Text style={styles.stepTitle}>{label}</Text>
+      <Text style={[styles.status, status && styles.statusReady]}>{statusLabel ?? (status ? t.setup.ready : t.setup.setupStatus)}</Text>
+    </Pressable>
+  )
+}
 
 export function SetupScreen({
   modelReady,
@@ -56,7 +59,7 @@ export function SetupScreen({
   onDeleteAllData,
 }: Props) {
   const { mode: themeMode, setMode: setThemeMode } = useTheme()
-  const { lang, setLang } = useI18n()
+  const { lang, setLang, t } = useI18n()
 
   const [status, setStatus] = useState<Status>(emptyStatus)
   const [device, setDevice] = useState<DeviceInfo | null>(null)
@@ -105,20 +108,20 @@ export function SetupScreen({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Privacy and setup</Text>
+      <Text style={styles.title}>{t.setup.title}</Text>
       <Text style={styles.device}>{device ? `${device.manufacturer} ${device.model} · Android API ${device.androidApi}` : 'Android device'}</Text>
 
       <View style={[styles.notice, privacyConsent && styles.noticeAccepted]}>
-        <Text style={styles.noticeTitle}>{privacyConsent ? 'Local protection consent accepted' : 'Consent required before protection starts'}</Text>
-        <Text style={styles.copy}>VoiceShield processes call captions, microphone audio, active app names and notification types only during an active protection session. Notification text, secret codes and raw phone numbers are not retained. Number rules use device-bound HMAC identifiers. Saved cases are redacted and encrypted with Android Keystore. Local-only mode does not upload transcripts or audio.</Text>
+        <Text style={styles.noticeTitle}>{privacyConsent ? t.setup.privacyAccepted : t.setup.privacyTitle}</Text>
+        <Text style={styles.copy}>{t.setup.privacyCopy}</Text>
         <View style={styles.row}>
-          <Pressable style={styles.primary} onPress={() => { void onAcceptPrivacy().then(refresh) }}><Text style={styles.primaryText}>Agree</Text></Pressable>
-          <Pressable style={styles.secondary} onPress={() => { void onDeclinePrivacy() }}><Text style={styles.secondaryText}>Not now</Text></Pressable>
+          <Pressable style={styles.primary} onPress={() => { void onAcceptPrivacy().then(refresh) }}><Text style={styles.primaryText}>{t.setup.agree}</Text></Pressable>
+          <Pressable style={styles.secondary} onPress={() => { void onDeclinePrivacy() }}><Text style={styles.secondaryText}>{t.setup.notNow}</Text></Pressable>
         </View>
       </View>
 
       <View style={styles.prefSection}>
-        <Text style={styles.section}>Внешний вид</Text>
+        <Text style={styles.section}>{t.setup.theme}</Text>
         <View style={styles.toggleRow}>
           {(['auto', 'light', 'dark'] as const).map((m) => (
             <Pressable
@@ -127,12 +130,12 @@ export function SetupScreen({
               onPress={() => setThemeMode(m)}
             >
               <Text style={[styles.toggleText, themeMode === m && styles.toggleTextActive]}>
-                {m === 'auto' ? 'Авто' : m === 'light' ? 'Светлая' : 'Тёмная'}
+                {m === 'auto' ? t.setup.themeAuto : m === 'light' ? t.setup.themeLight : t.setup.themeDark}
               </Text>
             </Pressable>
           ))}
         </View>
-        <Text style={[styles.section, { marginTop: 10 }]}>Язык / Тіл</Text>
+        <Text style={[styles.section, { marginTop: 10 }]}>{t.setup.language}</Text>
         <View style={styles.toggleRow}>
           {(['ru', 'kz'] as Language[]).map((l) => (
             <Pressable
@@ -149,33 +152,33 @@ export function SetupScreen({
       </View>
 
       {storageError && <Text style={styles.error}>{storageError}</Text>}
-      <Text style={styles.section}>Required protection access</Text>
-      <Step label="Accessibility Live Caption" status={status.accessibility} disabled={!privacyConsent} onPress={() => AccessibilityModule.openSettings()} />
-      <Step label="Open Android caption settings" status={status.accessibility} disabled={!privacyConsent} onPress={() => DeviceSettings.openCaptionSettings()} />
-      <Step label="Risk overlay" status={status.overlay} disabled={!privacyConsent} onPress={() => OverlayModule.openOverlaySettings()} />
-      <Step label="Call screening role" status={status.callRole} disabled={!privacyConsent} onPress={() => { void CallModule.requestRole().then(refresh).catch(() => refresh()) }} />
-      <Step label="Microphone fallback" status={status.microphone} disabled={!privacyConsent} onPress={() => { void requestMicrophone() }} />
-      <Step label="Protection notification" status={status.notifications} disabled={!privacyConsent} onPress={() => { void requestNotifications() }} />
-      <Step label="OTP notification type detection" status={status.notificationAccess} disabled={!privacyConsent} onPress={() => NotificationAccess.openSettings()} />
-      <Step label="Battery optimization exemption" status={status.battery} disabled={!privacyConsent} onPress={() => DeviceSettings.requestBatteryOptimizationExemption()} />
+      <Text style={styles.section}>{t.setup.requiredAccess}</Text>
+      <Step label={t.setup.accessibility} status={status.accessibility} disabled={!privacyConsent} onPress={() => AccessibilityModule.openSettings()} />
+      <Step label={t.setup.captionSettings} status={status.accessibility} disabled={!privacyConsent} onPress={() => DeviceSettings.openCaptionSettings()} />
+      <Step label={t.setup.riskOverlay} status={status.overlay} disabled={!privacyConsent} onPress={() => OverlayModule.openOverlaySettings()} />
+      <Step label={t.setup.callScreening} status={status.callRole} disabled={!privacyConsent} onPress={() => { void CallModule.requestRole().then(refresh).catch(() => refresh()) }} />
+      <Step label={t.setup.microphone} status={status.microphone} disabled={!privacyConsent} onPress={() => { void requestMicrophone() }} />
+      <Step label={t.setup.notification} status={status.notifications} disabled={!privacyConsent} onPress={() => { void requestNotifications() }} />
+      <Step label={t.setup.otpDetection} status={status.notificationAccess} disabled={!privacyConsent} onPress={() => NotificationAccess.openSettings()} />
+      <Step label={t.setup.battery} status={status.battery} disabled={!privacyConsent} onPress={() => DeviceSettings.requestBatteryOptimizationExemption()} />
       {device?.manufacturer.toLowerCase().includes('xiaomi') || device?.manufacturer.toLowerCase().includes('redmi') ? (
-        <Step label="Xiaomi/HyperOS autostart settings" status={false} statusLabel="Open" disabled={!privacyConsent} onPress={() => DeviceSettings.openAutostartSettings()} />
+        <Step label={t.setup.xiaomiAutostart} status={false} statusLabel={t.setup.open} disabled={!privacyConsent} onPress={() => DeviceSettings.openAutostartSettings()} />
       ) : null}
 
-      <Text style={styles.section}>Optional phone integration</Text>
-      <Text style={styles.copy}>As the default phone app, VoiceShield can show its own incoming and active SIM-call screen with number risk, family labels and private comments. The caller does not need VoiceShield. Android still does not expose the other party's raw call audio, so live transcription continues to use captions or the microphone fallback.</Text>
-      <Step label="Use VoiceShield as default phone" status={status.dialerRole} disabled={!privacyConsent} onPress={() => { void CallModule.requestDialerRole().then(refresh).catch(() => refresh()) }} />
-      <Step label="Open default phone apps" status={status.dialerRole} disabled={!privacyConsent} onPress={() => DeviceSettings.openDefaultAppsSettings()} />
+      <Text style={styles.section}>{t.setup.optionalIntegration}</Text>
+      <Text style={styles.copy}>{t.setup.optionalCopy}</Text>
+      <Step label={t.setup.defaultPhone} status={status.dialerRole} disabled={!privacyConsent} onPress={() => { void CallModule.requestDialerRole().then(refresh).catch(() => refresh()) }} />
+      <Step label={t.setup.defaultPhoneApps} status={status.dialerRole} disabled={!privacyConsent} onPress={() => DeviceSettings.openDefaultAppsSettings()} />
 
-      <Text style={styles.section}>On-device speech model</Text>
-      <Text style={styles.copy}>All recognition remains on this device. The recommendation accounts for free storage, temporary download space and RAM. Downloads resume after a network interruption and every completed model is verified before use. Large models may not keep up with a live call.</Text>
+      <Text style={styles.section}>{t.setup.speechModel}</Text>
+      <Text style={styles.copy}>{t.setup.speechCopy}</Text>
       <View style={styles.recommendation}>
-        <Text style={styles.recommendationTitle}>Recommended: {automaticModel.title}</Text>
-        <Text style={styles.recommendationCopy}>{automaticModel.detail} · {availableGb === null ? 'checking device storage…' : `${availableGb} GB free`}</Text>
+        <Text style={styles.recommendationTitle}>{t.setup.recommended}: {automaticModel.title}</Text>
+        <Text style={styles.recommendationCopy}>{automaticModel.detail} · {availableGb === null ? t.setup.checkingStorage : `${availableGb} GB free`}</Text>
       </View>
       <Pressable style={[styles.autoOption, modelSizePref === 'auto' && styles.modelOptionActive]} onPress={() => { void onSetModelSize('auto') }}>
-        <Text style={[styles.modelOptionText, modelSizePref === 'auto' && styles.modelOptionTextActive]}>Automatic recommendation</Text>
-        <Text style={[styles.modelOptionSub, modelSizePref === 'auto' && styles.modelOptionSubActive]}>Uses the best compatible model: {automaticModel.title}</Text>
+        <Text style={[styles.modelOptionText, modelSizePref === 'auto' && styles.modelOptionTextActive]}>{t.setup.automatic}</Text>
+        <Text style={[styles.modelOptionSub, modelSizePref === 'auto' && styles.modelOptionSubActive]}>{t.setup.automaticCopy.replace('{model}', automaticModel.title)}</Text>
       </Pressable>
       <View style={styles.modelList}>
         {whisperModels.map((model) => {
@@ -186,34 +189,33 @@ export function SetupScreen({
             <Pressable key={model.id} disabled={!compatible} style={[styles.modelOption, selected && styles.modelOptionActive, !compatible && styles.modelOptionUnavailable]} onPress={() => { void onSetModelSize(model.id) }}>
               <View style={styles.modelHeading}><Text style={[styles.modelOptionText, selected && styles.modelOptionTextActive]}>{model.title}</Text><Text style={[styles.modelTier, selected && styles.modelTierActive]}>{model.tier.toUpperCase()}</Text></View>
               <Text style={[styles.modelOptionSub, selected && styles.modelOptionSubActive]}>{model.detail}</Text>
-              <Text style={styles.modelRequirement}>{compatible ? `Ready for this device · needs ${needGb} GB while downloading` : `Unavailable · needs ${needGb} GB storage and ${(model.ramBytes / 1024 ** 3).toFixed(0)} GB RAM`}</Text>
+              <Text style={styles.modelRequirement}>{compatible ? t.setup.readyForDevice.replace('{gb}', needGb) : t.setup.unavailable.replace('{gb}', needGb).replace('{ram}', (model.ramBytes / 1024 ** 3).toFixed(0))}</Text>
             </Pressable>
           )
         })}
       </View>
-      <Step label={modelProgress === null ? `Download ${currentModel.title}` : `Downloading: ${modelProgress}%`} status={modelReady} disabled={!privacyConsent || modelProgress !== null} onPress={onPrepareWhisper} />
+      <Step label={modelProgress === null ? `${t.setup.modelDownload}: ${currentModel.title}` : t.setup.downloading.replace('{progress}', String(modelProgress))} status={modelReady} disabled={!privacyConsent || modelProgress !== null} onPress={onPrepareWhisper} />
 
       <View style={styles.gemmaSection}>
-        <Text style={styles.noticeTitle}>AI-ассистент (Gemma 3 1B IT)</Text>
-        <Text style={styles.copy}>Нейросеть ~{GEMMA_MODEL_SIZE_MB}МБ для анализа транскриптов прямо на устройстве. Требует скачивания один раз.</Text>
-        <Text style={styles.gemmaCopy}>Во вкладке «AI assistant» доступны Gemma и Каталог локальных AI-моделей. Публичные GGUF-модели можно найти и скачать с Hugging Face прямо в приложении; после проверки они работают полностью локально.</Text>
+        <Text style={styles.noticeTitle}>{t.setup.aiAssistant} (Gemma 3 1B IT)</Text>
+        <Text style={styles.copy}>{t.setup.aiCopy} ~{GEMMA_MODEL_SIZE_MB} MB.</Text>
       </View>
 
       <View style={styles.localData}>
-        <Text style={styles.noticeTitle}>Local data</Text>
-        <Text style={styles.copy}>{caseCount} encrypted case(s). {callStatus}.</Text>
+        <Text style={styles.noticeTitle}>{t.setup.localData}</Text>
+        <Text style={styles.copy}>{t.setup.encryptedCases.replace('{count}', String(caseCount))} {callStatus}.</Text>
         {!confirmDelete ? (
-          <Pressable style={styles.dangerOutline} onPress={() => setConfirmDelete(true)}><Text style={styles.dangerText}>Delete all local data</Text></Pressable>
+          <Pressable style={styles.dangerOutline} onPress={() => setConfirmDelete(true)}><Text style={styles.dangerText}>{t.setup.deleteAll}</Text></Pressable>
         ) : (
           <View style={styles.row}>
-            <Pressable style={styles.danger} onPress={() => { void onDeleteAllData(); setConfirmDelete(false) }}><Text style={styles.dangerButtonText}>Confirm delete</Text></Pressable>
-            <Pressable style={styles.secondary} onPress={() => setConfirmDelete(false)}><Text style={styles.secondaryText}>Cancel</Text></Pressable>
+            <Pressable style={styles.danger} onPress={() => { void onDeleteAllData(); setConfirmDelete(false) }}><Text style={styles.dangerButtonText}>{t.setup.confirmDelete}</Text></Pressable>
+            <Pressable style={styles.secondary} onPress={() => setConfirmDelete(false)}><Text style={styles.secondaryText}>{t.setup.cancel}</Text></Pressable>
           </View>
         )}
       </View>
 
       <Pressable accessibilityRole="button" onPress={() => DeviceSettings.openAppSettings()} style={styles.secondaryWide}>
-        <Text style={styles.secondaryText}>Open Android app settings</Text>
+        <Text style={styles.secondaryText}>{t.setup.openAppSettings}</Text>
       </Pressable>
     </View>
   )

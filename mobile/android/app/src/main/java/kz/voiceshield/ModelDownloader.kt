@@ -22,16 +22,34 @@ import java.util.concurrent.TimeUnit
 
 internal object ModelDownloadPolicy {
   const val GEMMA_RELEASE_ASSET_FILE = "gemma3-1b-it-int4.task"
+  private val repoComponent = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,95}")
+  private val commitSha = Regex("[a-fA-F0-9]{40}")
 
   fun isApproved(url: String): Boolean {
-    val uri = runCatching { URI(url) }.getOrNull() ?: return false
-    if (uri.scheme != "https") return false
+    val uri = secureHttpsUri(url) ?: return false
     val isWhisperRelease = uri.host == "huggingface.co" && uri.path.startsWith("/ggerganov/whisper.cpp/resolve/")
     val isFastConformerRelease = uri.host == "github.com" &&
       uri.path == "/nazkari86-lab/kz-voiceshield/releases/download/fastconformer-v1.1.0/${ModelDownloader.FASTCONFORMER_MODEL_FILE}"
     val isGemmaRelease = uri.host == "github.com" &&
       uri.path == "/nazkari86-lab/kz-voiceshield/releases/download/gemma-v1.0.0/$GEMMA_RELEASE_ASSET_FILE"
     return isWhisperRelease || isFastConformerRelease || isGemmaRelease
+  }
+
+  fun isApprovedPublicGguf(url: String): Boolean {
+    val uri = secureHttpsUri(url) ?: return false
+    if (uri.host != "huggingface.co" || uri.rawQuery !in listOf(null, "download=true")) return false
+    val segments = uri.path.split('/').filter { it.isNotEmpty() }
+    if (segments.size < 5 || segments[2] != "resolve") return false
+    if (!repoComponent.matches(segments[0]) || !repoComponent.matches(segments[1]) || !commitSha.matches(segments[3])) return false
+    val fileSegments = segments.drop(4)
+    if (fileSegments.any { it == "." || it == ".." || it.contains('\\') }) return false
+    return fileSegments.last().endsWith(".gguf", ignoreCase = true)
+  }
+
+  private fun secureHttpsUri(url: String): URI? {
+    val uri = runCatching { URI(url) }.getOrNull() ?: return null
+    if (uri.scheme != "https" || uri.host == null || uri.port != -1 || uri.userInfo != null || uri.fragment != null) return null
+    return uri
   }
 }
 
@@ -142,9 +160,26 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
 
   @ReactMethod
   fun downloadModel(url: String, fileName: String, expectedSha256: String, expectedSize: Double, promise: Promise) {
+    downloadVerifiedModel(url, fileName, expectedSha256, expectedSize, promise, ModelDownloadPolicy::isApproved)
+  }
+
+  @ReactMethod
+  fun downloadGgufModel(url: String, fileName: String, expectedSha256: String, expectedSize: Double, promise: Promise) {
+    downloadVerifiedModel(url, fileName, expectedSha256, expectedSize, promise, ModelDownloadPolicy::isApprovedPublicGguf, "GGUF")
+  }
+
+  private fun downloadVerifiedModel(
+    url: String,
+    fileName: String,
+    expectedSha256: String,
+    expectedSize: Double,
+    promise: Promise,
+    isApprovedUrl: (String) -> Boolean,
+    expectedMagic: String? = null,
+  ) {
     Thread {
       try {
-        validateUrl(url)
+        require(isApprovedUrl(url)) { "Model URL is not an approved release artifact" }
         val expectedBytes = expectedSize.toLong()
         validateExpectation(expectedSha256, expectedBytes)
         val file = modelFile(fileName)
@@ -162,6 +197,7 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
             tmp.delete()
             "Saved partial model SHA-256 mismatch"
           }
+          requireMagic(tmp, expectedMagic)
           if (file.exists()) require(file.delete()) { "Could not replace the existing model" }
           require(tmp.renameTo(file)) { "Could not finalize saved model" }
           promise.resolve(file.absolutePath)
@@ -208,6 +244,7 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
           tmp.delete()
           "Model SHA-256 mismatch"
         }
+        requireMagic(tmp, expectedMagic)
         if (file.exists()) require(file.delete()) { "Could not replace the existing model" }
         if (!tmp.renameTo(file)) error("Could not finalize model file")
         promise.resolve(file.absolutePath)
@@ -283,8 +320,8 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
   }
 
   @ReactMethod
-  fun importPocketPalModel(promise: Promise) {
-    beginImport(POCKETPAL_MODEL_FILE, MIN_POCKETPAL_MODEL_BYTES, MAX_MODEL_BYTES, promise, expectedMagic = "GGUF")
+  fun importGgufModel(promise: Promise) {
+    beginImport(LOCAL_GGUF_MODEL_FILE, MIN_GGUF_MODEL_BYTES, MAX_MODEL_BYTES, promise, expectedMagic = "GGUF")
   }
 
   private fun beginImport(fileName: String, minimumBytes: Long, maximumBytes: Long, promise: Promise, expectedSha256: String? = null, expectedMagic: String? = null) {
@@ -337,10 +374,6 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     return destination
   }
 
-  private fun validateUrl(url: String) {
-    require(ModelDownloadPolicy.isApproved(url)) { "Model URL is not an approved release artifact" }
-  }
-
   private fun validateExpectation(expectedSha256: String, expectedSize: Long) {
     require(expectedSha256.matches(Regex("[a-fA-F0-9]{64}"))) { "Invalid expected SHA-256" }
     require(expectedSize in 1..MAX_MODEL_BYTES) { "Invalid expected model size" }
@@ -377,6 +410,13 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     require(available >= remainingBytes + safetyMargin) { "Not enough free storage to download this model" }
   }
 
+  private fun requireMagic(file: File, expectedMagic: String?) {
+    if (expectedMagic == null) return
+    val header = ByteArray(expectedMagic.length)
+    FileInputStream(file).use { input -> require(input.read(header) == header.size) { "Model file is incomplete" } }
+    require(header.toString(Charsets.US_ASCII) == expectedMagic) { "Model file is not a valid $expectedMagic model" }
+  }
+
   private fun ByteArray.toHex(): String = joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0') }
 
   companion object {
@@ -384,8 +424,8 @@ class ModelDownloader(private val context: ReactApplicationContext) : ReactConte
     private const val GEMMA_MODEL_FILE = "gemma-3-1b-it-int4.task"
     private const val GEMMA_MODEL_BYTES = 554661243L
     private const val GEMMA_MODEL_SHA256 = "e3d981c01aeaaac69a84ffa0d4be13281b3176731063f1bea1c9fe6887bd9dee"
-    private const val POCKETPAL_MODEL_FILE = "voiceshield-pocketpal.gguf"
-    private const val MIN_POCKETPAL_MODEL_BYTES = 100L * 1024L * 1024L
+    private const val LOCAL_GGUF_MODEL_FILE = "voiceshield-local.gguf"
+    private const val MIN_GGUF_MODEL_BYTES = 32L * 1024L * 1024L
     private const val MAX_MODEL_BYTES = 4L * 1024L * 1024L * 1024L
     const val PREFS_NAME = "voice_shield_models"
     const val ACTIVE_WHISPER_MODEL = "active_whisper_model"

@@ -13,11 +13,12 @@ type WhisperNativeModule = {
 type ModelDownloaderNativeModule = {
   deleteModel(fileName: string): Promise<boolean>
   downloadModel(url: string, fileName: string, expectedSha256: string, expectedSize: number): Promise<string>
+  downloadGgufModel(url: string, fileName: string, expectedSha256: string, expectedSize: number): Promise<string>
   getVerifiedModelPath(fileName: string, expectedSha256: string, expectedSize: number): Promise<string | null>
   hasModel(fileName: string): Promise<boolean>
   getModelPath(fileName: string): Promise<string | null>
   importGemmaModel(): Promise<string>
-  importPocketPalModel(): Promise<string>
+  importGgufModel(): Promise<string>
   importWhisperSmallModel(): Promise<string>
   importFastConformerModel(): Promise<string>
   getStorageInfo(): Promise<ModelStorageInfo>

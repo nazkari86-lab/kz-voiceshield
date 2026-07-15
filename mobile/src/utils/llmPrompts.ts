@@ -37,9 +37,13 @@ export const QUICK_QUESTIONS: QuickQuestion[] = [
   },
 ]
 
-export function buildPrompt(systemPrompt: string, question: string, transcript: string): string {
-  const ctx = transcript.trim().length > 0
+export function buildUserMessage(question: string, transcript: string): string {
+  return transcript.trim().length > 0
     ? `${question}${transcript.slice(0, 3000)}`
     : question
+}
+
+export function buildPrompt(systemPrompt: string, question: string, transcript: string): string {
+  const ctx = buildUserMessage(question, transcript)
   return `<start_of_turn>user\n${systemPrompt}\n\n${ctx}<end_of_turn>\n<start_of_turn>model\n`
 }

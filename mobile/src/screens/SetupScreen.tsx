@@ -194,7 +194,7 @@ export function SetupScreen({
       <View style={styles.gemmaSection}>
         <Text style={styles.noticeTitle}>AI-ассистент (Gemma 3 1B IT)</Text>
         <Text style={styles.copy}>Нейросеть ~{GEMMA_MODEL_SIZE_MB}МБ для анализа транскриптов прямо на устройстве. Требует скачивания один раз.</Text>
-        <Text style={styles.gemmaCopy}>Во вкладке «AI assistant» доступны Gemma с загрузкой в приложении и GGUF-модели через совместимый с PocketPal runtime. Gemma подключается автоматически; GGUF импортируется из файлов и остаётся локальным.</Text>
+        <Text style={styles.gemmaCopy}>Во вкладке «AI assistant» доступны Gemma и Каталог локальных AI-моделей. Публичные GGUF-модели можно найти и скачать с Hugging Face прямо в приложении; после проверки они работают полностью локально.</Text>
       </View>
 
       <View style={styles.localData}>

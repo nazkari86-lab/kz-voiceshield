@@ -9,16 +9,37 @@ import {
   GEMMA_MODEL_SIZE_MB, GEMMA_MODEL_URL, GEMMA_TERMS_URL,
 } from '../bridge/LLMBridge'
 import { modelEvents, ModelDownloader } from '../bridge/WhisperBridge'
-import { generatePocketPalResponse, loadPocketPalModel, POCKETPAL_MODEL_FILE } from '../bridge/PocketPalBridge'
-import { buildPrompt, QUICK_QUESTIONS, SYSTEM_PROMPT } from '../utils/llmPrompts'
+import {
+  generateLocalResponse, LEGACY_GGUF_MODEL_FILE, LOCAL_IMPORTED_MODEL_FILE,
+  LOCAL_MODELS_STORAGE_KEY, loadLocalGgufModel, parseInstalledLocalModels,
+  type InstalledLocalModel,
+} from '../bridge/LocalLlmBridge'
+import type { GgufVariant, PublicGgufModel } from '../data/huggingFaceCatalog'
+import type { ModelStorageInfo } from '../data/whisperModels'
+import { buildPrompt, buildUserMessage, QUICK_QUESTIONS, SYSTEM_PROMPT } from '../utils/llmPrompts'
 import { colors } from '../theme'
+import { LocalModelCatalogView } from './LocalModelCatalogView'
 import { Card, SectionTitle } from './ui'
 
 type ChatMessage = { role: 'user' | 'assistant'; text: string; streaming?: boolean }
-type AssistantEngine = 'gemma' | 'pocketpal'
+type AssistantEngine = 'gemma' | 'local'
 
 type Props = { transcript: string; modelBasePath?: string }
 const GEMMA_TERMS_ACCEPTED_KEY = 'voiceshield.gemma.terms.v1'
+
+const importedModelRecord = (source: 'imported' | 'legacy', fileName: string): InstalledLocalModel => ({
+  id: `${source}:${fileName}`,
+  title: 'Импортированная GGUF-модель',
+  repoId: 'Локальный файл',
+  fileName,
+  sourceFileName: fileName,
+  quantization: 'GGUF',
+  size: 0,
+  sha256: '',
+  license: 'проверьте источник файла',
+  downloadedAt: new Date().toISOString(),
+  source,
+})
 
 export function LLMAssistantView({ transcript, modelBasePath }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -28,15 +49,17 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
   const [loadingModel, setLoadingModel] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [modelPath, setModelPath] = useState<string | null>(modelBasePath ?? null)
-  const [pocketPalPath, setPocketPalPath] = useState<string | null>(null)
+  const [installedModels, setInstalledModels] = useState<InstalledLocalModel[]>([])
+  const [activeLocalModelId, setActiveLocalModelId] = useState<string | null>(null)
+  const [downloadingVariantId, setDownloadingVariantId] = useState<string | null>(null)
+  const [storageInfo, setStorageInfo] = useState<ModelStorageInfo>({ availableBytes: 0, totalBytes: 0, ramBytes: 0 })
   const [engine, setEngine] = useState<AssistantEngine>('gemma')
-  const pocketPalContext = useRef<Awaited<ReturnType<typeof loadPocketPalModel>> | null>(null)
+  const localContext = useRef<Awaited<ReturnType<typeof loadLocalGgufModel>> | null>(null)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null)
   const scrollRef = useRef<ScrollView>(null)
   const currentTokensRef = useRef('')
 
-  // Check model readiness on mount
   useEffect(() => {
     void LLMModule?.isReady().then(setModelReady).catch(() => setModelReady(false))
     void AsyncStorage.getItem(GEMMA_TERMS_ACCEPTED_KEY).then(value => setTermsAccepted(value === 'accepted')).catch(() => undefined)
@@ -45,10 +68,34 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
         .then(setModelPath)
         .catch(() => undefined)
     }
-    void ModelDownloader.getModelPath(POCKETPAL_MODEL_FILE).then(setPocketPalPath).catch(() => undefined)
+    void (async () => {
+      const [raw, info, importedPath, legacyPath] = await Promise.all([
+        AsyncStorage.getItem(LOCAL_MODELS_STORAGE_KEY),
+        ModelDownloader.getStorageInfo(),
+        ModelDownloader.getModelPath(LOCAL_IMPORTED_MODEL_FILE),
+        ModelDownloader.getModelPath(LEGACY_GGUF_MODEL_FILE),
+      ])
+      const saved = parseInstalledLocalModels(raw)
+      const candidates = [...saved]
+      if (importedPath && !candidates.some((item) => item.fileName === LOCAL_IMPORTED_MODEL_FILE)) {
+        candidates.push(importedModelRecord('imported', LOCAL_IMPORTED_MODEL_FILE))
+      }
+      if (legacyPath && !candidates.some((item) => item.fileName === LEGACY_GGUF_MODEL_FILE)) {
+        candidates.push(importedModelRecord('legacy', LEGACY_GGUF_MODEL_FILE))
+      }
+      const verified = (await Promise.all(candidates.map(async (item) => {
+        const path = item.sha256
+          ? await ModelDownloader.getVerifiedModelPath(item.fileName, item.sha256, item.size)
+          : await ModelDownloader.getModelPath(item.fileName)
+        return path ? item : null
+      }))).filter((item): item is InstalledLocalModel => item !== null)
+      setInstalledModels(verified)
+      setStorageInfo(info)
+      await AsyncStorage.setItem(LOCAL_MODELS_STORAGE_KEY, JSON.stringify(verified))
+    })().catch(() => undefined)
   }, [modelBasePath])
 
-  useEffect(() => () => { void pocketPalContext.current?.release() }, [])
+  useEffect(() => () => { void localContext.current?.release() }, [])
 
   useEffect(() => {
     const progressSub = modelEvents.addListener('VS_MODEL_DOWNLOAD_PROGRESS', (payload: { progress?: number }) => {
@@ -118,28 +165,120 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     }
   }, [])
 
-  const loadPocketPal = useCallback(async (path = pocketPalPath) => {
-    if (!path) throw new Error('Сначала импортируйте GGUF-модель.')
-    await pocketPalContext.current?.release()
-    pocketPalContext.current = await loadPocketPalModel(path)
-    setPocketPalPath(path)
-    setEngine('pocketpal')
-    setModelReady(true)
-  }, [pocketPalPath])
+  const persistInstalledModels = useCallback(async (next: InstalledLocalModel[]) => {
+    setInstalledModels(next)
+    await AsyncStorage.setItem(LOCAL_MODELS_STORAGE_KEY, JSON.stringify(next))
+  }, [])
 
-  const importPocketPal = useCallback(async () => {
+  const refreshStorage = useCallback(async () => {
+    setStorageInfo(await ModelDownloader.getStorageInfo())
+  }, [])
+
+  const startLocalModel = useCallback(async (model: InstalledLocalModel, knownPath?: string) => {
+    const path = knownPath ?? await ModelDownloader.getModelPath(model.fileName)
+    if (!path) throw new Error('Локальный файл модели не найден.')
+    await LLMModule?.unloadModel().catch(() => undefined)
+    await localContext.current?.release()
+    localContext.current = null
+    setActiveLocalModelId(null)
+    setModelReady(false)
+    const context = await loadLocalGgufModel(path)
+    localContext.current = context
+    setActiveLocalModelId(model.id)
+    setEngine('local')
+    setModelReady(true)
+  }, [])
+
+  const loadLocalModel = useCallback(async (model: InstalledLocalModel) => {
+    if (activeLocalModelId === model.id && localContext.current) {
+      setEngine('local')
+      setModelReady(true)
+      return
+    }
     setLoadingModel(true)
     setLoadError(null)
     try {
-      const path = await ModelDownloader.importPocketPalModel()
-      await loadPocketPal(path)
+      await startLocalModel(model)
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Не удалось запустить локальную модель')
+    } finally {
+      setLoadingModel(false)
+    }
+  }, [activeLocalModelId, startLocalModel])
+
+  const importLocalModel = useCallback(async () => {
+    setLoadingModel(true)
+    setLoadError(null)
+    try {
+      const path = await ModelDownloader.importGgufModel()
+      const item = importedModelRecord('imported', LOCAL_IMPORTED_MODEL_FILE)
+      const next = [...installedModels.filter((model) => model.fileName !== item.fileName), item]
+      await persistInstalledModels(next)
+      await startLocalModel(item, path)
+      await refreshStorage()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Не удалось импортировать GGUF-модель'
       if (!message.includes('MODEL_IMPORT_CANCELLED')) setLoadError(message)
     } finally {
       setLoadingModel(false)
     }
-  }, [loadPocketPal])
+  }, [installedModels, persistInstalledModels, refreshStorage, startLocalModel])
+
+  const downloadLocalModel = useCallback(async (model: PublicGgufModel, variant: GgufVariant) => {
+    setLoadingModel(true)
+    setDownloadingVariantId(variant.id)
+    setDownloadProgress(0)
+    setLoadError(null)
+    try {
+      const path = await ModelDownloader.downloadGgufModel(
+        variant.downloadUrl, variant.localFileName, variant.sha256, variant.size,
+      )
+      const item: InstalledLocalModel = {
+        id: variant.id,
+        title: model.id.split('/').at(-1)?.replace(/-GGUF$/i, '') || model.id,
+        repoId: model.id,
+        fileName: variant.localFileName,
+        sourceFileName: variant.fileName,
+        quantization: variant.quantization,
+        size: variant.size,
+        sha256: variant.sha256,
+        license: model.license,
+        downloadedAt: new Date().toISOString(),
+        source: 'huggingface',
+      }
+      const next = [...installedModels.filter((installed) => installed.id !== item.id && installed.fileName !== item.fileName), item]
+      await persistInstalledModels(next)
+      await startLocalModel(item, path)
+      await refreshStorage()
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Не удалось скачать локальную модель')
+    } finally {
+      setDownloadingVariantId(null)
+      setDownloadProgress(null)
+      setLoadingModel(false)
+    }
+  }, [installedModels, persistInstalledModels, refreshStorage, startLocalModel])
+
+  const deleteLocalModel = useCallback(async (model: InstalledLocalModel) => {
+    setLoadingModel(true)
+    setLoadError(null)
+    try {
+      if (activeLocalModelId === model.id) {
+        await localContext.current?.release()
+        localContext.current = null
+        setActiveLocalModelId(null)
+        setModelReady(false)
+      }
+      const deleted = await ModelDownloader.deleteModel(model.fileName)
+      if (!deleted) throw new Error('Не удалось удалить файл модели.')
+      await persistInstalledModels(installedModels.filter((installed) => installed.id !== model.id && installed.fileName !== model.fileName))
+      await refreshStorage()
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Не удалось удалить модель')
+    } finally {
+      setLoadingModel(false)
+    }
+  }, [activeLocalModelId, installedModels, persistInstalledModels, refreshStorage])
 
   const downloadModel = useCallback(async () => {
     if (!termsAccepted) {
@@ -184,11 +323,11 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     currentTokensRef.current = ''
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
     try {
-      const fullPrompt = buildPrompt(SYSTEM_PROMPT, text.trim() + '\n\n', transcript)
-      if (engine === 'pocketpal') {
-        const context = pocketPalContext.current
+      if (engine === 'local') {
+        const context = localContext.current
         if (!context) throw new Error('GGUF-модель не загружена')
-        const full = await generatePocketPalResponse(context, fullPrompt, (token) => {
+        const userMessage = buildUserMessage(text.trim() + '\n\n', transcript)
+        const full = await generateLocalResponse(context, SYSTEM_PROMPT, userMessage, (token) => {
           currentTokensRef.current += token
           setMessages(prev => {
             const last = prev[prev.length - 1]
@@ -200,6 +339,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
         setGenerating(false)
         currentTokensRef.current = ''
       } else {
+        const fullPrompt = buildPrompt(SYSTEM_PROMPT, text.trim() + '\n\n', transcript)
         await LLMModule!.generateResponse(fullPrompt)
       }
     } catch (e: any) {
@@ -217,7 +357,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
   }, [send])
 
   const stop = useCallback(() => {
-    if (engine === 'pocketpal') void pocketPalContext.current?.stopCompletion()
+    if (engine === 'local') void localContext.current?.stopCompletion()
     else void LLMModule?.cancelGeneration()
     setGenerating(false)
   }, [engine])
@@ -225,51 +365,48 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
   const selectEngine = useCallback(async (next: AssistantEngine) => {
     setLoadError(null)
     if (next === 'gemma') {
+      await localContext.current?.release()
+      localContext.current = null
+      setActiveLocalModelId(null)
       setEngine('gemma')
       setModelReady(false)
       await loadModel()
       return
     }
-    if (!pocketPalPath) {
-      setModelReady(false)
-      setEngine('pocketpal')
-      return
-    }
-    setLoadingModel(true)
-    try {
-      await loadPocketPal()
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Не удалось загрузить GGUF-модель')
-    } finally {
-      setLoadingModel(false)
-    }
-  }, [loadModel, loadPocketPal, pocketPalPath])
+    setEngine('local')
+    setModelReady(Boolean(activeLocalModelId && localContext.current))
+  }, [activeLocalModelId, loadModel])
 
   if (!modelReady) {
     return (
       <View style={styles.root}>
-        <SectionTitle>VoiceShield AI (Gemma 3 1B)</SectionTitle>
-        <Card>
-          <View style={styles.engineRow}>
-            <TouchableOpacity style={[styles.engineChip, engine === 'gemma' && styles.engineChipActive]} onPress={() => { void selectEngine('gemma') }}>
-              <Text style={[styles.engineChipText, engine === 'gemma' && styles.engineChipTextActive]}>Gemma</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.engineChip, engine === 'pocketpal' && styles.engineChipActive]} onPress={() => { void selectEngine('pocketpal') }}>
-              <Text style={[styles.engineChipText, engine === 'pocketpal' && styles.engineChipTextActive]}>GGUF / PocketPal</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.setupTitle}>Нейросеть не загружена</Text>
-          {engine === 'pocketpal' ? (
-            <>
-              <Text style={styles.setupText}>Импортируйте свою GGUF-модель. Она запускается локально через совместимый с PocketPal runtime и не передаёт транскрипт на сервер.</Text>
-              <Text style={styles.setupSteps}>Поддерживаются только 64-битные Android-устройства. Файл проверяется как GGUF перед сохранением. Лицензия выбранной модели остаётся ответственностью пользователя.</Text>
-              {loadError && <Text style={styles.error}>{loadError}</Text>}
-              <TouchableOpacity style={[styles.loadBtn, loadingModel && styles.loadBtnDisabled]} onPress={importPocketPal} disabled={loadingModel}>
-                {loadingModel ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadBtnText}>Импортировать GGUF-модель</Text>}
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
+        <SectionTitle>VoiceShield AI</SectionTitle>
+        <View style={styles.engineRow}>
+          <TouchableOpacity style={[styles.engineChip, engine === 'gemma' && styles.engineChipActive]} onPress={() => { void selectEngine('gemma') }}>
+            <Text style={[styles.engineChipText, engine === 'gemma' && styles.engineChipTextActive]}>Gemma</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.engineChip, engine === 'local' && styles.engineChipActive]} onPress={() => { void selectEngine('local') }}>
+            <Text style={[styles.engineChipText, engine === 'local' && styles.engineChipTextActive]}>Каталог моделей</Text>
+          </TouchableOpacity>
+        </View>
+        {engine === 'local' ? (
+          <LocalModelCatalogView
+            installedModels={installedModels}
+            activeModelId={activeLocalModelId}
+            availableBytes={storageInfo.availableBytes}
+            ramBytes={storageInfo.ramBytes}
+            busy={loadingModel}
+            downloadingVariantId={downloadingVariantId}
+            downloadProgress={downloadProgress}
+            error={loadError}
+            onDelete={deleteLocalModel}
+            onDownload={downloadLocalModel}
+            onImport={importLocalModel}
+            onLoad={loadLocalModel}
+          />
+        ) : (
+          <Card>
+            <Text style={styles.setupTitle}>Нейросеть не загружена</Text>
           <Text style={styles.setupText}>
             Модель Gemma 3 1B IT (~{GEMMA_MODEL_SIZE_MB}МБ) анализирует транскрипты звонков прямо на устройстве.
             Данные не покидают телефон.
@@ -298,9 +435,8 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
           <TouchableOpacity style={[styles.importBtn, loadingModel && styles.loadBtnDisabled]} onPress={importModel} disabled={loadingModel}>
             <Text style={styles.importBtnText}>Уже скачан файл? Импортировать</Text>
           </TouchableOpacity>
-            </>
-          )}
-        </Card>
+          </Card>
+        )}
       </View>
     )
   }
@@ -312,10 +448,16 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
         <TouchableOpacity style={[styles.engineChip, engine === 'gemma' && styles.engineChipActive]} onPress={() => { void selectEngine('gemma') }}>
           <Text style={[styles.engineChipText, engine === 'gemma' && styles.engineChipTextActive]}>Gemma</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.engineChip, engine === 'pocketpal' && styles.engineChipActive]} onPress={() => { void selectEngine('pocketpal') }}>
-          <Text style={[styles.engineChipText, engine === 'pocketpal' && styles.engineChipTextActive]}>GGUF / PocketPal</Text>
+        <TouchableOpacity style={[styles.engineChip, engine === 'local' && styles.engineChipActive]} onPress={() => { void selectEngine('local') }}>
+          <Text style={[styles.engineChipText, engine === 'local' && styles.engineChipTextActive]}>Каталог моделей</Text>
         </TouchableOpacity>
       </View>
+
+      {engine === 'local' && (
+        <TouchableOpacity style={styles.switchModelButton} onPress={() => setModelReady(false)} disabled={generating}>
+          <Text style={styles.switchModelText}>Сменить локальную модель</Text>
+        </TouchableOpacity>
+      )}
 
       {transcript.trim().length > 0 && (
         <View style={styles.contextBanner}>
@@ -399,6 +541,8 @@ const styles = StyleSheet.create({
   engineChipActive: { backgroundColor: colors.softBrand, borderColor: colors.brand },
   engineChipText: { color: colors.sub, fontSize: 12, fontWeight: '800', textAlign: 'center' },
   engineChipTextActive: { color: colors.brandDark },
+  switchModelButton: { alignSelf: 'flex-start', marginBottom: 9, paddingVertical: 4 },
+  switchModelText: { color: colors.brandDark, fontSize: 10, fontWeight: '900', textDecorationLine: 'underline' },
   setupText: { color: colors.sub, fontSize: 13, lineHeight: 20, marginBottom: 10 },
   setupSteps: { backgroundColor: colors.chipBg, borderRadius: 8, color: colors.ink, fontSize: 12, lineHeight: 20, marginBottom: 12, padding: 10 },
   termsRow: { alignItems: 'center', flexDirection: 'row', gap: 9, marginBottom: 5 },

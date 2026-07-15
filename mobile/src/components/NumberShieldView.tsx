@@ -38,6 +38,8 @@ const relationships: { id: PhoneRelationship; label: string }[] = [
   { id: 'government', label: 'Government' }, { id: 'unknown', label: 'Other' },
 ]
 
+const normalizePhone = (value: string) => value.replace(/[^\d+]/g, '').trim()
+
 export function NumberShieldView({
   autoDeleteTranscript,
   onSetAutoDeleteTranscript,
@@ -61,9 +63,14 @@ export function NumberShieldView({
     void CallModule.getProtectionConfig().then(setConfig).catch(() => setStatus('Call screening is not available on this build'))
   }, [])
 
-  const run = async (operation: () => Promise<PhoneAssessment>, message: string) => {
+  const run = async (operation: (normalized: string) => Promise<PhoneAssessment>, message: string) => {
+    const normalized = normalizePhone(number)
+    if (normalized.replace(/\D/g, '').length < 7) {
+      setStatus('Введите полный номер телефона перед выполнением действия')
+      return
+    }
     try {
-      const result = await operation()
+      const result = await operation(normalized)
       setAssessment(result)
       setRating(result.annotation.rating)
       setComment(result.annotation.comment)
@@ -118,11 +125,11 @@ export function NumberShieldView({
           value={number}
         />
         <View style={styles.row}>
-          <Action label="Check" tone="primary" onPress={() => { setScamMatch(checkScamNumber(number)); void run(() => CallModule.evaluateNumber(number), 'Number checked locally') }} />
-          <Action label="Trust" onPress={() => { void run(() => CallModule.setNumberDisposition(number, 'trusted'), 'Added to trusted list') }} />
-          <Action label="Block" tone="danger" onPress={() => { void run(() => CallModule.setNumberDisposition(number, 'blocked'), 'Added to block list') }} />
-          <Action label="Neutral" onPress={() => { void run(() => CallModule.setNumberDisposition(number, 'neutral'), 'Local disposition removed') }} />
-          <Action label="Report spam" tone="danger" onPress={() => { void run(() => CallModule.reportNumber(number, 'user_reported_spam'), 'Local complaint recorded') }} />
+          <Action label="Check" tone="primary" onPress={() => { const normalized = normalizePhone(number); setScamMatch(checkScamNumber(normalized)); void run((value) => CallModule.evaluateNumber(value), 'Number checked locally') }} />
+          <Action label="Trust" onPress={() => { void run((value) => CallModule.setNumberDisposition(value, 'trusted'), 'Added to trusted list') }} />
+          <Action label="Block" tone="danger" onPress={() => { void run((value) => CallModule.setNumberDisposition(value, 'blocked'), 'Added to block list') }} />
+          <Action label="Neutral" onPress={() => { void run((value) => CallModule.setNumberDisposition(value, 'neutral'), 'Local disposition removed') }} />
+          <Action label="Report spam" tone="danger" onPress={() => { void run((value) => CallModule.reportNumber(value, 'user_reported_spam'), 'Local complaint recorded') }} />
         </View>
       </View>
 
@@ -171,8 +178,8 @@ export function NumberShieldView({
         <TextInput accessibilityLabel="Private number comment" maxLength={500} multiline onChangeText={setComment} placeholder="What should you or a family member know about this caller?" placeholderTextColor={colors.muted} style={[styles.input, styles.comment]} value={comment} />
         <Setting label="Protected family number" value={familyProtected} onChange={setFamilyProtected} />
         <View style={styles.row}>
-          <Action label="Save profile" tone="primary" onPress={() => { void run(() => CallModule.annotateNumber(number, rating, comment, relationship, label, familyProtected), 'Encrypted number profile saved') }} />
-          <Action label="Clear profile" onPress={() => { void run(() => CallModule.clearNumberAnnotation(number), 'Private number profile removed') }} />
+          <Action label="Save profile" tone="primary" onPress={() => { void run((value) => CallModule.annotateNumber(value, rating, comment, relationship, label, familyProtected), 'Encrypted number profile saved') }} />
+          <Action label="Clear profile" onPress={() => { void run((value) => CallModule.clearNumberAnnotation(value), 'Private number profile removed') }} />
         </View>
       </View>
 

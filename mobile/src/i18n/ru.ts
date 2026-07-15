@@ -9,7 +9,7 @@ export type I18nKeys = {
     signals: string; correction: string; rawDisagreement: string
     noCaption: string; microphoneFallback: string; endCall: string
     sharedData: string; recoveryPlan: string; practice: string; scamPatterns: string
-    doThisNow: string; liveTranscript: string; microphoneState: string
+    doThisNow: string; liveTranscript: string; microphoneState: string; confidence: string; capture: string; limitedEvidence: string
     waitingSpeaker: string; transcriptPlaceholder: string; save: string
     endCallTitle: string; endCallCopy: string
   }
@@ -54,7 +54,7 @@ export const ru: I18nKeys = {
     signals: 'сигналов', correction: 'Применена коррекция AI', rawDisagreement: 'Разница исходного и исправленного: {from} → {to}',
     noCaption: 'Нет текста в субтитрах?', microphoneFallback: 'Использовать микрофон и громкую связь', endCall: 'Завершить звонок',
     sharedData: 'Я сообщил данные', recoveryPlan: 'План срочного восстановления', practice: 'Практика', scamPatterns: 'Изучить шаблоны мошенников',
-    doThisNow: 'Сделайте это сейчас', liveTranscript: 'ТРАНСКРИПТ В РЕАЛЬНОМ ВРЕМЕНИ', microphoneState: 'МИКРОФОН СЛЫШИТ ЗВУК', waitingSpeaker: 'ОЖИДАНИЕ ЗВУКА',
+    doThisNow: 'Сделайте это сейчас', liveTranscript: 'ТРАНСКРИПТ В РЕАЛЬНОМ ВРЕМЕНИ', microphoneState: 'МИКРОФОН СЛЫШИТ ЗВУК', confidence: 'уверенность', capture: 'полнота захвата', limitedEvidence: 'Недостаточно данных для уверенного вывода. Не сообщайте коды и деньги, пока не проверите звонящего через официальный канал.', waitingSpeaker: 'ОЖИДАНИЕ ЗВУКА',
     transcriptPlaceholder: 'Текст появится здесь. Можно также вставить разговор.', save: 'Сохранить', endCallTitle: 'Завершить текущий звонок?', endCallCopy: 'Текущий звонок будет отключён. Завершайте его только когда готовы остановить разговор.',
   },
   risk: { critical: 'Критический', high: 'Высокий', medium: 'Средний', low: 'Низкий' },

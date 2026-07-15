@@ -69,6 +69,7 @@ export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, e
   }, [isListening, signalScale])
 
   const needsPause = analysis.risk === 'critical' || analysis.risk === 'high'
+  const limitedEvidence = analysis.confidence < 45 || analysis.captureCompleteness < 0.7
   const confirmEndCall = () => Alert.alert(
     t.live.endCallTitle,
     t.live.endCallCopy,
@@ -98,11 +99,17 @@ export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, e
         <Text style={styles.scheme}>{analysis.schemeLabel}</Text>
         <Text style={styles.verdict}>{analysis.verdict}</Text>
         <Text style={styles.next}>{analysis.nextAction}</Text>
+        <View style={styles.qualityRow}>
+          <Text style={styles.qualityText}>{t.live.confidence}: {analysis.confidence}%</Text>
+          <Text style={styles.qualityText}>{t.live.capture}: {Math.round(analysis.captureCompleteness * 100)}%</Text>
+        </View>
         <Text style={styles.session}>{callStatus}</Text>
       {isListening && (
           <WaveformView audioLevel={audioLevel} isActive={isListening} height={32} barCount={40} />
         )}
       </Card>
+
+      {limitedEvidence && <View style={styles.qualityWarning}><Text style={styles.qualityWarningText}>{t.live.limitedEvidence}</Text></View>}
 
       {modelCorrection && modelCorrection.status === 'ready' && modelCorrection.corrections.length > 0 && (
         <View style={styles.correctionBanner}>
@@ -226,6 +233,10 @@ const styles = StyleSheet.create({
   verdict: { color: colors.ink, fontSize: 15, fontWeight: '800' },
   next: { color: colors.sub, fontSize: 13, lineHeight: 19 },
   session: { color: colors.muted, fontSize: 11 },
+  qualityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 3 },
+  qualityText: { color: colors.sub, fontSize: 11, fontWeight: '800' },
+  qualityWarning: { backgroundColor: '#fff7ed', borderColor: '#fdba74', borderRadius: 8, borderWidth: 1, marginBottom: 12, padding: 11 },
+  qualityWarningText: { color: '#9a3412', fontSize: 12, lineHeight: 18 },
   levelTrack: { backgroundColor: colors.chipBg, borderRadius: 4, height: 6, overflow: 'hidden' },
   levelFill: { backgroundColor: colors.brand, height: 6 },
   error: { backgroundColor: '#fee2e2', borderColor: '#fecaca', borderRadius: 12, borderWidth: 1, color: '#991b1b', fontSize: 13, lineHeight: 19, marginBottom: 12, padding: 12 },

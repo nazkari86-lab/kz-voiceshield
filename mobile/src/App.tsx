@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SetupScreen } from '@screens/SetupScreen'
@@ -40,6 +40,7 @@ import { useOnDeviceAiRuntime } from './hooks/useOnDeviceAiRuntime'
 import { useLiveAiAnalysis } from './hooks/useLiveAiAnalysis'
 import { buildKazakhIntelligenceContext } from './utils/kazakhIntelligence'
 import { useI18n } from './I18nContext'
+import { LocalizedText as Text } from './components/LocalizedText'
 
 type Tab =
   | 'live' | 'review' | 'evidence' | 'timeline' | 'threats' | 'chain'

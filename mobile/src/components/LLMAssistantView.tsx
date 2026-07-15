@@ -319,7 +319,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
     } catch (e: any) {
       setMessages(prev => {
         const last = prev[prev.length - 1]
-        if (last?.streaming) return [...prev.slice(0, -1), { role: 'assistant', text: `⚠ ${e?.message ?? 'Error'}` }]
+        if (last?.streaming) return [...prev.slice(0, -1), { role: 'assistant', text: `⚠ ${e?.message ?? 'Error'}`, streaming: false }]
         return prev
       })
       setGenerating(false)

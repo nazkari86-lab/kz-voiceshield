@@ -20,7 +20,7 @@ export const kz: I18nKeys = {
     signals: 'сигнал', correction: 'AI түзетуі қолданылды', rawDisagreement: 'Бастапқы және түзетілген айырмашылық: {from} → {to}',
     noCaption: 'Субтитр мәтіні жоқ па?', microphoneFallback: 'Микрофон мен динамикті пайдалану', endCall: 'Қоңырауды аяқтау',
     sharedData: 'Мен дерек жібердім', recoveryPlan: 'Шұғыл қалпына келтіру жоспары', practice: 'Жаттығу', scamPatterns: 'Алаяқтық үлгілерін үйрену',
-    doThisNow: 'Қазір орындаңыз', liveTranscript: 'НАҚТЫ УАҚЫТТАҒЫ ТРАНСКРИПТ', microphoneState: 'МИКРОФОН ДЫБЫСТЫ ЕСТИДІ', waitingSpeaker: 'ДЫБЫС КҮТІЛУДЕ',
+    doThisNow: 'Қазір орындаңыз', liveTranscript: 'НАҚТЫ УАҚЫТТАҒЫ ТРАНСКРИПТ', microphoneState: 'МИКРОФОН ДЫБЫСТЫ ЕСТИДІ', confidence: 'сенімділік', capture: 'тыңдалған бөлік', limitedEvidence: 'Нақты қорытындыға дерек жеткіліксіз. Ресми арна арқылы тексермейінше кодтар мен ақша бермеңіз.', waitingSpeaker: 'ДЫБЫС КҮТІЛУДЕ',
     transcriptPlaceholder: 'Мәтін осында пайда болады. Әңгімені қоюға да болады.', save: 'Сақтау', endCallTitle: 'Ағымдағы қоңырауды аяқтау керек пе?', endCallCopy: 'Ағымдағы қоңырау ажыратылады. Әңгімеге дайын болғанда ғана аяқтаңыз.',
   },
   risk: { critical: 'Өте қауіпті', high: 'Қауіпті', medium: 'Тексеру', low: 'Қауіпсіз' },

@@ -61,11 +61,49 @@ const translations: Record<string, { ru: string; kz: string }> = {
   'Scan messages': { ru: 'Проверить сообщения', kz: 'Хабарламаларды тексеру' },
   'SMS Scanner': { ru: 'Проверка SMS', kz: 'SMS тексеру' },
   'No suspicious messages found': { ru: 'Подозрительных сообщений не найдено', kz: 'Күдікті хабарламалар табылмады' },
+  'Protection walkthrough': { ru: 'Пошаговая защита', kz: 'Қорғаныс нұсқаулығы' },
+  'Case review': { ru: 'Проверка дела', kz: 'Істі тексеру' },
+  'Evidence & signals': { ru: 'Доказательства и сигналы', kz: 'Дәлелдер мен сигналдар' },
+  'Incident timeline': { ru: 'Хронология инцидента', kz: 'Оқиға хронологиясы' },
+  'Threat library': { ru: 'Библиотека угроз', kz: 'Қауіптер кітапханасы' },
+  'Attack sequence': { ru: 'Цепочка атаки', kz: 'Шабуыл тізбегі' },
+  Emergency: { ru: 'Экстренная помощь', kz: 'Шұғыл көмек' },
+  'Voice messages': { ru: 'Голосовые сообщения', kz: 'Дауыстық хабарламалар' },
+  'Training dataset': { ru: 'Датасет обучения', kz: 'Оқыту деректер жиыны' },
+  Playbook: { ru: 'Сценарии действий', kz: 'Әрекет сценарийлері' },
+  Family: { ru: 'Семья', kz: 'Отбасы' },
+  Verify: { ru: 'Проверка', kz: 'Тексеру' },
+  'Number shield': { ru: 'Защита номера', kz: 'Нөмір қорғанысы' },
+  'Scam tools': { ru: 'Инструменты проверки', kz: 'Алаяқтықты тексеру құралдары' },
+  'Voice message': { ru: 'Голосовое сообщение', kz: 'Дауыстық хабарлама' },
+  'Data & model': { ru: 'Данные и модель', kz: 'Деректер мен модель' },
+  Statistics: { ru: 'Статистика', kz: 'Статистика' },
+  'SMS scanner': { ru: 'Проверка SMS', kz: 'SMS тексеру' },
+  'Call history': { ru: 'История звонков', kz: 'Қоңырау тарихы' },
+  'AI assistant': { ru: 'AI-ассистент', kz: 'AI-көмекші' },
+  Setup: { ru: 'Настройка', kz: 'Баптаулар' },
+  Learn: { ru: 'Обучение', kz: 'Оқу' },
+  Investigate: { ru: 'Анализ', kz: 'Талдау' },
+  Recover: { ru: 'Восстановление', kz: 'Қалпына келтіру' },
+  Workspace: { ru: 'Рабочая область', kz: 'Жұмыс кеңістігі' },
+  Protect: { ru: 'Защита', kz: 'Қорғаныс' },
+  'Everything else, clearly organized.': { ru: 'Все инструменты организованы понятно.', kz: 'Барлық құралдар түсінікті реттелген.' },
+  'Choose a tool for investigation, recovery, reviewers or device setup.': { ru: 'Выберите инструмент для анализа, восстановления, работы рецензента или настройки устройства.', kz: 'Талдау, қалпына келтіру, рецензент жұмысы немесе құрылғы баптауы үшін құралды таңдаңыз.' },
+  OPEN: { ru: 'ОТКРЫТЬ', kz: 'АШУ' },
 }
 
 function translateUi(value: string, lang: 'ru' | 'kz'): string {
   const exact = translations[value]
   if (exact) return exact[lang]
+  const lowerValue = value.toLowerCase()
+  const caseInsensitiveKey = Object.keys(translations).find((key) => key.toLowerCase() === lowerValue)
+  if (caseInsensitiveKey) {
+    const candidate = translations[caseInsensitiveKey]
+    if (candidate) {
+      const translated = candidate[lang]
+      return value === value.toUpperCase() ? translated.toUpperCase() : translated
+    }
+  }
   const saved = value.match(/^(\d+) saved cases$/)
   if (saved) return lang === 'ru' ? `${saved[1]} сохранённых дел` : `${saved[1]} сақталған іс`
   const donated = value.match(/^Donate (\d+) reviewed \(redacted\)$/)

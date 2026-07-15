@@ -41,6 +41,7 @@ export function ReviewView({ analysis, rawAnalysis, modelCorrection, enhancement
           <View style={[styles.meterFill, { backgroundColor: riskColor[analysis.risk], width: `${analysis.score}%` }]} />
         </View>
         <Text style={styles.next}>{analysis.nextAction}</Text>
+        <Text style={styles.meta}>Confidence {analysis.confidence}/100 · Capture {Math.round((captureCompleteness ?? analysis.captureCompleteness) * 100)}%</Text>
       </Card>
 
       <View style={styles.navigationRow}>
@@ -227,6 +228,7 @@ export function ReviewView({ analysis, rawAnalysis, modelCorrection, enhancement
 const styles = StyleSheet.create({
   topline: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   caseId: { color: colors.sub, fontSize: 12, fontWeight: '700' },
+  meta: { color: colors.sub, fontSize: 11, lineHeight: 16 },
   score: { fontSize: 48, fontWeight: '900' },
   scheme: { color: colors.ink, fontSize: 15, fontWeight: '900' },
   meterTrack: { backgroundColor: colors.chipBg, borderRadius: 999, height: 8, overflow: 'hidden' },

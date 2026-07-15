@@ -15,6 +15,8 @@ import { matchSemanticTemplates } from '../utils/semanticMatcher'
 import { getRepeatRiskBonus, recordCall } from '../utils/callMemory'
 import { saveTranscriptEntry } from '../utils/transcriptHistory'
 import { addFineTuneExample } from '../utils/fineTuneDataCollector'
+import { useTranscriptCorrection } from './useTranscriptCorrection'
+import type { OnDeviceAiRuntime } from './useOnDeviceAiRuntime'
 import { modelFor, recommendedModel, whisperModels } from '../data/whisperModels'
 import type { ModelStorageInfo, WhisperModelChoice } from '../data/whisperModels'
 import {
@@ -78,7 +80,7 @@ const normalizeSavedCase = (item: SavedCase): SavedCase => {
   }
 }
 
-export function useWorkspace() {
+export function useWorkspace(ai?: OnDeviceAiRuntime) {
   // ---- intake + analysis ----
   const [transcript, setTranscript] = useState('')
   const [fileName, setFileName] = useState('manual-call.txt')
@@ -124,8 +126,11 @@ export function useWorkspace() {
   const llmAutoAnalysis: string | null = null
 
   const transcriptEnhancement = useMemo(() => enhanceTranscript(transcript), [transcript])
-  const analysisTranscript = transcriptEnhancement.normalizedTranscript
+  const modelCorrection = useTranscriptCorrection(ai ?? null, transcript, transcriptEnhancement)
+  const modelCorrectionActive = modelCorrection.status === 'ready' && !modelCorrection.rejected && modelCorrection.rawTranscript === transcript.trim()
+  const analysisTranscript = modelCorrectionActive ? modelCorrection.correctedTranscript : transcriptEnhancement.normalizedTranscript
   const ksc2LanguageContext = useMemo(() => buildKsc2LanguageContext(transcriptEnhancement), [transcriptEnhancement])
+  const rawAnalysis = useMemo(() => analyzeTranscript(transcriptEnhancement.normalizedTranscript, { signals: deviceSignals, captureCompleteness }), [transcriptEnhancement.normalizedTranscript, deviceSignals, captureCompleteness])
   const analysis = useMemo(() => analyzeTranscript(analysisTranscript, { signals: deviceSignals, captureCompleteness }), [analysisTranscript, deviceSignals, captureCompleteness])
   const pressureAnalysis = useMemo(() => analyzePressure(analysisTranscript), [analysisTranscript])
   const semanticMatches = useMemo(() => matchSemanticTemplates(analysisTranscript), [analysisTranscript])
@@ -572,7 +577,9 @@ export function useWorkspace() {
     const now = new Date().toISOString()
     const safeTranscript = redactSensitiveText(transcript)
     const safeEnhancement = enhanceTranscript(safeTranscript)
-    const safeNormalizedTranscript = safeEnhancement.normalizedTranscript
+    const safeNormalizedTranscript = redactSensitiveText(modelCorrectionActive && modelCorrection.rawTranscript === transcript.trim()
+      ? modelCorrection.correctedTranscript
+      : safeEnhancement.normalizedTranscript)
     const current = analyzeTranscript(safeNormalizedTranscript, { signals: deviceSignals })
     setCases((existingCases) => {
       const existing = existingCases.find((item) => item.id === current.caseId)
@@ -595,7 +602,7 @@ export function useWorkspace() {
           packVersion: safeEnhancement.packVersion,
           dominantLanguage: safeEnhancement.dominantLanguage,
           lexiconCoverage: safeEnhancement.lexiconCoverage,
-          corrections: safeEnhancement.corrections,
+          corrections: [...safeEnhancement.corrections, ...(modelCorrectionActive ? modelCorrection.corrections : [])],
         },
         label: caseLabel,
         status: existing?.status ?? workflow.status,
@@ -614,7 +621,7 @@ export function useWorkspace() {
       }
       return [next, ...existingCases.filter((item) => item.id !== next.id)]
     })
-  }, [analystNote, caseLabel, deviceSignals, fileName, reviewerName, source, transcript])
+  }, [analystNote, caseLabel, deviceSignals, fileName, modelCorrection, modelCorrectionActive, reviewerName, source, transcript])
 
   const acceptPrivacy = useCallback(async () => {
     await SecureStorage.setItem(privacyConsentKey, 'accepted')
@@ -775,7 +782,7 @@ export function useWorkspace() {
 
   return {
     // intake
-    transcript, setTranscript, transcriptEnhancement, analysisTranscript, ksc2LanguageContext,
+    transcript, setTranscript, transcriptEnhancement, analysisTranscript, modelCorrection, rawAnalysis, ksc2LanguageContext,
     fileName, setFileName,
     caseLabel, setCaseLabel,
     analystNote, setAnalystNote,

@@ -7,9 +7,12 @@ import type { PressureScore } from '../utils/pressureAnalyzer'
 import type { TemplateMatch } from '../utils/semanticMatcher'
 import type { CallbackResult } from '../utils/callbackDetector'
 import type { TranscriptEnhancement } from '../utils/transcriptEnhancer'
+import type { TranscriptCorrectionState } from '../hooks/useTranscriptCorrection'
 
 type Props = {
   analysis: Analysis
+  rawAnalysis?: Analysis
+  modelCorrection?: TranscriptCorrectionState
   enhancement?: TranscriptEnhancement
   highSignals: number
   pressureAnalysis?: PressureScore
@@ -23,7 +26,7 @@ type Props = {
   onOpenChain?: () => void
 }
 
-export function ReviewView({ analysis, enhancement, highSignals, pressureAnalysis, semanticMatches, callbackInfo, repeatBonus, llmAutoAnalysis, captureCompleteness, onOpenEvidence, onOpenTimeline, onOpenChain }: Props) {
+export function ReviewView({ analysis, rawAnalysis, modelCorrection, enhancement, highSignals, pressureAnalysis, semanticMatches, callbackInfo, repeatBonus, llmAutoAnalysis, captureCompleteness, onOpenEvidence, onOpenTimeline, onOpenChain }: Props) {
   const cashOut = analysis.evidence.some((item) => item.stage === 'Cash-out')
   return (
     <View>
@@ -60,6 +63,14 @@ export function ReviewView({ analysis, enhancement, highSignals, pressureAnalysi
           <Text style={styles.captureWarningText}>
             ⚠ Неполный захват ({Math.round(captureCompleteness * 100)}%) — вероятно, слышна только одна сторона разговора. Анализ мог пропустить слова собеседника.
           </Text>
+        </View>
+      )}
+
+      {modelCorrection && modelCorrection.status !== 'idle' && (
+        <View style={styles.correctionBanner}>
+          <Text style={styles.correctionTitle}>AI transcript correction</Text>
+          <Text style={styles.correctionText}>{modelCorrection.status === 'running' ? 'Модель проверяет вероятные ASR-ошибки…' : modelCorrection.status === 'ready' ? `${modelCorrection.corrections.length} correction(s) applied · confidence ${Math.round(modelCorrection.confidence * 100)}%` : modelCorrection.status === 'rejected' ? `Correction rejected: ${modelCorrection.error}` : modelCorrection.error ?? 'Waiting for a compatible AI model.'}</Text>
+          {rawAnalysis && (rawAnalysis.risk !== analysis.risk || rawAnalysis.score !== analysis.score) && <Text style={styles.correctionText}>DISAGREEMENT: raw rules {rawAnalysis.score}/100 ({rawAnalysis.risk}) → corrected rules {analysis.score}/100 ({analysis.risk})</Text>}
         </View>
       )}
 
@@ -244,6 +255,9 @@ const styles = StyleSheet.create({
   aiAnalysisText: { color: colors.ink, fontSize: 13, lineHeight: 20 },
   captureWarning: { backgroundColor: '#fef3c7', borderColor: '#fbbf24', borderRadius: 8, borderWidth: 1, marginBottom: 8, padding: 10 },
   captureWarningText: { color: '#92400e', fontSize: 12, lineHeight: 18 },
+  correctionBanner: { backgroundColor: '#eef6ff', borderColor: '#93c5fd', borderRadius: 8, borderWidth: 1, gap: 4, marginBottom: 8, padding: 10 },
+  correctionTitle: { color: '#1e3a8a', fontSize: 12, fontWeight: '900' },
+  correctionText: { color: '#1e40af', fontSize: 12, lineHeight: 18 },
   protectiveNote: { backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderRadius: 8, borderWidth: 1, marginBottom: 8, padding: 10 },
   protectiveNoteText: { color: '#1e40af', fontSize: 12, lineHeight: 18 },
   navigationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 8 },

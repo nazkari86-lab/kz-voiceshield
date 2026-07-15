@@ -8,9 +8,12 @@ import { MotionPressable } from './MotionPressable'
 import { LiveAiPanel } from './LiveAiPanel'
 import type { LiveAiAnalysisController } from '../hooks/useLiveAiAnalysis'
 import type { TranscriptEnhancement } from '../utils/transcriptEnhancer'
+import type { TranscriptCorrectionState } from '../hooks/useTranscriptCorrection'
 
 type Props = {
   analysis: Analysis
+  rawAnalysis?: Analysis
+  modelCorrection?: TranscriptCorrectionState
   transcript: string
   enhancement: TranscriptEnhancement
   source: string
@@ -35,7 +38,7 @@ type Props = {
   onEndCall: () => Promise<boolean>
 }
 
-export function LiveView({ analysis, transcript, enhancement, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, liveAi, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onOpenAi, onUseMicrophoneFallback, onEndCall }: Props) {
+export function LiveView({ analysis, rawAnalysis, modelCorrection, transcript, enhancement, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, liveAi, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onOpenAi, onUseMicrophoneFallback, onEndCall }: Props) {
   const [pauseRemaining, setPauseRemaining] = useState(0)
   const signalScale = useRef(new Animated.Value(1)).current
   const scoreFill = useRef(new Animated.Value(0)).current
@@ -98,6 +101,14 @@ export function LiveView({ analysis, transcript, enhancement, source, isListenin
           <WaveformView audioLevel={audioLevel} isActive={isListening} height={32} barCount={40} />
         )}
       </Card>
+
+      {modelCorrection && modelCorrection.status === 'ready' && modelCorrection.corrections.length > 0 && (
+        <View style={styles.correctionBanner}>
+          <Text style={styles.correctionTitle}>AI correction applied</Text>
+          <Text style={styles.correctionText}>{modelCorrection.corrections.map((item) => `${item.original} → ${item.replacement}`).join(' · ')}</Text>
+          {rawAnalysis && (rawAnalysis.risk !== analysis.risk || rawAnalysis.score !== analysis.score) && <Text style={styles.correctionText}>Raw/corrected disagreement: {rawAnalysis.score} → {analysis.score}</Text>}
+        </View>
+      )}
 
       {error && <Text style={styles.error}>{error}</Text>}
       {notice && <Text style={styles.notice}>{notice}</Text>}
@@ -254,6 +265,9 @@ const styles = StyleSheet.create({
   normalizedBox: { backgroundColor: '#f0fdf4', borderColor: '#86efac', borderRadius: 8, borderWidth: 1, gap: 3, marginTop: 8, padding: 10 },
   normalizedTitle: { color: '#166534', fontSize: 11, fontWeight: '900' },
   normalizedMeta: { color: '#4d7c5a', fontSize: 10 },
+  correctionBanner: { backgroundColor: '#eef6ff', borderColor: '#93c5fd', borderRadius: 8, borderWidth: 1, gap: 4, marginBottom: 12, padding: 10 },
+  correctionTitle: { color: '#1e3a8a', fontSize: 11, fontWeight: '900' },
+  correctionText: { color: '#1e40af', fontSize: 11, lineHeight: 16 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   primary: { backgroundColor: colors.brand, borderRadius: 8, flexGrow: 1, paddingHorizontal: 16, paddingVertical: 13 },
   stop: { backgroundColor: colors.accent },

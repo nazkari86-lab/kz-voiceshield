@@ -25,7 +25,7 @@ import {
 import { generateCloudResponse, hasProviderApiKey, hasProviderDataConsent } from '../services/cloudAiClient'
 
 export type AssistantEngine = 'gemma' | 'local' | 'cloud'
-export type AiGenerationOwner = 'assistant' | 'live'
+export type AiGenerationOwner = 'assistant' | 'live' | 'correction'
 
 export type AiGenerationRequest = {
   owner: AiGenerationOwner

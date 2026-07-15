@@ -6,7 +6,7 @@ import {
 } from 'react-native'
 import {
   llmEvents, LLMModule, GEMMA_MODEL_BYTES, GEMMA_MODEL_FILE, GEMMA_MODEL_SHA256,
-  GEMMA_MODEL_SIZE_MB, GEMMA_MODEL_URL, GEMMA_TERMS_URL,
+  GEMMA_CONTEXT_TOKENS, GEMMA_MODEL_SIZE_MB, GEMMA_MODEL_URL, GEMMA_TERMS_URL,
 } from '../bridge/LLMBridge'
 import { modelEvents, ModelDownloader } from '../bridge/WhisperBridge'
 import {
@@ -129,7 +129,14 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
       setGenerating(false)
       currentTokensRef.current = ''
     })
-    return () => { tokenSub.remove(); doneSub.remove(); errSub.remove() }
+    const stoppedSub = llmEvents.addListener('VS_LLM_STOPPED', (msg: string) => {
+      setModelReady(false)
+      setLoadingModel(false)
+      setGenerating(false)
+      setLoadError(msg)
+      currentTokensRef.current = ''
+    })
+    return () => { tokenSub.remove(); doneSub.remove(); errSub.remove(); stoppedSub.remove() }
   }, [])
 
   const loadModel = useCallback(async () => {
@@ -139,7 +146,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
     try {
       const path = modelPath ?? (modelBasePath ? `${modelBasePath}${modelBasePath.endsWith('/') ? '' : '/'}${GEMMA_MODEL_FILE}` : null)
       if (!path) throw new Error('Download Gemma first, then import the .task file from Downloads.')
-      await LLMModule.loadModel(path, 1024)
+      await LLMModule.loadModel(path, GEMMA_CONTEXT_TOKENS)
       setModelReady(true)
     } catch (e: any) {
       setLoadError(e?.message ?? 'Failed to load model')
@@ -155,7 +162,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
       const path = await ModelDownloader.importGemmaModel()
       setModelPath(path)
       if (!LLMModule) throw new Error('LLM module not available on this build')
-      await LLMModule.loadModel(path, 1024)
+      await LLMModule.loadModel(path, GEMMA_CONTEXT_TOKENS)
       setModelReady(true)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not import the Gemma model'
@@ -297,7 +304,7 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
       )
       setModelPath(path)
       if (!LLMModule) throw new Error('LLM module not available on this build')
-      await LLMModule.loadModel(path, 1024)
+      await LLMModule.loadModel(path, GEMMA_CONTEXT_TOKENS)
       setModelReady(true)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Не удалось скачать модель Gemma'
@@ -422,6 +429,19 @@ export function LLMAssistantView({ transcript, modelBasePath }: Props) {
             <Text style={styles.termsLink}>Открыть условия Gemma</Text>
           </TouchableOpacity>
           {loadError && <Text style={styles.error}>{loadError}</Text>}
+          {loadError && (
+            <TouchableOpacity
+              style={styles.importBtn}
+              onPress={() => {
+                void LLMModule?.unloadModel().catch(() => undefined)
+                setEngine('local')
+                setLoadError(null)
+              }}
+              disabled={loadingModel}
+            >
+              <Text style={styles.importBtnText}>Открыть стабильный каталог GGUF</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.loadBtn, loadingModel && styles.loadBtnDisabled]}
             onPress={modelPath ? loadModel : downloadModel}

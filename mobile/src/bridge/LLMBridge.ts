@@ -27,3 +27,4 @@ export const GEMMA_MODEL_URL =
   `https://github.com/nazkari86-lab/kz-voiceshield/releases/download/gemma-v1.0.0/${GEMMA_RELEASE_ASSET_FILE}`
 export const GEMMA_TERMS_URL = 'https://ai.google.dev/gemma/terms'
 export const GEMMA_MODEL_SIZE_MB = 555
+export const GEMMA_CONTEXT_TOKENS = 2048

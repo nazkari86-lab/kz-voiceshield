@@ -29,8 +29,8 @@ android {
         applicationId "kz.voiceshield"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 28
-        versionName "1.6.0"
+        versionCode 29
+        versionName "1.6.1"
 
         // Pilot distribution targets physical Android phones. Keeping the
         // release to ARM avoids shipping emulator-only native runtimes.
@@ -88,8 +88,9 @@ dependencies {
     // scanner available without a network connection after APK install.
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
-    // On-device LLM inference (Gemma 3 1B IT INT4 via MediaPipe)
-    implementation("com.google.mediapipe:tasks-genai:0.10.14")
+    // On-device LLM inference (Gemma 3 1B IT INT4 via MediaPipe).
+    // Gemma 3 support and explicit CPU/GPU backend selection require 0.10.27.
+    implementation("com.google.mediapipe:tasks-genai:0.10.27")
     testImplementation("junit:junit:4.13.2")
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

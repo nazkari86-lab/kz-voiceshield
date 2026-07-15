@@ -1,4 +1,5 @@
 import {
+  GEMMA_CONTEXT_TOKENS,
   GEMMA_MODEL_BYTES,
   GEMMA_MODEL_FILE,
   GEMMA_MODEL_SHA256,
@@ -18,5 +19,6 @@ describe('Gemma release contract', () => {
   it('matches the verified GitHub release metadata', () => {
     expect(GEMMA_MODEL_BYTES).toBe(554_661_243)
     expect(GEMMA_MODEL_SHA256).toBe('e3d981c01aeaaac69a84ffa0d4be13281b3176731063f1bea1c9fe6887bd9dee')
+    expect(GEMMA_CONTEXT_TOKENS).toBe(2048)
   })
 })

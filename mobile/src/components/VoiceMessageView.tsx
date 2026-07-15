@@ -5,6 +5,8 @@ import { enhanceTranscript } from '../utils/transcriptEnhancer'
 import { colors, riskColor, riskLabel } from '../theme'
 import { VoiceMessageModule } from '../bridge/VoiceMessageBridge'
 import { MotionPressable } from './MotionPressable'
+import type { CloudSpeechModelConfig } from '../data/cloudAiProviders'
+import { getActiveCloudSpeechModel, hasProviderApiKey, transcribeCloudAudio } from '../services/cloudAiClient'
 
 type Phase =
   | { kind: 'idle' }
@@ -23,6 +25,7 @@ type Props = {
 export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCall, onClearSharedAudio }: Props) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   const [elapsed, setElapsed] = useState(0)
+  const [cloudSpeechModel, setCloudSpeechModel] = useState<CloudSpeechModelConfig | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const spin = useRef(new Animated.Value(0)).current
 
@@ -46,6 +49,13 @@ export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCa
   }, [phase.kind, spin])
 
   useEffect(() => () => { stopTimer() }, [stopTimer])
+
+  useEffect(() => {
+    void getActiveCloudSpeechModel().then(async (config) => {
+      if (config && await hasProviderApiKey(config.providerId)) setCloudSpeechModel(config)
+      else setCloudSpeechModel(null)
+    }).catch(() => setCloudSpeechModel(null))
+  }, [])
 
   const transcribe = useCallback(async (source: 'pick' | 'call-recording' | 'pending') => {
     if (!VoiceMessageModule) {
@@ -78,6 +88,22 @@ export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCa
       }
     }
   }, [modelReady, onClearSharedAudio, startTimer, stopTimer])
+
+  const transcribeWithCloud = useCallback(async () => {
+    if (!VoiceMessageModule || !cloudSpeechModel) return
+    setPhase({ kind: 'picking' })
+    const startedAt = Date.now()
+    try {
+      const uri = await VoiceMessageModule.pickAudioUri()
+      setPhase({ kind: 'transcribing', elapsed: 0 })
+      const result = await transcribeCloudAudio(cloudSpeechModel, uri, 'voice-message.ogg', 'audio/ogg', 'kk')
+      setPhase({ kind: 'result', transcript: result.transcript, durationMs: Date.now() - startedAt, sampleCount: 0 })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not transcribe this audio with the cloud model.'
+      if (msg.includes('CANCELLED') || msg.includes('AUDIO_PICK_CANCELLED')) setPhase({ kind: 'idle' })
+      else setPhase({ kind: 'error', message: msg })
+    }
+  }, [cloudSpeechModel])
 
   // Auto-transcribe when another app shares audio
   useEffect(() => {
@@ -176,6 +202,13 @@ export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCa
             onPress={() => { if (modelReady) void transcribe('pick') }}
             disabled={!modelReady}
           ><Text style={styles.fileBtnText}>Pick voice message</Text><Text style={styles.fileBtnCopy}>OGG, M4A, MP3 or WAV</Text></MotionPressable>
+          {cloudSpeechModel && (
+            <MotionPressable style={styles.cloudBtn} onPress={() => { void transcribeWithCloud() }} disabled={!VoiceMessageModule}>
+              <Text style={styles.cloudBtnEyebrow}>CLOUD STT · {cloudSpeechModel.providerId.toUpperCase()}</Text>
+              <Text style={styles.cloudBtnText}>{cloudSpeechModel.name}</Text>
+              <Text style={styles.cloudBtnCopy}>Отправить выбранный аудиофайл в подключенный API</Text>
+            </MotionPressable>
+          )}
         </View>
       )}
 
@@ -193,7 +226,7 @@ export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCa
         <Text style={styles.formatsText}>
           OGG / Opus (WhatsApp, Telegram), M4A / AAC, MP3, WAV.
           Maximum 5 minutes per file.
-          No audio is uploaded — processing runs on this device.
+          Local mode does not upload audio. The cloud Speech-to-Text button uploads only the file you explicitly select.
         </Text>
       </View>
     </View>
@@ -248,6 +281,10 @@ const styles = StyleSheet.create({
   fileBtnDisabled: { opacity: 0.55 },
   fileBtnText: { color: colors.ink, fontSize: 14, fontWeight: '900' },
   fileBtnCopy: { color: colors.sub, fontSize: 11 },
+  cloudBtn: { backgroundColor: '#163b59', borderRadius: 8, gap: 2, paddingHorizontal: 17, paddingVertical: 14 },
+  cloudBtnEyebrow: { color: '#9edbff', fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
+  cloudBtnText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  cloudBtnCopy: { color: '#d2e8f5', fontSize: 11 },
 
   modelHint: { backgroundColor: colors.softBrand, borderRadius: 8, padding: 12 },
   modelHintText: { color: colors.brandDark, fontSize: 12, lineHeight: 18 },

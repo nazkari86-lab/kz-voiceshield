@@ -5,6 +5,7 @@ import {
   type CloudModelConfig,
   type CloudProvider,
   type CloudProviderId,
+  type CloudSpeechModelConfig,
 } from '../data/cloudAiProviders'
 import { redactSensitiveText } from '../scoring'
 
@@ -12,6 +13,7 @@ const KEY_PREFIX = 'voiceshield.cloud-api-key.'
 const DATA_CONSENT_PREFIX = 'voiceshield.cloud-data-consent.v1.'
 const LIVE_CONSENT_PREFIX = 'voiceshield.cloud-live-consent.v1.'
 const REQUEST_TIMEOUT_MS = 60_000
+export const ACTIVE_CLOUD_SPEECH_MODEL_KEY = 'voiceshield.cloud-speech-model.v1'
 
 type JsonRecord = Record<string, unknown>
 
@@ -69,6 +71,24 @@ export async function removeProviderApiKey(providerId: CloudProviderId): Promise
   ])
 }
 
+export async function getActiveCloudSpeechModel(): Promise<CloudSpeechModelConfig | null> {
+  const raw = await SecureStorage.getItem(ACTIVE_CLOUD_SPEECH_MODEL_KEY)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<CloudSpeechModelConfig>
+    if ((parsed.providerId === 'openai' || parsed.providerId === 'groq' || parsed.providerId === 'mistral')
+      && typeof parsed.modelId === 'string' && typeof parsed.name === 'string') {
+      return { providerId: parsed.providerId, modelId: parsed.modelId, name: parsed.name }
+    }
+  } catch { /* corrupted preference is ignored */ }
+  return null
+}
+
+export async function setActiveCloudSpeechModel(config: CloudSpeechModelConfig | null): Promise<void> {
+  if (!config) await SecureStorage.removeItem(ACTIVE_CLOUD_SPEECH_MODEL_KEY)
+  else await SecureStorage.setItem(ACTIVE_CLOUD_SPEECH_MODEL_KEY, JSON.stringify(config))
+}
+
 async function readProviderApiKey(providerId: CloudProviderId): Promise<string> {
   const key = await SecureStorage.getItem(providerKeyStorageKey(providerId))
   if (!key) throw new Error('API_KEY_MISSING: добавьте ключ выбранного провайдера.')
@@ -122,6 +142,56 @@ async function requestJson(url: string, provider: CloudProvider, apiKey: string,
   } finally {
     clearTimeout(timeout)
     init?.signal?.removeEventListener('abort', relayAbort)
+  }
+}
+
+function speechResponseText(payload: unknown): string {
+  const root = asRecord(payload)
+  return asString(root.text) || extractOpenAiText(payload)
+}
+
+export async function transcribeCloudAudio(
+  config: CloudSpeechModelConfig,
+  uri: string,
+  fileName = 'voice-message.ogg',
+  mimeType = 'audio/ogg',
+  language = 'kk',
+): Promise<{ transcript: string; confidence: number | null }> {
+  const provider = cloudProviderById[config.providerId]
+  if (!await hasProviderDataConsent(config.providerId)) {
+    throw new Error(`CLOUD_CONSENT_REQUIRED: подтвердите передачу аудио в ${provider.title}.`)
+  }
+  const apiKey = await readProviderApiKey(config.providerId)
+  const body = new FormData()
+  body.append('file', { uri, name: fileName, type: mimeType } as unknown as Blob)
+  body.append('model', config.modelId)
+  body.append('language', language)
+  body.append('response_format', config.modelId.startsWith('gpt-4o-') ? 'json' : 'verbose_json')
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    const response = await fetch(`${provider.baseUrl}/audio/transcriptions`, {
+      method: 'POST',
+      headers: authHeaders(provider, apiKey),
+      body,
+      signal: controller.signal,
+    })
+    const payload: unknown = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(safeErrorMessage(payload, response.status, apiKey))
+    const root = asRecord(payload)
+    const transcript = speechResponseText(payload).trim()
+    if (!transcript) throw new Error('Speech API вернул пустую транскрипцию.')
+    const segments = asArray(root.segments)
+    const logprobs = asArray(root.logprobs)
+    const confidence = logprobs.length > 0
+      ? Math.round(Math.max(0, Math.min(100, Math.exp(asNumber(asRecord(logprobs[0]).logprob) ?? -1) * 100)))
+      : segments.length > 0 ? 90 : null
+    return { transcript, confidence }
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') throw new Error('Speech API не ответил за 60 секунд.')
+    throw error
+  } finally {
+    clearTimeout(timeout)
   }
 }
 

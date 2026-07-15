@@ -3,18 +3,22 @@ import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, Vie
 import {
   cloudProviderById,
   cloudProviders,
+  cloudSpeechModels,
   type CapabilityState,
   type CloudModel,
   type CloudModelConfig,
+  type CloudSpeechModelConfig,
   type CloudProviderId,
 } from '../data/cloudAiProviders'
 import {
   hasProviderDataConsent,
   hasProviderApiKey,
   listCloudModels,
+  getActiveCloudSpeechModel,
   removeProviderApiKey,
   saveProviderApiKey,
   setProviderDataConsent,
+  setActiveCloudSpeechModel,
 } from '../services/cloudAiClient'
 import { colors } from '../theme'
 import { SecureStorage } from '../bridge/SecureStorageBridge'
@@ -47,6 +51,7 @@ export function CloudProviderCatalogView({ activeConfig, busy, error, onActivate
   const [priceFilter, setPriceFilter] = useState<PriceFilter>('all')
   const [loading, setLoading] = useState(false)
   const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [activeSpeechModel, setActiveSpeechModel] = useState<CloudSpeechModelConfig | null>(null)
   const provider = cloudProviderById[providerId]
 
   const refresh = useCallback(async (nextProviderId: CloudProviderId) => {
@@ -75,6 +80,10 @@ export function CloudProviderCatalogView({ activeConfig, busy, error, onActivate
   }, [])
 
   useEffect(() => { void refresh(providerId) }, [providerId, refresh])
+
+  useEffect(() => {
+    void getActiveCloudSpeechModel().then(setActiveSpeechModel).catch(() => setActiveSpeechModel(null))
+  }, [providerId])
 
   useEffect(() => {
     void SecureStorage.setScreenCaptureBlocked(true).catch(() => undefined)
@@ -273,6 +282,36 @@ export function CloudProviderCatalogView({ activeConfig, busy, error, onActivate
             )
           })}
           {!loading && visibleModels.length === 0 && <Text style={styles.empty}>Нет моделей для выбранного фильтра.</Text>}
+          {cloudSpeechModels.some((model) => model.providerId === providerId) && (
+            <View style={styles.speechSection}>
+              <View>
+                <Text style={styles.sectionTitle}>Speech-to-Text модели</Text>
+                <Text style={styles.speechIntro}>Эти модели распознают выбранный аудиофайл через официальный API. Для звонка аудио сначала нужно явно выбрать эту функцию; локальный FastConformer остается отдельным приватным режимом.</Text>
+              </View>
+              {cloudSpeechModels.filter((model) => model.providerId === providerId).map((model) => {
+                const active = activeSpeechModel?.providerId === model.providerId && activeSpeechModel.modelId === model.modelId
+                return (
+                  <Pressable
+                    key={model.modelId}
+                    disabled={busy || loading || !dataConsent}
+                    style={[styles.speechRow, active && styles.speechRowActive, !dataConsent && styles.disabled]}
+                    onPress={() => {
+                      const config: CloudSpeechModelConfig = { providerId: model.providerId, modelId: model.modelId, name: model.name }
+                      void setActiveCloudSpeechModel(config).then(() => setActiveSpeechModel(config)).catch((cause) => setCatalogError(cause instanceof Error ? cause.message : 'Не удалось выбрать Speech-to-Text модель.'))
+                    }}
+                  >
+                    <View style={styles.flex}>
+                      <Text style={styles.modelName}>{model.name}</Text>
+                      <Text style={styles.modelId}>{model.modelId}</Text>
+                      <Text style={styles.modelMeta}>{model.detail} · {model.quality.toUpperCase()}</Text>
+                    </View>
+                    <Text style={[styles.speechUse, active && styles.speechUseActive]}>{active ? 'ACTIVE' : 'USE'}</Text>
+                  </Pressable>
+                )
+              })}
+              {!dataConsent && <Text style={styles.consentRequired}>Сначала разрешите передачу аудио провайдеру.</Text>}
+            </View>
+          )}
         </View>
       )}
 
@@ -338,6 +377,12 @@ const styles = StyleSheet.create({
   filterTextActive: { color: '#fff' },
   modelRow: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 8, padding: 11 },
   modelRowActive: { backgroundColor: colors.softBrand, borderColor: colors.brand },
+  speechSection: { borderColor: colors.brand, borderRadius: 8, borderWidth: 1, gap: 8, marginTop: 7, padding: 11 },
+  speechIntro: { color: colors.sub, fontSize: 10, lineHeight: 15, marginTop: 4 },
+  speechRow: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 7, borderWidth: 1, flexDirection: 'row', gap: 8, padding: 10 },
+  speechRowActive: { backgroundColor: colors.softBrand, borderColor: colors.brand },
+  speechUse: { color: colors.brandDark, fontSize: 9, fontWeight: '900' },
+  speechUseActive: { color: colors.brand, fontSize: 9, fontWeight: '900' },
   modelName: { color: colors.ink, fontSize: 12, fontWeight: '900' },
   modelId: { color: colors.brand, fontSize: 9, marginTop: 2 },
   modelMeta: { color: colors.sub, fontSize: 9, marginTop: 4 },

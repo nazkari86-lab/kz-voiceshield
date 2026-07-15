@@ -11,6 +11,7 @@ type VoiceMessageNativeModule = {
   pickCallRecordingAndTranscribe(language: string): Promise<VoiceMessageResult>
   transcribePendingAudio(language: string): Promise<VoiceMessageResult | null>
   consumePendingAudio(): Promise<boolean>
+  pickAudioUri(): Promise<string>
 }
 
 export const VoiceMessageModule = NativeModules.VoiceMessageModule as VoiceMessageNativeModule | undefined

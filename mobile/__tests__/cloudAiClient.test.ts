@@ -19,6 +19,7 @@ import {
   saveProviderApiKey,
   setProviderDataConsent,
   setProviderLiveConsent,
+  transcribeCloudAudio,
 } from '../src/services/cloudAiClient'
 
 const jsonResponse = (payload: unknown, ok = true, status = 200) => ({
@@ -85,6 +86,26 @@ describe('cloud AI client', () => {
     expect(url).toBe(expectedUrl)
     expect(init.headers[header]).toBe(expectedHeader)
     expect(result).toBe(expectedText)
+  })
+
+  it('uploads an explicitly selected audio file to Groq Whisper Turbo', async () => {
+    mockSecureValues.set(providerKeyStorageKey('groq'), 'gsk-test-secret')
+    mockSecureValues.set(providerDataConsentStorageKey('groq'), 'accepted')
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse({ text: 'Қауіпсіздік кодыңызды айтыңыз', segments: [{ text: 'x' }] }))
+
+    const result = await transcribeCloudAudio(
+      { providerId: 'groq', modelId: 'whisper-large-v3-turbo', name: 'Whisper Large v3 Turbo' },
+      'content://selected-audio',
+      'call.ogg',
+      'audio/ogg',
+      'kk',
+    )
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0]
+    expect(url).toBe('https://api.groq.com/openai/v1/audio/transcriptions')
+    expect(init.headers.Authorization).toBe('Bearer gsk-test-secret')
+    expect(init.body).toBeInstanceOf(FormData)
+    expect(result).toMatchObject({ transcript: 'Қауіпсіздік кодыңызды айтыңыз', confidence: 90 })
   })
 
   it('redacts a provider key from API errors', async () => {

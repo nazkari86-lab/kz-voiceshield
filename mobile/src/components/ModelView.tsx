@@ -1,9 +1,10 @@
 import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
 import { colors } from '../theme'
 import { Card, Metric, SectionTitle, ui } from './ui'
 import { modelManifest } from '../data/modelManifest'
 import { kazakhQualityPackComponents } from '../data/kazakhQualityPack'
+import { LocalizedText as Text } from './LocalizedText'
 
 export function ModelView() {
   const { activeDetector, ml, privacy } = modelManifest

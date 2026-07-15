@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, Linking, Pressable, StyleSheet, TextInput, View } from 'react-native'
 import {
   cloudProviderById,
   cloudProviders,
@@ -22,6 +22,7 @@ import {
 } from '../services/cloudAiClient'
 import { colors } from '../theme'
 import { SecureStorage } from '../bridge/SecureStorageBridge'
+import { LocalizedText as Text } from './LocalizedText'
 
 type Props = {
   activeConfig: CloudModelConfig | null

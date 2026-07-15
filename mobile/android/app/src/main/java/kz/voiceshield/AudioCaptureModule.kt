@@ -9,6 +9,11 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.k2fsa.sherpa.onnx.SileroVadModelConfig
+import com.k2fsa.sherpa.onnx.Vad
+import com.k2fsa.sherpa.onnx.VadModelConfig
+import java.io.File
+import java.io.FileOutputStream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,6 +26,7 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private var recorder: AudioRecord? = null
   private var job: Job? = null
+  private var vad: Vad? = null
 
   override fun getName(): String = "AudioCaptureModule"
 
@@ -51,6 +57,7 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
       val started = Arguments.createMap()
       started.putString("source", source)
       AppRegistry.sendEvent("VS_AUDIO_CAPTURE_STARTED", started)
+      prepareVad()
       emitRouteStatus()
       job = scope.launch {
         val buffer = ShortArray(1600)
@@ -60,6 +67,10 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
             AppRegistry.whisperModule?.pushAudio(buffer.copyOf(read))
             val payload = Arguments.createMap()
             payload.putDouble("level", buffer.take(read).maxOf { abs(it.toInt()) } / 32768.0)
+            vad?.let { model ->
+              payload.putDouble("speechConfidence", computeVad(model, buffer, read).toDouble())
+              payload.putBoolean("neuralVad", true)
+            } ?: payload.putBoolean("neuralVad", false)
             AppRegistry.sendEvent("VS_AUDIO_LEVEL", payload)
           } else if (read < 0) {
             val payload = Arguments.createMap()
@@ -98,6 +109,59 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
     }
     recorder?.release()
     recorder = null
+    vad?.release()
+    vad = null
+  }
+
+  private fun prepareVad() {
+    try {
+      val target = File(context.filesDir, "models/silero_vad.onnx")
+      if (!target.isFile || target.length() == 0L) {
+        target.parentFile?.mkdirs()
+        context.assets.open("silero_vad.onnx").use { input ->
+          FileOutputStream(target).use { output -> input.copyTo(output) }
+        }
+      }
+      vad?.release()
+      vad = VadModelConfig.builder()
+        .setSampleRate(16000)
+        .setNumThreads(1)
+        .setDebug(false)
+        .setProvider("cpu")
+        .setSileroVadModelConfig(
+          SileroVadModelConfig.builder()
+            .setModel(target.absolutePath)
+            .setThreshold(0.5f)
+            .setMinSilenceDuration(0.25f)
+            .setMinSpeechDuration(0.1f)
+            .setWindowSize(512)
+            .build()
+        )
+        .build()
+        .let(::Vad)
+      val payload = Arguments.createMap()
+      payload.putBoolean("available", true)
+      AppRegistry.sendEvent("VS_VAD_STATUS", payload)
+    } catch (error: Throwable) {
+      vad = null
+      val payload = Arguments.createMap()
+      payload.putBoolean("available", false)
+      payload.putString("reason", error.message ?: "Silero VAD failed to load")
+      AppRegistry.sendEvent("VS_VAD_STATUS", payload)
+    }
+  }
+
+  private fun computeVad(model: Vad, samples: ShortArray, length: Int): Float {
+    var total = 0f
+    var count = 0
+    var offset = 0
+    while (offset + 512 <= length) {
+      val frame = FloatArray(512) { index -> samples[offset + index] / 32768.0f }
+      total += model.compute(frame).coerceIn(0f, 1f)
+      count++
+      offset += 512
+    }
+    return if (count == 0) 0f else total / count
   }
 
   private fun startRecorder(minBuffer: Int): String? {

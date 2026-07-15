@@ -37,7 +37,7 @@ def create_app(
         yield
         repository.close()
 
-    app = FastAPI(title="KZ VoiceShield API", version="1.9.0", lifespan=lifespan)
+    app = FastAPI(title="KZ VoiceShield API", version="1.9.7", lifespan=lifespan)
     app.state.settings = resolved_settings
     app.state.repository = repository
     app.state.model_service = resolved_model
@@ -77,8 +77,22 @@ def create_app(
             assessment = resolved_model.assess(body.transcript)
         except ModelUnavailable as error:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
-        repository.audit(principal.user_id, "transcript_analyzed", {"length": len(body.transcript)})
-        return {"ml": assessment}
+        rule_score = body.ruleAnalysis.get("score")
+        disagreement: dict[str, Any]
+        if isinstance(rule_score, (int, float)):
+            bounded_rule = max(0, min(100, float(rule_score)))
+            delta = round(float(assessment["score"]) - bounded_rule, 1)
+            if delta >= 20:
+                kind = "rules_low_ml_high"
+            elif delta <= -20:
+                kind = "rules_high_ml_low"
+            else:
+                kind = "aligned"
+            disagreement = {"kind": kind, "ruleScore": round(bounded_rule, 1), "mlScore": assessment["score"], "delta": delta}
+        else:
+            disagreement = {"kind": "insufficient_rule_score", "ruleScore": None, "mlScore": assessment["score"], "delta": None}
+        repository.audit(principal.user_id, "transcript_analyzed", {"length": len(body.transcript), "disagreement": disagreement["kind"]})
+        return {"ml": assessment, "disagreement": disagreement}
 
     def process_audio_job(job_id: str, audio_bytes: bytes, suffix: str, actor: str) -> None:
         repository.update_audio_job(job_id, "processing")
@@ -134,10 +148,11 @@ def create_app(
     @app.get("/cases")
     def list_cases(
         case_status: str | None = Query(default=None, alias="status", pattern="^(new|reviewing|escalated|closed)$"),
+        assigned_to: str | None = Query(default=None, alias="assignedTo", min_length=1, max_length=120),
         limit: int = Query(default=100, ge=1, le=500),
         _: Principal = Depends(require_roles("reviewer", "admin")),
     ) -> dict[str, Any]:
-        items = repository.list_cases(case_status, limit)
+        items = repository.list_cases(case_status, limit, assigned_to)
         return {"items": items, "count": len(items)}
 
     @app.get("/cases/{case_id}")

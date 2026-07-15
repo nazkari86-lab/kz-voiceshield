@@ -109,11 +109,21 @@ class Repository:
             row = self._connection.execute("SELECT payload FROM cases WHERE id = ?", (case_id,)).fetchone()
         return self._cipher.decrypt_json(row["payload"]) if row else None
 
-    def list_cases(self, status: str | None, limit: int) -> list[dict[str, Any]]:
+    def list_cases(self, status: str | None, limit: int, assigned_to: str | None = None) -> list[dict[str, Any]]:
         with self._lock:
-            if status:
+            if status and assigned_to:
+                rows = self._connection.execute(
+                    "SELECT payload FROM cases WHERE status = ? AND assigned_to = ? ORDER BY updated_at DESC LIMIT ?",
+                    (status, assigned_to, limit),
+                ).fetchall()
+            elif status:
                 rows = self._connection.execute(
                     "SELECT payload FROM cases WHERE status = ? ORDER BY updated_at DESC LIMIT ?", (status, limit)
+                ).fetchall()
+            elif assigned_to:
+                rows = self._connection.execute(
+                    "SELECT payload FROM cases WHERE assigned_to = ? ORDER BY updated_at DESC LIMIT ?",
+                    (assigned_to, limit),
                 ).fetchall()
             else:
                 rows = self._connection.execute("SELECT payload FROM cases ORDER BY updated_at DESC LIMIT ?", (limit,)).fetchall()

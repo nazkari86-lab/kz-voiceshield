@@ -66,12 +66,12 @@ def case_payload(case_id: str = "case-1") -> dict:
 
 def test_health_is_public_and_auth_is_required(api):
     client, _ = api
-    assert client.get("/health").json() == {"ok": True, "version": "1.9.0", "mlAvailable": True}
+    assert client.get("/health").json() == {"ok": True, "version": "1.9.7", "mlAvailable": True}
     readiness = client.get("/readyz")
     assert readiness.status_code == 200
     assert readiness.json() == {
         "ok": True,
-        "version": "1.9.0",
+        "version": "1.9.7",
         "database": "ok",
         "mlAvailable": True,
         "serverSttConfigured": True,
@@ -90,6 +90,19 @@ def test_analyzes_with_experimental_model(api):
     )
     assert response.status_code == 200
     assert response.json()["ml"]["verdict"] == "fraud"
+    assert response.json()["disagreement"]["kind"] == "aligned"
+
+
+def test_analyze_reports_rule_ml_disagreement(api):
+    client, _ = api
+    response = client.post(
+        "/analyze-transcript",
+        headers=auth("analyst-token"),
+        json={"transcript": "Обычный разговор без опасных слов", "ruleAnalysis": {"score": 90}},
+    )
+    assert response.status_code == 200
+    assert response.json()["disagreement"]["kind"] == "rules_high_ml_low"
+    assert response.json()["disagreement"]["delta"] == -86
 
 
 def test_case_storage_is_encrypted_and_role_guarded(api):

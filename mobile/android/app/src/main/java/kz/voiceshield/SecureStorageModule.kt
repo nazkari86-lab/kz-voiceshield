@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.view.WindowManager
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -49,6 +50,23 @@ class SecureStorageModule(private val context: ReactApplicationContext) : ReactC
     val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
     if (keyStore.containsAlias(keyAlias)) keyStore.deleteEntry(keyAlias)
     true
+  }
+
+  @ReactMethod
+  fun setScreenCaptureBlocked(blocked: Boolean, promise: Promise) {
+    context.runOnUiQueueThread {
+      try {
+        val window = currentActivity?.window ?: error("No active Android window")
+        if (blocked) {
+          window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+          window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        promise.resolve(true)
+      } catch (error: Throwable) {
+        promise.reject("SECURE_WINDOW_FAILED", error.message ?: "Could not update secure window", error)
+      }
+    }
   }
 
   private fun encrypt(value: String): String {

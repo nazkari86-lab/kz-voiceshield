@@ -5,6 +5,7 @@ type SecureStorageNativeModule = {
   setItem(key: string, value: string): Promise<boolean>
   removeItem(key: string): Promise<boolean>
   clear(): Promise<boolean>
+  setScreenCaptureBlocked(blocked: boolean): Promise<boolean>
 }
 
 export const SecureStorage = NativeModules.SecureStorageModule as SecureStorageNativeModule

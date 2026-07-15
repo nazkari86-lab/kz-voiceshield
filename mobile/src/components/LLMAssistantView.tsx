@@ -19,8 +19,9 @@ import type { ModelStorageInfo } from '../data/whisperModels'
 import { buildPrompt, buildUserMessage, QUICK_QUESTIONS, SYSTEM_PROMPT } from '../utils/llmPrompts'
 import { colors } from '../theme'
 import { LocalModelCatalogView } from './LocalModelCatalogView'
+import { CloudProviderCatalogView } from './CloudProviderCatalogView'
 import { Card, SectionTitle } from './ui'
-import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
+import type { AssistantEngine, OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
 
 type ChatMessage = { role: 'user' | 'assistant'; text: string; streaming?: boolean }
 
@@ -47,6 +48,7 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
   const [generating, setGenerating] = useState(false)
   const [loadingModel, setLoadingModel] = useState(false)
   const [showCatalog, setShowCatalog] = useState(false)
+  const [showCloudCatalog, setShowCloudCatalog] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [modelPath, setModelPath] = useState<string | null>(modelBasePath ?? null)
   const [installedModels, setInstalledModels] = useState<InstalledLocalModel[]>([])
@@ -111,6 +113,7 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
       if (!path) throw new Error('Download Gemma first, then import the .task file from Downloads.')
       await ai.loadGemma(path)
       setShowCatalog(false)
+      setShowCloudCatalog(false)
     } catch (e: any) {
       setLoadError(e?.message ?? 'Failed to load model')
     } finally {
@@ -126,6 +129,7 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
       setModelPath(path)
       await ai.loadGemma(path)
       setShowCatalog(false)
+      setShowCloudCatalog(false)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not import the Gemma model'
       if (!message.includes('MODEL_IMPORT_CANCELLED')) setLoadError(message)
@@ -255,6 +259,7 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
       setModelPath(path)
       await ai.loadGemma(path)
       setShowCatalog(false)
+      setShowCloudCatalog(false)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Не удалось скачать модель Gemma'
       setLoadError(message)
@@ -317,30 +322,51 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
     setGenerating(false)
   }, [ai])
 
-  const selectEngine = useCallback(async (next: 'gemma' | 'local') => {
+  const selectEngine = useCallback(async (next: AssistantEngine) => {
     setLoadError(null)
     await ai.selectEngine(next)
     if (next === 'gemma') {
       setShowCatalog(false)
+      setShowCloudCatalog(false)
       await loadModel()
       return
     }
-    setShowCatalog(true)
+    setShowCatalog(next === 'local')
+    setShowCloudCatalog(next === 'cloud')
   }, [ai, loadModel])
 
-  if (!modelReady || showCatalog) {
+  if (!modelReady || showCatalog || showCloudCatalog) {
     return (
-      <View style={styles.root}>
+      <ScrollView style={styles.root} contentContainerStyle={styles.setupContent} keyboardShouldPersistTaps="handled">
         <SectionTitle>VoiceShield AI</SectionTitle>
         <View style={styles.engineRow}>
           <TouchableOpacity style={[styles.engineChip, engine === 'gemma' && styles.engineChipActive]} onPress={() => { void selectEngine('gemma') }}>
             <Text style={[styles.engineChipText, engine === 'gemma' && styles.engineChipTextActive]}>Gemma</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.engineChip, engine === 'local' && styles.engineChipActive]} onPress={() => { void selectEngine('local') }}>
-            <Text style={[styles.engineChipText, engine === 'local' && styles.engineChipTextActive]}>Каталог моделей</Text>
+            <Text style={[styles.engineChipText, engine === 'local' && styles.engineChipTextActive]}>Локальные</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.engineChip, engine === 'cloud' && styles.engineChipActive]} onPress={() => { void selectEngine('cloud') }}>
+            <Text style={[styles.engineChipText, engine === 'cloud' && styles.engineChipTextActive]}>API модели</Text>
           </TouchableOpacity>
         </View>
-        {engine === 'local' ? (
+        {engine === 'cloud' ? (
+          <CloudProviderCatalogView
+            activeConfig={ai.activeCloudConfig}
+            busy={modelBusy}
+            error={visibleError}
+            onActivate={async (config) => {
+              setLoadError(null)
+              try {
+                await ai.loadCloudModel(config)
+                setShowCloudCatalog(false)
+              } catch (error) {
+                setLoadError(error instanceof Error ? error.message : 'Не удалось активировать API-модель.')
+              }
+            }}
+            onCredentialRemoved={ai.invalidateCloudCredentials}
+          />
+        ) : engine === 'local' ? (
           <LocalModelCatalogView
             installedModels={installedModels}
             activeModelId={activeLocalModelId}
@@ -378,7 +404,7 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
               style={styles.importBtn}
               onPress={() => {
                 setLoadError(null)
-                void ai.selectEngine('local').then(() => setShowCatalog(true))
+                void ai.selectEngine('local').then(() => { setShowCatalog(true); setShowCloudCatalog(false) })
               }}
               disabled={modelBusy}
             >
@@ -400,7 +426,7 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
           </TouchableOpacity>
           </Card>
         )}
-      </View>
+      </ScrollView>
     )
   }
 
@@ -412,13 +438,22 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
           <Text style={[styles.engineChipText, engine === 'gemma' && styles.engineChipTextActive]}>Gemma</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.engineChip, engine === 'local' && styles.engineChipActive]} onPress={() => { void selectEngine('local') }}>
-          <Text style={[styles.engineChipText, engine === 'local' && styles.engineChipTextActive]}>Каталог моделей</Text>
+          <Text style={[styles.engineChipText, engine === 'local' && styles.engineChipTextActive]}>Локальные</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.engineChip, engine === 'cloud' && styles.engineChipActive]} onPress={() => { void selectEngine('cloud') }}>
+          <Text style={[styles.engineChipText, engine === 'cloud' && styles.engineChipTextActive]}>API модели</Text>
         </TouchableOpacity>
       </View>
 
       {engine === 'local' && (
         <TouchableOpacity style={styles.switchModelButton} onPress={() => setShowCatalog(true)} disabled={generating || ai.generating}>
           <Text style={styles.switchModelText}>Сменить локальную модель</Text>
+        </TouchableOpacity>
+      )}
+
+      {engine === 'cloud' && (
+        <TouchableOpacity style={styles.switchModelButton} onPress={() => setShowCloudCatalog(true)} disabled={generating || ai.generating}>
+          <Text style={styles.switchModelText}>Сменить API-модель</Text>
         </TouchableOpacity>
       )}
 
@@ -498,6 +533,7 @@ export function LLMAssistantView({ transcript, modelBasePath, ai }: Props) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, minHeight: 400 },
+  setupContent: { paddingBottom: 24 },
   setupTitle: { color: colors.ink, fontSize: 16, fontWeight: '800', marginBottom: 6 },
   engineRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   engineChip: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, flex: 1, padding: 9 },

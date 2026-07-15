@@ -7,7 +7,7 @@
 
 KZ VoiceShield is a local-first anti-scam call review workspace for Kazakh and Russian conversations.
 
-It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. Version 1.7.0 is a private-beta system: the web and Android apps can run locally, and the optional FastAPI backend supports authenticated case sync, reviewer workflow, audit logging, queued audio transcription, and experimental ML comparison. It is still not a production anti-fraud platform until public deployment, real RU/KZ validation, durable storage/queues, and production identity are in place.
+It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. Version 1.8.0 is a private-beta system: the web and Android apps can run locally, and the optional FastAPI backend supports authenticated case sync, reviewer workflow, audit logging, queued audio transcription, and experimental ML comparison. It is still not a production anti-fraud platform until public deployment, real RU/KZ validation, durable storage/queues, and production identity are in place.
 
 ## Core Workflow
 
@@ -179,6 +179,16 @@ shows its risk, suspected scheme, evidence, immediate action, and disagreement
 with deterministic rules. Only one LLM context is kept in memory. Devices with
 insufficient RAM are asked to choose a smaller model instead of attempting an
 unsafe concurrent load.
+
+## Mobile 1.8.0
+
+The Android AI assistant adds a secure cloud API hub for OpenAI, Anthropic,
+Gemini, Groq, Cerebras, OpenRouter, xAI, DeepSeek, and Mistral. Provider model
+lists are loaded dynamically, OpenRouter exposes free/paid filtering, and the
+selected API model is shared by assistant chat and Live AI analysis. Credentials
+are encrypted through Android Keystore, the key-entry screen blocks capture,
+and plaintext HTTP is disabled. See [`docs/CLOUD_AI_SECURITY.md`](docs/CLOUD_AI_SECURITY.md)
+for the implemented capability and threat-model boundary.
 
 ## Tech Stack
 

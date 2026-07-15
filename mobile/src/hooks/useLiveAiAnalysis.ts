@@ -133,7 +133,7 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
       setAnalyzedAt(Date.now())
       setStatus('ready')
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Локальный AI не смог проанализировать транскрипт.'
+      const message = cause instanceof Error ? cause.message : 'AI не смог проанализировать транскрипт.'
       if (!enabledRef.current) {
         setStatus('disabled')
       } else if (/AI_BUSY/iu.test(message)) {

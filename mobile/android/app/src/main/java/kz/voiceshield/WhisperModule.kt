@@ -14,6 +14,8 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 
 class WhisperModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -90,7 +92,17 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
         val bufferedSamples = whisper?.bufferSize() ?: fastConformer?.bufferSize() ?: 0
         if (bufferedSamples >= 32000) {
           val startedAt = System.currentTimeMillis()
-          val text = (whisper?.transcribe() ?: fastConformer?.transcribe().orEmpty()).trim()
+          val text = try {
+            withTimeout(15_000) {
+              (whisper?.transcribe() ?: fastConformer?.transcribe().orEmpty()).trim()
+            }
+          } catch (_: TimeoutCancellationException) {
+            // Native inference hung — reset buffer and continue; next chunk retries.
+            whisper?.reset()
+            fastConformer?.reset()
+            lastTranscript = ""
+            continue
+          }
           if (text.isEmpty() || text == lastTranscript) continue
           lastTranscript = text
           val payload = Arguments.createMap()
@@ -105,7 +117,19 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
 
   @ReactMethod fun stopStreaming(promise: Promise) { streamJob?.cancel(); streamJob = null; promise.resolve(null) }
   @ReactMethod fun isInitialized(promise: Promise) { promise.resolve(whisper != null || fastConformer != null) }
-  @ReactMethod fun resetBuffer(promise: Promise) { whisper?.reset(); fastConformer?.reset(); lastTranscript = ""; promise.resolve(null) }
+  @ReactMethod fun resetBuffer(promise: Promise) {
+    // Must run on the coroutine scope — resetBuffer is called from the RN bridge thread
+    // while audioWorkerJob and streamJob may concurrently hold whisper/fastConformer.
+    // Cancelling streamJob first prevents a race between reset() and an in-flight transcribe().
+    scope.launch {
+      streamJob?.cancel()
+      streamJob = null
+      whisper?.reset()
+      fastConformer?.reset()
+      lastTranscript = ""
+      promise.resolve(null)
+    }
+  }
   @ReactMethod fun getBufferSize(promise: Promise) { promise.resolve(whisper?.bufferSize() ?: fastConformer?.bufferSize() ?: 0) }
 
   override fun invalidate() {

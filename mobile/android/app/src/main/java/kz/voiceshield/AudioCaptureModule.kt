@@ -69,6 +69,9 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
             val payload = Arguments.createMap()
             payload.putString("message", "Android microphone read failed (code $read). Stop protection and start it again.")
             AppRegistry.sendEvent("VS_AUDIO_CAPTURE_ERROR", payload)
+            // Release AudioRecord so the next startCapture() opens a fresh instance
+            // instead of seeing RECORDSTATE_RECORDING and silently returning.
+            stopInternal()
             break
           }
         }

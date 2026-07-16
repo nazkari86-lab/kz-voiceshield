@@ -283,6 +283,10 @@ export function useWorkspace() {
   }, [privacyConsent])
 
   // ---- live transcript wiring ----
+  // VS_WHISPER_TRANSCRIPT and VS_ACCESSIBILITY_TEXT are always-on subscriptions.
+  // Keeping them outside the [isListening] effect prevents a ~4ms re-subscription
+  // gap at session start where the first Whisper segment would be silently dropped.
+  // Internal isListening guards handle whether to process the event.
   useEffect(() => {
     const liveCaptionSub = accessibilityEvents.addListener('VS_ACCESSIBILITY_TEXT', (event: { appSignalId?: string; text?: string }) => {
       if (!isListening) return
@@ -315,6 +319,14 @@ export function useWorkspace() {
       setSource('Whisper')
       setTranscript((current) => `${current} ${event.text}`.trim())
     })
+    return () => {
+      liveCaptionSub.remove()
+      whisperSub.remove()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
     const levelSub = audioEvents.addListener('VS_AUDIO_LEVEL', (event: { level?: number }) => {
       const level = event.level ?? 0
       if (level >= 0.015) lastAudibleAtRef.current = Date.now()
@@ -348,8 +360,6 @@ export function useWorkspace() {
     })
     const modelSub = modelEvents.addListener('VS_MODEL_DOWNLOAD_PROGRESS', (event: { progress?: number }) => setModelProgress(event.progress ?? null))
     return () => {
-      liveCaptionSub.remove()
-      whisperSub.remove()
       levelSub.remove()
       audioErrorSub.remove()
       audioStartedSub.remove()
@@ -519,6 +529,11 @@ export function useWorkspace() {
   }, [])
 
   const switchToMicrophoneFallback = useCallback(async () => {
+    // Guard against concurrent invocations (double-tap, race with startListening).
+    // Without this, two calls can both reach resetBuffer()+startStreaming()+startCapture()
+    // on already-running native components, corrupting the audio pipeline.
+    if (captureTransitionRef.current) return
+    captureTransitionRef.current = true
     setCaptureError(null)
     try {
       const overlayReady = await OverlayModule.canDrawOverlays()
@@ -543,6 +558,8 @@ export function useWorkspace() {
       await OverlayModule.show(true)
     } catch {
       setCaptureError('Microphone fallback could not start. Check the microphone permission and Whisper model in Setup.')
+    } finally {
+      captureTransitionRef.current = false
     }
   }, [modelReady, prepareWhisper])
 

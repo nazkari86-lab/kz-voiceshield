@@ -44,6 +44,20 @@ function RiskChip({ score }: { score: number }) {
   return <View style={[styles.chip, { backgroundColor: bg }]}><Text style={[styles.chipText, { color: fg }]}>{level.toUpperCase()} {score > 0 ? `·${score}` : ''}</Text></View>
 }
 
+function responseActions(score: number, hasKnownScamNumber: boolean): string[] {
+  if (hasKnownScamNumber || score >= 60) return [
+    'Do not reply, open links, or share any code.',
+    'Block the sender and take a screenshot for your report.',
+    'If you entered data, call your bank using its official number immediately.',
+  ]
+  if (score >= 30) return [
+    'Do not use links or phone numbers from this message.',
+    'Verify the claim through the organisation’s official app or website.',
+  ]
+  if (score > 0) return ['Treat this message cautiously and verify it through an official channel.']
+  return ['No high-risk signal was found. Never share SMS codes with callers.']
+}
+
 export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) => void; ai?: OnDeviceAiRuntime }) {
   const [messages, setMessages] = useState<(SmsMessage & { scamScore: number; scamReasons: string[] })[]>([])
   const [loading, setLoading] = useState(false)
@@ -134,6 +148,7 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
 
       {visibleMessages.map(msg => {
         const scamEntry = checkScamNumber(msg.address)
+        const actions = responseActions(msg.scamScore, Boolean(scamEntry))
         return (
           <Card key={msg.id} tone={msg.scamScore >= 60 ? 'critical' : msg.scamScore >= 30 ? 'high' : 'low'}>
             <View style={styles.msgHeader}>
@@ -147,6 +162,10 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
             )}
             <Text style={styles.body} numberOfLines={4}>{msg.body}</Text>
             {msg.scamReasons.length > 0 && <Text style={styles.reasons}>Почему отмечено: {msg.scamReasons.slice(0, 3).join(' · ')}</Text>}
+            <View style={styles.actionsPanel}>
+              <Text style={styles.actionsTitle}>What to do now</Text>
+              {actions.map((action) => <Text key={action} style={styles.actionCopy}>• {action}</Text>)}
+            </View>
             {onAnalyze && <TouchableOpacity style={styles.analyzeBtn} onPress={() => onAnalyze(msg.body)}><Text style={styles.analyzeBtnText}>Открыть полный анализ</Text></TouchableOpacity>}
             {ai && <AiAssistButton ai={ai} context={`SMS sender: ${msg.address}\nLocal SMS score: ${msg.scamScore}/100\nReasons: ${msg.scamReasons.join('; ')}\nMessage: ${msg.body}`} label="Объяснить SMS через AI" />}
             <Text style={styles.date}>{new Date(msg.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Text>
@@ -179,6 +198,9 @@ const styles = StyleSheet.create({
   numAlertText: { color: '#9a3412', fontSize: 12, fontWeight: '700' },
   body: { color: colors.ink, fontSize: 13, lineHeight: 19, marginTop: 4 },
   reasons: { color: '#9a3412', fontSize: 11, lineHeight: 16, marginTop: 5 },
+  actionsPanel: { backgroundColor: '#f8fafc', borderRadius: 7, gap: 2, marginTop: 8, padding: 9 },
+  actionsTitle: { color: colors.ink, fontSize: 12, fontWeight: '900' },
+  actionCopy: { color: colors.sub, fontSize: 12, lineHeight: 17 },
   analyzeBtn: { alignSelf: 'flex-start', borderColor: colors.border, borderRadius: 7, borderWidth: 1, marginTop: 8, paddingHorizontal: 10, paddingVertical: 7 },
   analyzeBtnText: { color: colors.brandDark, fontSize: 11, fontWeight: '900' },
   date: { color: colors.muted, fontSize: 11, marginTop: 4 },

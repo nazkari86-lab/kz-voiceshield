@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import sqlite3
 from pathlib import Path
 
@@ -56,6 +58,11 @@ def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def jwt_payload(token: str) -> dict:
+    payload = token.split(".")[1]
+    return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+
+
 def case_payload(case_id: str = "case-1") -> dict:
     return {
         "id": case_id,
@@ -108,6 +115,31 @@ def test_livekit_is_explicitly_disabled_without_server_secrets(api):
     assert "not configured" in response.json()["detail"]
 
 
+def test_livekit_issues_distinct_participant_identities(tmp_path: Path):
+    settings = Settings(
+        api_tokens={"analyst-token": Principal("analyst-1", "analyst")},
+        database_path=tmp_path / "voiceshield.db",
+        encryption_key=Fernet.generate_key().decode("ascii"),
+        model_path=None,
+        livekit_url="ws://127.0.0.1:7880",
+        livekit_api_key="test-key",
+        livekit_api_secret="test-secret-for-livekit-token-signing-32",
+    )
+    app = create_app(settings=settings, transcriber=FakeTranscriber(), model_service=FakeModel())
+    with TestClient(app) as client:
+        created = client.post("/calls/create", headers=auth("analyst-token"))
+        assert created.status_code == 200
+        joined = client.post(
+            f"/calls/{created.json()['callId']}/join", headers=auth("analyst-token")
+        )
+        assert joined.status_code == 200
+
+    creator_payload = jwt_payload(created.json()["token"])
+    joiner_payload = jwt_payload(joined.json()["token"])
+    assert creator_payload["sub"] != joiner_payload["sub"]
+    assert creator_payload["name"] == joiner_payload["name"] == "analyst-1"
+
+
 def test_analyzes_with_experimental_model(api):
     client, _ = api
     response = client.post(
@@ -117,6 +149,7 @@ def test_analyzes_with_experimental_model(api):
     )
     assert response.status_code == 200
     assert response.json()["ml"]["verdict"] == "fraud"
+    assert response.json()["disagreement"] == "aligned"
 
 
 def test_case_storage_is_encrypted_and_role_guarded(api):
@@ -276,4 +309,5 @@ def test_analyze_transcript_returns_200_when_ml_unavailable(tmp_path: Path):
     body = response.json()
     assert body["ml"] is None
     assert body["mlAvailable"] is False
+    assert body["disagreement"] == "unavailable"
     assert "redactedTranscript" in body

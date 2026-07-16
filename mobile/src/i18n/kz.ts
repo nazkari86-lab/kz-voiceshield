@@ -44,4 +44,17 @@ export const kz: I18nKeys = {
   sms: { title: 'SMS-сканер', scan: 'Сканерлеу' },
   history: { title: 'Қоңырау тарихы', clear: 'Тазарту', empty: 'Сақталған қоңыраулар жоқ' },
   stats: { title: 'Статистика' },
+  voip: {
+    eyebrow: 'ҚОРҒАЛҒАН БАЙЛАНЫС',
+    title: 'Қорғалған VoIP-қоңырау',
+    description: 'VoiceShield ішіндегі уақытша LiveKit бөлмесі арқылы тікелей аудио қоңырау. Сервер құпиялары Mac-та немесе backend-те қалады.',
+    ready: 'Қорғалған қоңырауға дайын',
+    readyCopy: 'Уақытша бөлме құрып, Call ID-ді сұхбаттасушыға жіберіңіз. Қосылу үшін екі жақта да VoiceShield сервері бапталуы керек.',
+    create: 'Қоңырау құру', creating: 'Бөлме құрылуда…', callId: 'Call ID', callIdPlaceholder: 'Қосылу үшін Call ID енгізіңіз', join: 'Қоңырауға қосылу',
+    joining: 'Қосылуда…', connected: 'Қоңырау қосылды', connecting: 'Қорғалған бөлмеге қосылуда…', participants: 'Қоңыраудағы қатысушылар', waiting: 'Сұхбаттасушы күтілуде. Оған Call ID жіберіңіз.',
+    participantConnected: 'Сұхбаттасушы қосылды. Аудио LiveKit арқылы тікелей беріледі.', microphoneOn: 'Микрофон қосулы', microphoneOff: 'Микрофон өшірулі', audioOutput: 'Дыбыс шығысы',
+    shareCallId: 'Call ID жіберу', ending: 'Қоңырау аяқталуда…', end: 'Қоңырауды аяқтау', analysisBoundary: 'Live Shield бөлек жұмыс істейді және жасанды қоңырау транскриптін құрмайды.',
+    errorNetwork: 'Серверге қосылу мүмкін емес. URL, Wi-Fi желісі және backend жұмысын тексеріңіз.', errorAuthorization: 'Сервер қолжетімділікті қабылдамады. Баптаулардағы API-токенді тексеріңіз.', errorUnavailable: 'Дауыстық сервис қолжетімсіз: серверде LiveKit бапталмаған.', errorNotFound: 'Бөлме табылмады немесе әлдеқашан аяқталған.',
+    errorFallback: 'Қорғалған қоңырауға қосылу мүмкін болмады.', errorAudioOutput: 'Дыбыс шығысын ауыстыру мүмкін болмады.', errorAudioDevices: 'Қолжетімді аудиоқұрылғыларды оқу мүмкін болмады.', errorMicrophone: 'Микрофон қолжетімсіз',
+  },
 }

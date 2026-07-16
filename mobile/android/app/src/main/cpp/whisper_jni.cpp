@@ -195,6 +195,9 @@ extern "C" JNIEXPORT void JNICALL
 Java_kz_voiceshield_WhisperContext_nativeFree(JNIEnv *, jobject, jlong ptr) {
   auto *handle = reinterpret_cast<VsWhisperHandle *>(ptr);
   if (handle == nullptr) return;
+  // A context must never be freed while whisper_full() owns it. The inference
+  // lock is also used by both transcription entry points.
+  std::lock_guard<std::mutex> inferenceLock(handle->inferenceMutex);
 #if VS_HAS_WHISPER_CPP
   if (handle->ctx != nullptr) {
     whisper_free(handle->ctx);

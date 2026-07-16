@@ -1,15 +1,76 @@
-import React from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { colors } from '../theme'
 import { Card, Metric, SectionTitle, ui } from './ui'
 import { modelManifest } from '../data/modelManifest'
 import { kazakhQualityPackComponents } from '../data/kazakhQualityPack'
+import { ModelDownloader } from '../bridge/WhisperBridge'
+import { buildKnowledgeGraph, type KnowledgeGraph } from '../data/knowledgeGraph'
+import { whisperModels } from '../data/whisperModels'
+import { loadKnowledgeNotes, saveKnowledgeNote, type KnowledgeNote } from '../utils/knowledgeNotes'
+import { useI18n } from '../I18nContext'
+
+function KnowledgeNotesPanel({ graph }: { graph: KnowledgeGraph }) {
+  const { lang } = useI18n()
+  const copy = lang === 'kz'
+    ? { title: 'Жеке білім жазбалары', detail: 'Жазбалар құрылғыда Android Keystore арқылы шифрланып сақталады және серверге жіберілмейді.', select: 'Контекст', placeholder: 'Осы мүмкіндікке, модельге немесе әрекетке жазба қосыңыз', save: 'Жазбаны сақтау', saved: 'Жазба шифрланып сақталды.', unavailable: 'Шифрланған сақтау бұл жинақта қолжетімсіз.' }
+    : lang === 'en'
+      ? { title: 'Private knowledge notes', detail: 'Notes are encrypted on this device through Android Keystore and are never sent to a server.', select: 'Context', placeholder: 'Add a note about this feature, model, or action', save: 'Save note', saved: 'The note was saved in encrypted storage.', unavailable: 'Encrypted storage is unavailable in this build.' }
+      : { title: 'Личные заметки к знаниям', detail: 'Заметки шифруются на устройстве через Android Keystore и не отправляются на сервер.', select: 'Контекст', placeholder: 'Добавьте заметку об этой функции, модели или действии', save: 'Сохранить заметку', saved: 'Заметка сохранена в зашифрованном хранилище.', unavailable: 'Зашифрованное хранилище недоступно в этой сборке.' }
+  const targets = useMemo(() => graph.nodes.filter((node) => node.type === 'app' || node.type === 'feature' || node.type === 'advice').slice(0, 10), [graph.nodes])
+  const [notes, setNotes] = useState<KnowledgeNote[]>([])
+  const [nodeId, setNodeId] = useState('app:voiceshield')
+  const [draft, setDraft] = useState('')
+  const [status, setStatus] = useState('')
+
+  useEffect(() => {
+    void loadKnowledgeNotes().then(setNotes).catch(() => setStatus(copy.unavailable))
+  }, [copy.unavailable])
+
+  useEffect(() => {
+    setDraft(notes.find((note) => note.nodeId === nodeId)?.text ?? '')
+  }, [nodeId, notes])
+
+  const save = async () => {
+    try {
+      setNotes(await saveKnowledgeNote(nodeId, draft))
+      setStatus(copy.saved)
+    } catch {
+      setStatus(copy.unavailable)
+    }
+  }
+
+  return (
+    <>
+      <SectionTitle>{copy.title}</SectionTitle>
+      <Card>
+        <Text style={styles.body}>{copy.detail}</Text>
+        <Text style={styles.noteLabel}>{copy.select}</Text>
+        <View style={styles.noteTargets}>
+          {targets.map((node) => <Pressable key={node.id} onPress={() => setNodeId(node.id)} style={[styles.noteTarget, node.id === nodeId && styles.noteTargetActive]}><Text style={[styles.noteTargetText, node.id === nodeId && styles.noteTargetTextActive]}>{node.title}</Text></Pressable>)}
+        </View>
+        <TextInput value={draft} onChangeText={setDraft} maxLength={1000} multiline placeholder={copy.placeholder} placeholderTextColor={colors.muted} style={styles.noteInput} textAlignVertical="top" />
+        <Pressable onPress={() => { void save() }} style={styles.noteSave}><Text style={styles.noteSaveText}>{copy.save}</Text></Pressable>
+        {status ? <Text style={styles.noteStatus}>{status}</Text> : null}
+      </Card>
+    </>
+  )
+}
 
 export function ModelView() {
   const { activeDetector, ml, privacy } = modelManifest
   const snap = ml.trainedOn
   const origins = Object.entries(snap.byOrigin ?? {})
   const langs = Object.entries(snap.byLanguage ?? {})
+  const [graph, setGraph] = useState<KnowledgeGraph>(() => buildKnowledgeGraph())
+
+  useEffect(() => {
+    void (async () => {
+      const [storage, ...paths] = await Promise.all([ModelDownloader.getStorageInfo(), ...whisperModels.map((model) => ModelDownloader.getModelPath(model.file))])
+      const installedModelIds = whisperModels.filter((_, index) => Boolean(paths[index])).map((model) => model.id)
+      setGraph(buildKnowledgeGraph(storage, { installedModelIds }))
+    })().catch(() => undefined)
+  }, [])
 
   return (
     <View>
@@ -18,6 +79,16 @@ export function ModelView() {
         <Text style={styles.title}>{activeDetector.name}</Text>
         <Text style={styles.meta}>{activeDetector.ruleCount} rules · {activeDetector.machineLearned ? 'machine-learned' : 'deterministic, not ML'}</Text>
         <Text style={styles.body}>{activeDetector.note}</Text>
+      </Card>
+
+      <KnowledgeNotesPanel graph={graph} />
+
+      <SectionTitle>Knowledge graph</SectionTitle>
+      <Card>
+        <Text style={styles.meta}>Schema {graph.schemaVersion} · {graph.nodes.length} nodes · {graph.edges.length} relationships</Text>
+        {graph.nodes.filter((node) => node.type === 'model' || node.type === 'advice').slice(0, 8).map((node) => (
+          <View key={node.id} style={styles.row}><Text style={styles.rowKey}>{node.title}</Text><Text style={styles.rowVal}>{node.status ?? 'active'}</Text></View>
+        ))}
       </Card>
 
       <SectionTitle>Recent Kazakhstan operation coverage</SectionTitle>
@@ -136,4 +207,14 @@ const styles = StyleSheet.create({
   bundled: { backgroundColor: '#dcfce7', borderColor: '#86efac', color: '#166534' },
   downloadable: { backgroundColor: '#dbeafe', borderColor: '#93c5fd', color: '#1d4ed8' },
   external: { backgroundColor: '#fef3c7', borderColor: '#fcd34d', color: '#92400e' },
+  noteLabel: { color: colors.ink, fontSize: 12, fontWeight: '900', marginTop: 2 },
+  noteTargets: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  noteTarget: { borderColor: colors.border, borderRadius: 7, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 7 },
+  noteTargetActive: { backgroundColor: colors.softBrand, borderColor: colors.brand },
+  noteTargetText: { color: colors.sub, fontSize: 11, fontWeight: '800' },
+  noteTargetTextActive: { color: colors.brandDark },
+  noteInput: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 7, borderWidth: 1, color: colors.ink, fontSize: 13, minHeight: 94, padding: 10 },
+  noteSave: { alignSelf: 'flex-start', backgroundColor: colors.brandDark, borderRadius: 7, paddingHorizontal: 12, paddingVertical: 10 },
+  noteSaveText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  noteStatus: { color: colors.sub, fontSize: 12, lineHeight: 17 },
 })

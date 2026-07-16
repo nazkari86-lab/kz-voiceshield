@@ -153,6 +153,11 @@ export function NumberShieldView({
           </View>
           <Text style={styles.actionLabel}>Action: {assessment.action.replace('_', ' ')}</Text>
           <Text style={styles.meta}>Trust {assessment.trustRating}/100 · {assessment.complaintCount} local complaint(s)</Text>
+          <View style={styles.confidenceBlock}>
+            <View style={styles.confidenceHeading}><Text style={styles.confidenceLabel}>Local confidence</Text><Text style={styles.confidenceValue}>{Math.min(95, 35 + assessment.complaintCount * 12 + (scamMatch ? 35 : 0) + (assessment.category !== 'unknown' ? 15 : 0))}%</Text></View>
+            <View style={styles.confidenceTrack}><View style={[styles.confidenceFill, { width: `${Math.min(95, 35 + assessment.complaintCount * 12 + (scamMatch ? 35 : 0) + (assessment.category !== 'unknown' ? 15 : 0))}%` }]} /></View>
+            <Text style={styles.confidenceCopy}>{scamMatch ? 'Known-risk data and local history agree: do not call this number back.' : assessment.score >= 65 ? 'Local history indicates elevated risk. Verify using an official number, not this caller.' : 'This is a local estimate, not proof of identity. Verify unexpected requests independently.'}</Text>
+          </View>
           {assessment.annotation.label ? <Text style={styles.annotationTitle}>{assessment.annotation.label} · {assessment.annotation.rating || '—'}/5</Text> : null}
           {assessment.annotation.comment ? <Text style={styles.annotationComment}>{assessment.annotation.comment}</Text> : null}
           {assessment.reasons.map((reason) => <Text key={reason} style={styles.reason}>• {reason}</Text>)}
@@ -237,6 +242,13 @@ const styles = StyleSheet.create({
   scoreLabel: { color: '#991b1b', fontSize: 10, fontWeight: '800' },
   actionLabel: { color: colors.ink, fontSize: 14, fontWeight: '900' },
   meta: { color: colors.sub, fontSize: 12 },
+  confidenceBlock: { backgroundColor: '#f8fafc', borderRadius: 7, gap: 5, padding: 10 },
+  confidenceHeading: { flexDirection: 'row', justifyContent: 'space-between' },
+  confidenceLabel: { color: colors.ink, fontSize: 12, fontWeight: '900' },
+  confidenceValue: { color: colors.brandDark, fontSize: 12, fontWeight: '900' },
+  confidenceTrack: { backgroundColor: '#dbeafe', borderRadius: 99, height: 7, overflow: 'hidden' },
+  confidenceFill: { backgroundColor: colors.brand, borderRadius: 99, height: '100%' },
+  confidenceCopy: { color: colors.sub, fontSize: 11, lineHeight: 16 },
   annotationTitle: { color: colors.ink, fontSize: 13, fontWeight: '900' },
   annotationComment: { backgroundColor: '#f8fafc', borderRadius: 6, color: colors.sub, fontSize: 13, lineHeight: 19, padding: 10 },
   reason: { color: '#334155', fontSize: 12, lineHeight: 18 },

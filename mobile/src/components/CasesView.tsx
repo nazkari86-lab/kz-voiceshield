@@ -23,6 +23,12 @@ type Props = {
 
 export function CasesView({ cases, onSaveCurrent, onLoadCase, onUpdateLabel, onUpdateStatus, onToggleFlag, onExportBundle, onDeleteCase }: Props) {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [assigneeFilter, setAssigneeFilter] = useState<'all' | 'mine' | 'unassigned'>('all')
+  const visibleCases = cases.filter((item) => {
+    if (assigneeFilter === 'mine') return item.assignedTo === 'Fraud reviewer'
+    if (assigneeFilter === 'unassigned') return !item.assignedTo || item.assignedTo === 'Unassigned' || item.assignedTo === 'Triage queue'
+    return true
+  })
 
   return (
     <View>
@@ -30,11 +36,18 @@ export function CasesView({ cases, onSaveCurrent, onLoadCase, onUpdateLabel, onU
         <Text style={styles.count}>{cases.length} saved cases</Text>
         <Pressable style={styles.primary} onPress={onSaveCurrent}><Text style={styles.primaryText}>Save current</Text></Pressable>
       </View>
+      <View style={styles.toolRow}>
+        {(['all', 'mine', 'unassigned'] as const).map((filter) => (
+          <Pressable key={filter} onPress={() => setAssigneeFilter(filter)} style={[styles.filter, assigneeFilter === filter && styles.filterActive]}>
+            <Text style={[styles.filterText, assigneeFilter === filter && styles.filterTextActive]}>{filter === 'all' ? 'All' : filter === 'mine' ? 'Mine' : 'Unassigned'}</Text>
+          </Pressable>
+        ))}
+      </View>
 
-      {cases.length === 0 ? (
+      {visibleCases.length === 0 ? (
         <EmptyState title="No saved cases yet" subtitle="Save reviewed calls to build a local investigation library." />
       ) : (
-        cases.map((item) => (
+        visibleCases.map((item) => (
           <Card key={item.id} tone={item.analysis.risk}>
             <Pressable onPress={() => onLoadCase(item)}>
               <Text style={styles.id}>{item.id}</Text>
@@ -94,6 +107,10 @@ const styles = StyleSheet.create({
   toolRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   tool: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
   toolText: { color: colors.ink, fontSize: 12, fontWeight: '700' },
+  filter: { borderColor: colors.border, borderRadius: 999, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
+  filterActive: { backgroundColor: colors.brand, borderColor: colors.brand },
+  filterText: { color: colors.sub, fontSize: 12, fontWeight: '800' },
+  filterTextActive: { color: '#fff' },
   flag: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
   flagActive: { backgroundColor: colors.brand, borderColor: colors.brand },
   flagText: { color: colors.sub, fontSize: 12, fontWeight: '700' },

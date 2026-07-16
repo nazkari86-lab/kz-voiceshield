@@ -14,8 +14,8 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withTimeout
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 class WhisperModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -28,6 +28,8 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   )
   private var audioWorkerJob: Job
   private var lastTranscript = ""
+  private val decodeInFlight = AtomicBoolean(false)
+  private val decodeSequence = AtomicLong(0)
 
   init {
     AppRegistry.whisperModule = this
@@ -53,6 +55,10 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
 
   @ReactMethod
   fun initialize(modelPath: String, language: String, promise: Promise) {
+    if (decodeInFlight.get()) {
+      promise.reject("WHISPER_BUSY", "Speech engine is still finishing the previous audio. Wait a moment before changing models.")
+      return
+    }
     scope.launch {
       try {
         whisper?.close()
@@ -85,23 +91,37 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
       promise.reject("WHISPER_NOT_READY", "Speech model is not initialized. Open Setup and prepare Whisper first.")
       return
     }
-    streamJob?.cancel()
+    if (decodeInFlight.get()) {
+      promise.reject("WHISPER_BUSY", "Speech engine is still processing the previous audio. Stop protection, wait, and start again.")
+      return
+    }
+    if (streamJob?.isActive == true) {
+      promise.resolve(null)
+      return
+    }
     streamJob = scope.launch {
       while (true) {
         delay(3000)
         val bufferedSamples = whisper?.bufferSize() ?: fastConformer?.bufferSize() ?: 0
         if (bufferedSamples >= 32000) {
           val startedAt = System.currentTimeMillis()
-          val text = try {
-            withTimeout(15_000) {
-              (whisper?.transcribe() ?: fastConformer?.transcribe().orEmpty()).trim()
+          val sequence = decodeSequence.incrementAndGet()
+          decodeInFlight.set(true)
+          val watchdog = scope.launch {
+            delay(DECODE_WATCHDOG_MS)
+            if (decodeInFlight.get() && decodeSequence.get() == sequence) {
+              val payload = Arguments.createMap()
+              payload.putString("message", "Speech recognition did not finish in time. Protection was stopped to keep the phone responsive.")
+              AppRegistry.sendEvent("VS_WHISPER_DECODE_STALLED", payload)
             }
-          } catch (_: TimeoutCancellationException) {
-            // Native inference hung — reset buffer and continue; next chunk retries.
-            whisper?.reset()
-            fastConformer?.reset()
-            lastTranscript = ""
-            continue
+          }
+          val text = try {
+            (whisper?.transcribe() ?: fastConformer?.transcribe().orEmpty()).trim()
+          } catch (_: Throwable) {
+            ""
+          } finally {
+            watchdog.cancel()
+            if (decodeSequence.get() == sequence) decodeInFlight.set(false)
           }
           if (text.isEmpty() || text == lastTranscript) continue
           lastTranscript = text
@@ -118,9 +138,12 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   @ReactMethod fun stopStreaming(promise: Promise) { streamJob?.cancel(); streamJob = null; promise.resolve(null) }
   @ReactMethod fun isInitialized(promise: Promise) { promise.resolve(whisper != null || fastConformer != null) }
   @ReactMethod fun resetBuffer(promise: Promise) {
-    // Must run on the coroutine scope — resetBuffer is called from the RN bridge thread
-    // while audioWorkerJob and streamJob may concurrently hold whisper/fastConformer.
-    // Cancelling streamJob first prevents a race between reset() and an in-flight transcribe().
+    // Do not reset or replace a native context while a synchronous decode is active.
+    // Coroutine cancellation cannot interrupt a blocking JNI call.
+    if (decodeInFlight.get()) {
+      promise.reject("WHISPER_BUSY", "Speech engine is still processing audio. Wait for it to finish before restarting protection.")
+      return
+    }
     scope.launch {
       streamJob?.cancel()
       streamJob = null
@@ -144,5 +167,9 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     AppRegistry.whisperModule = null
     scope.cancel()
     super.invalidate()
+  }
+
+  private companion object {
+    const val DECODE_WATCHDOG_MS = 15_000L
   }
 }

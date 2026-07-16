@@ -63,7 +63,8 @@ const translations: Record<string, { ru: string; kz: string }> = {
   'No suspicious messages found': { ru: 'Подозрительных сообщений не найдено', kz: 'Күдікті хабарламалар табылмады' },
 }
 
-function translateUi(value: string, lang: 'ru' | 'kz'): string {
+function translateUi(value: string, lang: 'ru' | 'kz' | 'en'): string {
+  if (lang === 'en') return value
   const exact = translations[value]
   if (exact) return exact[lang]
   const saved = value.match(/^(\d+) saved cases$/)

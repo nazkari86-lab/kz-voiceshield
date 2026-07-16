@@ -2,9 +2,10 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { ru } from './i18n/ru'
 import { kz } from './i18n/kz'
+import { en } from './i18n/en'
 
-export type Language = 'ru' | 'kz'
-const strings = { ru, kz }
+export type Language = 'ru' | 'kz' | 'en'
+const strings = { ru, kz, en }
 
 type I18nContextValue = {
   t: typeof ru
@@ -21,7 +22,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem(LANG_KEY).then(v => {
-      if (v === 'ru' || v === 'kz') setLangState(v)
+      if (v === 'ru' || v === 'kz' || v === 'en') setLangState(v)
     }).catch(() => undefined)
   }, [])
 

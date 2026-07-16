@@ -1,0 +1,11 @@
+# Local-network LiveKit configuration for KZ VoiceShield development.
+# Do not expose this server to the public Internet: use TLS and TURN first.
+port: 7880
+log_level: info
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+keys:
+  # Replace through LIVEKIT_KEYS_JSON when starting the service.
+  placeholder: replace-me

@@ -123,6 +123,17 @@ export function useWorkspace() {
   const lastAudibleAtRef = useRef(Date.now())
   const sessionStartRef = useRef(Date.now())
   const captureTransitionRef = useRef(false)
+  const isListeningRef = useRef(false)
+  const sourceRef = useRef<'Live Caption' | 'Whisper' | 'Manual'>('Manual')
+
+  useEffect(() => {
+    isListeningRef.current = isListening
+  }, [isListening])
+
+  const updateSource = useCallback((next: 'Live Caption' | 'Whisper' | 'Manual') => {
+    sourceRef.current = next
+    setSource(next)
+  }, [])
 
   // ---- saved cases ----
   const [cases, setCases] = useState<SavedCase[]>([])
@@ -289,7 +300,7 @@ export function useWorkspace() {
   // Internal isListening guards handle whether to process the event.
   useEffect(() => {
     const liveCaptionSub = accessibilityEvents.addListener('VS_ACCESSIBILITY_TEXT', (event: { appSignalId?: string; text?: string }) => {
-      if (!isListening) return
+      if (!isListeningRef.current || sourceRef.current !== 'Live Caption') return
       if (event.appSignalId) {
         const nextSignals = deviceSignalsFromId(event.appSignalId)
         if (nextSignals.length > 0) {
@@ -301,12 +312,12 @@ export function useWorkspace() {
         // Dedup: skip if Whisper recently produced the same text
         if (lastWhisperRef.current && incoming && lastWhisperRef.current.includes(incoming)) return
         lastLiveCaptionRef.current = incoming
-        setSource('Live Caption')
+        updateSource('Live Caption')
         setTranscript((current) => `${current} ${event.text}`.trim())
       }
     })
     const whisperSub = whisperEvents.addListener('VS_WHISPER_TRANSCRIPT', (event: { text?: string }) => {
-      if (!event.text) return
+      if (!isListeningRef.current || sourceRef.current !== 'Whisper' || !event.text) return
       const quality = assessTranscriptQuality(event.text)
       if (!quality.accepted) {
         setCaptureNotice('Speech segment was too noisy or repetitive and was ignored. Keep the speakerphone close and try again.')
@@ -316,15 +327,14 @@ export function useWorkspace() {
       // Dedup: skip if Live Caption recently produced the same text
       if (lastLiveCaptionRef.current && incoming && lastLiveCaptionRef.current.includes(incoming)) return
       lastWhisperRef.current = incoming
-      setSource('Whisper')
+      updateSource('Whisper')
       setTranscript((current) => `${current} ${event.text}`.trim())
     })
     return () => {
       liveCaptionSub.remove()
       whisperSub.remove()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [updateSource])
 
   useEffect(() => {
     const levelSub = audioEvents.addListener('VS_AUDIO_LEVEL', (event: { level?: number }) => {
@@ -334,6 +344,17 @@ export function useWorkspace() {
     })
     const audioErrorSub = audioEvents.addListener('VS_AUDIO_CAPTURE_ERROR', (event: { message?: string }) => {
       if (event.message) setCaptureError(event.message)
+    })
+    const decodeStalledSub = whisperEvents.addListener('VS_WHISPER_DECODE_STALLED', (event: { message?: string }) => {
+      if (!isListeningRef.current) return
+      void AudioCaptureModule.stopCapture().catch(() => undefined)
+      void WhisperModule.stopStreaming().catch(() => undefined)
+      void AccessibilityModule.setProtectionActive(false).catch(() => undefined)
+      void OverlayModule.hide().catch(() => undefined)
+      isListeningRef.current = false
+      setIsListening(false)
+      updateSource('Manual')
+      setCaptureError(event.message ?? 'Speech recognition stopped because the decoder did not respond in time.')
     })
     const audioStartedSub = audioEvents.addListener('VS_AUDIO_CAPTURE_STARTED', (event: { source?: string }) => {
       if (event.source === 'microphone') {
@@ -362,12 +383,13 @@ export function useWorkspace() {
     return () => {
       levelSub.remove()
       audioErrorSub.remove()
+      decodeStalledSub.remove()
       audioStartedSub.remove()
       audioRouteSub.remove()
       notificationSub.remove()
       modelSub.remove()
     }
-  }, [isListening])
+  }, [isListening, updateSource])
 
   // Expire OTP/notification signals after TTL (OTP: 120s, others: 300s)
   useEffect(() => {
@@ -501,24 +523,26 @@ export function useWorkspace() {
         await AudioCaptureModule.startCapture()
         lastAudibleAtRef.current = Date.now()
         setAudioLevel(0)
-        setSource('Whisper')
+        updateSource('Whisper')
         setCaptureNotice('Whisper is ready. Android cannot read internal call audio: turn on speakerphone so the microphone can hear the caller. Audio stays on this device.')
       } else {
-        setSource('Live Caption')
+        updateSource('Live Caption')
         setCaptureNotice('Live Caption mode is active. Only approved system caption text is processed.')
       }
       await AccessibilityModule.setProtectionActive(true)
       sessionStartRef.current = Date.now()
+      isListeningRef.current = true
       setIsListening(true)
     } catch {
       await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
       await OverlayModule.hide().catch(() => undefined)
+      isListeningRef.current = false
       setIsListening(false)
       setCaptureError('Protection could not start. Enable microphone, overlay and accessibility permissions in setup.')
     } finally {
       captureTransitionRef.current = false
     }
-  }, [isListening, modelReady, prepareWhisper, privacyConsent])
+  }, [isListening, modelReady, prepareWhisper, privacyConsent, updateSource])
 
   const endActiveCall = useCallback(async () => {
     try {
@@ -532,7 +556,7 @@ export function useWorkspace() {
     // Guard against concurrent invocations (double-tap, race with startListening).
     // Without this, two calls can both reach resetBuffer()+startStreaming()+startCapture()
     // on already-running native components, corrupting the audio pipeline.
-    if (captureTransitionRef.current) return
+    if (captureTransitionRef.current || !isListening || source === 'Whisper') return
     captureTransitionRef.current = true
     setCaptureError(null)
     try {
@@ -553,7 +577,7 @@ export function useWorkspace() {
       await AudioCaptureModule.startCapture()
       lastAudibleAtRef.current = Date.now()
       setAudioLevel(0)
-      setSource('Whisper')
+      updateSource('Whisper')
       setCaptureNotice('Microphone fallback is active. Turn on speakerphone and raise call volume so VoiceShield can hear the caller.')
       await OverlayModule.show(true)
     } catch {
@@ -561,11 +585,12 @@ export function useWorkspace() {
     } finally {
       captureTransitionRef.current = false
     }
-  }, [modelReady, prepareWhisper])
+  }, [isListening, modelReady, prepareWhisper, source, updateSource])
 
   const stopListening = useCallback(async () => {
     if (captureTransitionRef.current || !isListening) return
     captureTransitionRef.current = true
+    isListeningRef.current = false
     // Record fingerprint before stopping for cross-call memory
     const snap = analyzeTranscript(analysisTranscript, { signals: deviceSignals })
     const durationSec = Math.round((Date.now() - sessionStartRef.current) / 1000)
@@ -594,14 +619,15 @@ export function useWorkspace() {
       if (autoDeleteTranscript) {
         setTranscript('')
         setFileName('manual-call.txt')
-        setSource('Manual')
+        updateSource('Manual')
       }
     } finally {
       captureTransitionRef.current = false
     }
-  }, [analysisTranscript, autoDeleteTranscript, deviceSignals, isListening, transcript])
+  }, [analysisTranscript, autoDeleteTranscript, deviceSignals, isListening, transcript, updateSource])
 
   useEffect(() => () => {
+    isListeningRef.current = false
     void AccessibilityModule.setProtectionActive(false).catch(() => undefined)
     void AudioCaptureModule.stopCapture().catch(() => undefined)
     void WhisperModule.stopStreaming().catch(() => undefined)
@@ -611,10 +637,10 @@ export function useWorkspace() {
   const loadSample = useCallback((key: keyof typeof samples, label: string) => {
     setTranscript(samples[key])
     setFileName(`${key}.txt`)
-    setSource('Manual')
+    updateSource('Manual')
     setCaseLabel('unreviewed')
     setAnalystNote(`Loaded scenario: ${label}`)
-  }, [])
+  }, [updateSource])
 
   // ---- case management ----
   const saveCurrentCase = useCallback(() => {
@@ -678,12 +704,14 @@ export function useWorkspace() {
     await SecureStorage.removeItem(privacyConsentKey).catch(() => undefined)
     await CallModule.updateProtectionConfig({ enabled: false }).catch(() => undefined)
     await OverlayModule.hide().catch(() => undefined)
+    isListeningRef.current = false
     setPrivacyConsent(false)
     setIsListening(false)
     setDeviceSignals([])
     setCaptureNotice(null)
     setAutoDeleteTranscript(true)
-  }, [])
+    updateSource('Manual')
+  }, [updateSource])
 
   const updateAutoDeleteTranscript = useCallback(async (enabled: boolean) => {
     if (enabled) await SecureStorage.removeItem(autoDeleteTranscriptKey)
@@ -711,11 +739,13 @@ export function useWorkspace() {
     setDeviceSignals([])
     setPrivacyConsent(false)
     setModelReady(false)
+    isListeningRef.current = false
     setIsListening(false)
     setStorageError(null)
     setTrustedContact(null)
     setCaptureNotice(null)
-  }, [])
+    updateSource('Manual')
+  }, [updateSource])
 
   const saveTrustedContact = useCallback(async (name: string, phone: string) => {
     const normalized: TrustedContact = {
@@ -764,8 +794,8 @@ export function useWorkspace() {
     setFileName(item.fileName)
     setCaseLabel(item.label)
     setAnalystNote(item.analystNote)
-    setSource('Manual')
-  }, [])
+    updateSource('Manual')
+  }, [updateSource])
 
   const updateCaseLabel = useCallback((id: string, label: CaseLabel) => {
     const now = new Date().toISOString()

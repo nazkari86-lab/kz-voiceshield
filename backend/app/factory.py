@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Principal, Settings
 from .ml_service import ModelService, ModelUnavailable
-from .models import AudioJobResponse, CasePayload, TranscriptRequest, WorkflowPatch
+from .models import AudioJobResponse, CasePayload, TranscriptAnalysisResponse, TranscriptRequest, WorkflowPatch
 from .repository import CaseVersionConflict, Repository
 from .security import PayloadCipher, authenticate, require_roles
 from .transcription import Transcriber, transcriber_from_env
@@ -150,7 +150,8 @@ def create_app(
         call_id = f"call_{uuid4().hex}"
         with livekit_lock:
             livekit_rooms[call_id] = {"createdBy": principal.user_id, "ended": False}
-        token = livekit_token(call_id, principal.user_id, principal.user_id)
+        participant_identity = f"{principal.user_id}-{uuid4().hex[:12]}"
+        token = livekit_token(call_id, participant_identity, principal.user_id)
         repository.audit(principal.user_id, "voip_call_created", {"callId": call_id})
         return {
             "callId": call_id,
@@ -173,7 +174,10 @@ def create_app(
             raise HTTPException(
                 status_code=404, detail="VoIP call not found or already ended"
             )
-        token = livekit_token(call_id, principal.user_id, principal.user_id)
+        # A LiveKit room permits one connection per identity. A user may join the
+        # same call from two devices, so each issued token needs a distinct ID.
+        participant_identity = f"{principal.user_id}-{uuid4().hex[:12]}"
+        token = livekit_token(call_id, participant_identity, principal.user_id)
         repository.audit(principal.user_id, "voip_call_joined", {"callId": call_id})
         return {
             "callId": call_id,
@@ -183,18 +187,44 @@ def create_app(
         }
 
     @app.post("/calls/{call_id}/end")
-    def end_call(
+    async def end_call(
         call_id: str, principal: Principal = Depends(authenticate)
     ) -> dict[str, Any]:
         with livekit_lock:
             call = livekit_rooms.get(call_id)
             if not call:
                 raise HTTPException(status_code=404, detail="VoIP call not found")
+        if livekit_configured():
+            try:
+                from livekit import api
+
+                async with api.LiveKitAPI(
+                    resolved_settings.livekit_url,
+                    resolved_settings.livekit_api_key,
+                    resolved_settings.livekit_api_secret,
+                ) as client:
+                    await client.room.delete_room(api.DeleteRoomRequest(room=call_id))
+            except ImportError as error:
+                raise HTTPException(
+                    status_code=503, detail="LiveKit server dependency is not installed"
+                ) from error
+            except api.ServerError as error:
+                # LiveKit creates a room only when the first participant joins.
+                # Ending a newly-created-but-never-connected call is still valid.
+                if error.code != "not_found":
+                    raise HTTPException(
+                        status_code=502, detail="LiveKit could not terminate the protected call"
+                    ) from error
+            except Exception as error:
+                raise HTTPException(
+                    status_code=502, detail="LiveKit could not terminate the protected call"
+                ) from error
+        with livekit_lock:
             call["ended"] = True
         repository.audit(principal.user_id, "voip_call_ended", {"callId": call_id})
         return {"ok": True, "callId": call_id}
 
-    @app.post("/analyze-transcript")
+    @app.post("/analyze-transcript", response_model=TranscriptAnalysisResponse)
     def analyze_transcript(
         body: TranscriptRequest,
         principal: Principal = Depends(authenticate),
@@ -212,9 +242,19 @@ def create_app(
             "transcript_analyzed",
             {"length": len(safe_transcript), "language": language},
         )
+        rule_score = int(body.ruleAnalysis.get("score", 0)) if isinstance(body.ruleAnalysis.get("score", 0), (int, float)) else 0
+        if assessment is None:
+            disagreement = "unavailable"
+        elif rule_score >= 60 and assessment["score"] < 40:
+            disagreement = "rules_high_ml_low"
+        elif rule_score < 40 and assessment["score"] >= 60:
+            disagreement = "rules_low_ml_high"
+        else:
+            disagreement = "aligned"
         return {
             "ml": assessment,
             "mlAvailable": resolved_model.available,
+            "disagreement": disagreement,
             "redactedTranscript": safe_transcript,
             "language": language,
         }

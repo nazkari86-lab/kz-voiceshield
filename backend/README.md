@@ -54,9 +54,12 @@ is never part of the mobile app. These endpoints establish the secure token
 boundary; a native LiveKit client and a separate consented STT/analyzer worker
 must be deployed before real calls are enabled.
 
-For local development, run LiveKit on the same Wi-Fi network and set
-`LIVEKIT_URL=ws://<mac-ip>:7880`. Use TLS and a real identity/session service
-before exposing it outside the local network.
+For a local-network prototype on a Mac, install LiveKit with `brew install livekit`,
+configure `backend/.env` with a LAN address such as `ws://192.168.1.10:7880`, then
+run `scripts/run-mac-voip-server.sh` and `scripts/run-mac-backend.sh` in separate
+terminals. The Android app stores the backend URL and API token in Android Keystore.
+The Mac firewall must allow TCP 7880/7881 and UDP 7882 on the same Wi-Fi network.
+Use TLS, a domain and TURN before exposing it outside the local network.
 
 ## Audio transcription
 

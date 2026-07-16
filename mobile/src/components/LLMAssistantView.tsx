@@ -24,10 +24,11 @@ import { Card, SectionTitle } from './ui'
 import type { AssistantEngine, OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
 import { buildKazakhIntelligenceContext, validateKazakhResponse, type KazakhResponseQuality } from '../utils/kazakhIntelligence'
 import { enhanceTranscript } from '../utils/transcriptEnhancer'
+import { adviceForModelError, buildKnowledgeGraph } from '../data/knowledgeGraph'
 
 type ChatMessage = { role: 'user' | 'assistant'; text: string; streaming?: boolean; quality?: KazakhResponseQuality }
 
-type Props = { transcript: string; languageContext?: string; modelBasePath?: string; ai: OnDeviceAiRuntime }
+type Props = { transcript: string; languageContext?: string; modelBasePath?: string; attachmentText?: string; ai: OnDeviceAiRuntime }
 const GEMMA_TERMS_ACCEPTED_KEY = 'voiceshield.gemma.terms.v1'
 
 const importedModelRecord = (source: 'imported' | 'legacy', fileName: string): InstalledLocalModel => ({
@@ -44,7 +45,7 @@ const importedModelRecord = (source: 'imported' | 'legacy', fileName: string): I
   source,
 })
 
-export function LLMAssistantView({ transcript, languageContext = '', modelBasePath, ai }: Props) {
+export function LLMAssistantView({ transcript, languageContext = '', modelBasePath, attachmentText = '', ai }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [generating, setGenerating] = useState(false)
@@ -65,6 +66,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
   const activeLocalModelId = ai.activeLocalModelId
   const modelBusy = loadingModel || ai.loading
   const visibleError = loadError ?? ai.runtimeError
+  const recoveryAdvice = useMemo(() => visibleError ? adviceForModelError(visibleError, buildKnowledgeGraph(storageInfo)) : undefined, [storageInfo, visibleError])
   const modelKazakhContext = useMemo(
     () => buildKazakhIntelligenceContext(enhanceTranscript(transcript), ai.engine, ai.modelName),
     [ai.engine, ai.modelName, transcript],
@@ -415,6 +417,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
             <Text style={styles.termsLink}>Открыть условия Gemma</Text>
           </TouchableOpacity>
           {visibleError && <Text style={styles.error}>{visibleError}</Text>}
+          {recoveryAdvice && <Text style={styles.recoveryAdvice}>{recoveryAdvice.summary}</Text>}
           {visibleError && (
             <TouchableOpacity
               style={styles.importBtn}
@@ -480,6 +483,13 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
           <Text style={styles.contextPreview} numberOfLines={2}>{transcript.slice(0, 120)}…</Text>
         </View>
       )}
+
+      {attachmentText ? (
+        <TouchableOpacity style={styles.attachment} onPress={() => setInputText(`Please analyse this shared text:\n${attachmentText.slice(0, 3_000)}`)}>
+          <Text style={styles.attachmentTitle}>Shared text attachment</Text>
+          <Text numberOfLines={3} style={styles.attachmentCopy}>{attachmentText}</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {messages.length === 0 && (
         <View style={styles.quickGrid}>
@@ -579,6 +589,7 @@ const styles = StyleSheet.create({
   termsText: { color: colors.ink, flex: 1, fontSize: 12, fontWeight: '700' },
   termsLink: { color: colors.brandDark, fontSize: 12, fontWeight: '800', marginBottom: 10, textDecorationLine: 'underline' },
   error: { backgroundColor: '#fee2e2', borderRadius: 6, color: '#991b1b', fontSize: 12, marginBottom: 8, padding: 8 },
+  recoveryAdvice: { backgroundColor: '#fef3c7', borderRadius: 7, color: '#713f12', fontSize: 12, lineHeight: 18, marginBottom: 8, padding: 10 },
   loadBtn: { alignItems: 'center', backgroundColor: colors.brand, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 13 },
   loadBtnDisabled: { opacity: 0.5 },
   loadBtnText: { color: '#fff', fontWeight: '800' },
@@ -588,6 +599,9 @@ const styles = StyleSheet.create({
   contextBanner: { backgroundColor: colors.chipBg, borderRadius: 8, marginBottom: 10, padding: 10 },
   contextLabel: { color: colors.brandDark, fontSize: 9, fontWeight: '900', letterSpacing: 0.8, marginBottom: 3 },
   contextPreview: { color: colors.sub, fontSize: 12, lineHeight: 17 },
+  attachment: { backgroundColor: '#eff6ff', borderColor: '#93c5fd', borderRadius: 8, borderWidth: 1, gap: 4, marginBottom: 10, padding: 10 },
+  attachmentTitle: { color: '#1d4ed8', fontSize: 12, fontWeight: '900' },
+  attachmentCopy: { color: '#334155', fontSize: 12, lineHeight: 17 },
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 14 },
   quickChip: { backgroundColor: colors.softBrand, borderColor: colors.brand, borderRadius: 999, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7 },
   quickChipText: { color: colors.brandDark, fontSize: 12, fontWeight: '700' },

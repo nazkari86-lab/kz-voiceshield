@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 Role = Literal["analyst", "reviewer", "admin"]
 CaseStatus = Literal["new", "reviewing", "escalated", "closed"]
 MlVerdict = Literal["fraud", "safe", "needs_review"]
+MlDisagreement = Literal["aligned", "rules_high_ml_low", "rules_low_ml_high", "unavailable"]
 JobStatus = Literal["queued", "processing", "completed", "failed"]
 
 
@@ -18,6 +19,14 @@ class MlAssessment(BaseModel):
     model: str
     embeddingModel: str | None = None
     signals: list[str] = Field(default_factory=list)
+
+
+class TranscriptAnalysisResponse(BaseModel):
+    ml: MlAssessment | None = None
+    mlAvailable: bool
+    disagreement: MlDisagreement
+    redactedTranscript: str
+    language: str
 
 
 class TranscriptRequest(BaseModel):

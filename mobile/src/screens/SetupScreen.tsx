@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { AppState, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
+import { AppState, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { AccessibilityModule } from '@bridge/AccessibilityBridge'
 import { CallModule } from '@bridge/CallModule'
 import { DeviceSettings } from '@bridge/DeviceSettingsBridge'
@@ -13,6 +13,7 @@ import type { Language } from '../I18nContext'
 import { colors } from '../theme'
 import { fitsDevice, recommendedModel, requiredStorageBytes, whisperModels } from '../data/whisperModels'
 import type { ModelStorageInfo, WhisperModelChoice } from '../data/whisperModels'
+import { getBackendConfig, saveBackendConfig, testBackendConnection } from '../services/backendConfig'
 
 type Props = {
   modelReady: boolean
@@ -43,6 +44,55 @@ const Step = ({ label, status, statusLabel, disabled, onPress }: { label: string
     <Text style={[styles.status, status && styles.statusReady]}>{statusLabel ?? (status ? 'Ready' : 'Set up')}</Text>
   </Pressable>
 )
+
+function BackendConnectionPanel() {
+  const [baseUrl, setBaseUrl] = useState('')
+  const [token, setToken] = useState('')
+  const [status, setStatus] = useState('Not configured')
+
+  useEffect(() => {
+    void getBackendConfig().then((config) => {
+      setBaseUrl(config.baseUrl)
+      setToken(config.token)
+      setStatus(config.token ? 'Saved securely in Android Keystore' : 'Server URL saved; API token is optional until your server requires it')
+    }).catch(() => setStatus('Secure backend configuration is unavailable on this build'))
+  }, [])
+
+  const save = async () => {
+    try {
+      const config = await saveBackendConfig({ baseUrl, token })
+      setBaseUrl(config.baseUrl)
+      setToken(config.token)
+      setStatus('Backend configuration saved securely')
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Could not save backend configuration')
+    }
+  }
+
+  const test = async () => {
+    try {
+      const config = await saveBackendConfig({ baseUrl, token })
+      setBaseUrl(config.baseUrl)
+      setStatus((await testBackendConnection(config)).detail)
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Connection test failed')
+    }
+  }
+
+  return (
+    <View style={styles.backendPanel}>
+      <Text style={styles.noticeTitle}>Optional backend and VoIP</Text>
+      <Text style={styles.copy}>The server URL and token are stored through SecureStorage, backed by Android Keystore. They never enter exported case files.</Text>
+      <TextInput accessibilityLabel="VoiceShield backend URL" autoCapitalize="none" autoCorrect={false} keyboardType="url" onChangeText={setBaseUrl} placeholder="https://api.example.kz" placeholderTextColor={colors.muted} style={styles.backendInput} value={baseUrl} />
+      <TextInput accessibilityLabel="VoiceShield backend token" autoCapitalize="none" autoCorrect={false} onChangeText={setToken} placeholder="API token (optional)" placeholderTextColor={colors.muted} secureTextEntry style={styles.backendInput} value={token} />
+      <View style={styles.row}>
+        <Pressable style={styles.secondary} onPress={() => { void save() }}><Text style={styles.secondaryText}>Save server</Text></Pressable>
+        <Pressable style={styles.primary} onPress={() => { void test() }}><Text style={styles.primaryText}>Test connection</Text></Pressable>
+      </View>
+      <Text style={styles.backendStatus}>{status}</Text>
+    </View>
+  )
+}
 
 export function SetupScreen({
   modelReady,
@@ -140,16 +190,16 @@ export function SetupScreen({
             </Pressable>
           ))}
         </View>
-        <Text style={[styles.section, { marginTop: 10 }]}>Язык / Тіл</Text>
+        <Text style={[styles.section, { marginTop: 10 }]}>Язык / Тіл / Language</Text>
         <View style={styles.toggleRow}>
-          {(['ru', 'kz'] as Language[]).map((l) => (
+          {(['ru', 'kz', 'en'] as Language[]).map((l) => (
             <Pressable
               key={l}
               style={[styles.toggleChip, lang === l && styles.toggleChipActive]}
               onPress={() => setLang(l)}
             >
               <Text style={[styles.toggleText, lang === l && styles.toggleTextActive]}>
-                {l === 'ru' ? 'Русский' : 'Қазақша'}
+                {l === 'ru' ? 'Русский' : l === 'kz' ? 'Қазақша' : 'English'}
               </Text>
             </Pressable>
           ))}
@@ -174,6 +224,8 @@ export function SetupScreen({
       <Text style={styles.copy}>As the default phone app, VoiceShield can show its own incoming and active SIM-call screen with number risk, family labels and private comments. The caller does not need VoiceShield. Android still does not expose the other party's raw call audio, so live transcription continues to use captions or the microphone fallback.</Text>
       <Step label="Use VoiceShield as default phone" status={status.dialerRole} disabled={!privacyConsent} onPress={() => { void CallModule.requestDialerRole().then(refresh).catch(() => refresh()) }} />
       <Step label="Open default phone apps" status={status.dialerRole} disabled={!privacyConsent} onPress={() => DeviceSettings.openDefaultAppsSettings()} />
+
+      <BackendConnectionPanel />
 
       <Text style={styles.section}>On-device speech model</Text>
       <Text style={styles.copy}>Recognition language</Text>
@@ -291,4 +343,7 @@ const styles = StyleSheet.create({
   toggleTextActive: { color: colors.brandDark, fontWeight: '900' },
   safetyOption: { alignItems: 'center', backgroundColor: '#fff7ed', borderColor: '#fdba74', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 10, padding: 11 },
   safetyCopy: { flex: 1, gap: 3 },
+  backendPanel: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 9, marginTop: 12, padding: 14 },
+  backendInput: { backgroundColor: '#fff', borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, minHeight: 44, paddingHorizontal: 11 },
+  backendStatus: { color: colors.sub, fontSize: 12, lineHeight: 17 },
 })

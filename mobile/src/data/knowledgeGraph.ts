@@ -1,29 +1,31 @@
-import { modelManifest, APP_VERSION } from './modelManifest'
+import { APP_VERSION } from './modelManifest'
 import { fitsDevice, whisperModels, type ModelStorageInfo } from './whisperModels'
 import { qoldaVariants } from './kazakhQualityPack'
 
 export type KnowledgeNodeType = 'app' | 'model' | 'feature' | 'dataset' | 'advice' | 'diagnostic'
+export type ModelHealthStatus = 'ready' | 'downloading' | 'available' | 'experimental' | 'downloadable' | 'blocked'
 export type KnowledgeNode = {
   id: string
   type: KnowledgeNodeType
   title: string
   summary: string
   tags: string[]
-  status?: 'active' | 'available' | 'experimental' | 'downloadable' | 'blocked'
+  status?: 'active' | ModelHealthStatus
   version?: string
   bytes?: number
 }
 export type KnowledgeEdge = { from: string; to: string; relation: string }
-export type KnowledgeGraph = { schemaVersion: 'voiceshield.knowledge.v1'; appVersion: string; nodes: KnowledgeNode[]; edges: KnowledgeEdge[] }
+export type KnowledgeGraph = { schemaVersion: 'voiceshield.knowledge.v2'; appVersion: string; nodes: KnowledgeNode[]; edges: KnowledgeEdge[] }
+export type KnowledgeRuntime = { installedModelIds?: readonly string[]; downloadingModelIds?: readonly string[] }
 
-export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null): KnowledgeGraph {
+export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null, runtime: KnowledgeRuntime = {}): KnowledgeGraph {
   const modelNodes: KnowledgeNode[] = whisperModels.map((model) => ({
     id: `model:${model.id}`,
     type: 'model',
     title: model.title,
     summary: `${model.detail}. ${model.id === 'fastconformer' ? 'Специализирована для русского и казахского.' : 'Универсальная Whisper-модель.'}`,
     tags: ['asr', 'ru', 'kz', model.tier],
-    status: storage && fitsDevice(model, storage) ? 'available' : 'blocked',
+    status: runtime.installedModelIds?.includes(model.id) ? 'ready' : runtime.downloadingModelIds?.includes(model.id) ? 'downloading' : storage && fitsDevice(model, storage) ? 'available' : 'blocked',
     bytes: model.size,
   }))
   modelNodes.push(
@@ -33,6 +35,9 @@ export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null): Kn
     { id: 'model:lcnn-anti-spoof', type: 'model', title: 'LCNN anti-spoof', summary: 'Исследовательский checkpoint для bona-fide/spoof аудио.', tags: ['deepfake', 'audio', 'asvspoof'], status: 'experimental', bytes: 3_610_050 },
   )
 
+  const runtimeAdvice: KnowledgeNode[] = []
+  if (storage && storage.availableBytes < 2 * 1024 ** 3) runtimeAdvice.push({ id: 'advice:low-storage', type: 'advice', title: 'Low storage', summary: 'Keep at least 2 GB free before downloading or updating models. Delete unused local models first.', tags: ['storage', 'model', 'device'], status: 'active' })
+  if (storage && storage.ramBytes < 3 * 1024 ** 3) runtimeAdvice.push({ id: 'advice:low-ram', type: 'advice', title: 'Limited RAM', summary: 'Use the fast model and close other apps. Larger models may be slow or unavailable on this device.', tags: ['ram', 'model', 'device'], status: 'active' })
   const nodes: KnowledgeNode[] = [
     { id: 'app:voiceshield', type: 'app', title: 'KZ VoiceShield', summary: 'Локальная защита от телефонного мошенничества.', tags: ['product', 'privacy'], version: APP_VERSION, status: 'active' },
     { id: 'feature:live-shield', type: 'feature', title: 'Live Shield', summary: 'Слушает доступный аудиоканал, строит транскрипт и считает rule-score.', tags: ['call', 'live', 'rules'], status: 'active' },
@@ -45,6 +50,7 @@ export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null): Kn
     { id: 'advice:phone-audio', type: 'advice', title: 'Для звонка включите громкую связь', summary: 'Android обычно не отдаёт стороннему приложению внутренний downlink call audio.', tags: ['call', 'xiaomi', 'audio'], status: 'active' },
     { id: 'advice:auto-model', type: 'advice', title: 'Автовыбор модели', summary: 'Учитывает RAM, свободное место, размер загрузки и reserve space.', tags: ['model', 'storage', 'ram'], status: 'active' },
     { id: 'diagnostic:real-xiaomi', type: 'diagnostic', title: 'Реальный Xiaomi call test', summary: 'Нужен физический телефон: эмулятор не проверяет Telecom audio route.', tags: ['qa', 'xiaomi', 'call'], status: 'blocked' },
+    ...runtimeAdvice,
     ...modelNodes,
   ]
 
@@ -56,7 +62,14 @@ export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null): Kn
     ['diagnostic:real-xiaomi', 'feature:live-shield', 'validates'],
   ] as Array<[string, string, string]>).map(([from, to, relation]) => ({ from, to, relation }))
 
-  return { schemaVersion: 'voiceshield.knowledge.v1', appVersion: APP_VERSION, nodes, edges }
+  return { schemaVersion: 'voiceshield.knowledge.v2', appVersion: APP_VERSION, nodes, edges }
+}
+
+export function adviceForModelError(error: string, graph: KnowledgeGraph): KnowledgeNode | undefined {
+  const message = error.toLocaleLowerCase()
+  const preferredId = /storage|space|disk/.test(message) ? 'advice:low-storage' : /ram|memory|out of memory/.test(message) ? 'advice:low-ram' : ''
+  if (preferredId) return graph.nodes.find((node) => node.id === preferredId)
+  return graph.nodes.find((node) => node.type === 'advice' && /network|download|http/.test(message) && node.tags.includes('model'))
 }
 
 export function searchKnowledge(graph: KnowledgeGraph, query: string): KnowledgeNode[] {
@@ -68,4 +81,16 @@ export function searchKnowledge(graph: KnowledgeGraph, query: string): Knowledge
 export function relatedKnowledge(graph: KnowledgeGraph, nodeId: string): KnowledgeNode[] {
   const ids = graph.edges.flatMap((edge) => edge.from === nodeId ? [edge.to] : edge.to === nodeId ? [edge.from] : [])
   return graph.nodes.filter((node) => ids.includes(node.id))
+}
+
+export function buildAssistantKnowledgeContext(graph: KnowledgeGraph, maxNodes = 12): string {
+  const prioritized = [...graph.nodes].sort((left, right) => {
+    const rank = (node: KnowledgeNode) => node.type === 'app' ? 0 : node.type === 'feature' ? 1 : node.type === 'advice' ? 2 : 3
+    return rank(left) - rank(right)
+  }).slice(0, maxNodes)
+  return [
+    `VoiceShield application knowledge. Version: ${graph.appVersion}. Graph schema: ${graph.schemaVersion}.`,
+    ...prioritized.map((node) => `${node.title} [${node.status ?? 'active'}]: ${node.summary}`),
+    'Treat this as product context. Do not claim an external, experimental, blocked, or device-unverified capability is available.',
+  ].join('\n')
 }

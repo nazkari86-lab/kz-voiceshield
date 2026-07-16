@@ -19,6 +19,15 @@ export type I18nKeys = {
   sms: { title: string; scan: string }
   history: { title: string; clear: string; empty: string }
   stats: { title: string }
+  voip: {
+    eyebrow: string; title: string; description: string; ready: string; readyCopy: string
+    create: string; creating: string; callId: string; callIdPlaceholder: string; join: string
+    joining: string; connected: string; connecting: string; participants: string; waiting: string
+    participantConnected: string; microphoneOn: string; microphoneOff: string; audioOutput: string
+    shareCallId: string; ending: string; end: string; analysisBoundary: string
+    errorNetwork: string; errorAuthorization: string; errorUnavailable: string; errorNotFound: string
+    errorFallback: string; errorAudioOutput: string; errorAudioDevices: string; errorMicrophone: string
+  }
 }
 
 export const ru: I18nKeys = {
@@ -63,4 +72,17 @@ export const ru: I18nKeys = {
   sms: { title: 'SMS-сканер', scan: 'Сканировать' },
   history: { title: 'История звонков', clear: 'Очистить', empty: 'Нет сохранённых звонков' },
   stats: { title: 'Статистика' },
+  voip: {
+    eyebrow: 'ЗАЩИЩЁННАЯ СВЯЗЬ',
+    title: 'Защищённый VoIP-звонок',
+    description: 'Прямой аудиозвонок внутри VoiceShield через временную комнату LiveKit. Секреты сервера остаются на Mac или вашем backend.',
+    ready: 'Готово к защищённому звонку',
+    readyCopy: 'Создайте временную комнату и передайте Call ID собеседнику. Для подключения обоим участникам нужен настроенный сервер VoiceShield.',
+    create: 'Создать звонок', creating: 'Создаём комнату…', callId: 'Call ID', callIdPlaceholder: 'Введите Call ID для подключения', join: 'Подключиться к звонку',
+    joining: 'Подключаемся…', connected: 'Звонок подключён', connecting: 'Подключение к защищённой комнате…', participants: 'Участников в звонке', waiting: 'Ожидание собеседника. Передайте ему Call ID.',
+    participantConnected: 'Собеседник подключён. Аудио передаётся напрямую через LiveKit.', microphoneOn: 'Микрофон включён', microphoneOff: 'Микрофон выключен', audioOutput: 'Вывод звука',
+    shareCallId: 'Передать Call ID', ending: 'Завершаем звонок…', end: 'Завершить звонок', analysisBoundary: 'Live Shield работает отдельно и не создаёт фиктивную расшифровку звонка.',
+    errorNetwork: 'Нет связи с сервером. Проверьте URL, сеть Wi-Fi и работу backend.', errorAuthorization: 'Сервер отклонил доступ. Проверьте API-токен в настройках.', errorUnavailable: 'Голосовой сервис недоступен: LiveKit не настроен на сервере.', errorNotFound: 'Комната не найдена или уже завершена.',
+    errorFallback: 'Не удалось подключиться к защищённому звонку.', errorAudioOutput: 'Не удалось переключить вывод звука.', errorAudioDevices: 'Не удалось получить доступные аудиоустройства.', errorMicrophone: 'Микрофон недоступен',
+  },
 }

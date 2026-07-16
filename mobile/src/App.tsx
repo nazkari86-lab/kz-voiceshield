@@ -40,6 +40,7 @@ import { VoiceMessageModule, voiceMessageEvents } from './bridge/VoiceMessageBri
 import { useOnDeviceAiRuntime } from './hooks/useOnDeviceAiRuntime'
 import { useLiveAiAnalysis } from './hooks/useLiveAiAnalysis'
 import { buildKazakhIntelligenceContext } from './utils/kazakhIntelligence'
+import { buildAssistantKnowledgeContext, buildKnowledgeGraph } from './data/knowledgeGraph'
 
 type Tab =
   | 'live' | 'review' | 'evidence' | 'timeline' | 'threats' | 'chain'
@@ -118,6 +119,7 @@ function AppContent() {
   const { colors } = useTheme()
   const [tab, setTab] = useState<Tab>('live')
   const [sharedText, setSharedText] = useState('')
+  const [assistantAttachmentText, setAssistantAttachmentText] = useState('')
   const [pendingSharedAudio, setPendingSharedAudio] = useState(false)
   const [hubOpen, setHubOpen] = useState(false)
   const [onboardingDone, setOnboardingDone] = useState(true)
@@ -125,6 +127,10 @@ function AppContent() {
   const ai = useOnDeviceAiRuntime()
   const w = useWorkspace()
   const { isListening, startListening } = w
+  const assistantKnowledgeContext = useMemo(
+    () => buildAssistantKnowledgeContext(buildKnowledgeGraph(w.modelStorage)),
+    [w.modelStorage],
+  )
   const liveLanguageContext = useMemo(() => [
     w.ksc2LanguageContext,
     buildKazakhIntelligenceContext(w.transcriptEnhancement, ai.engine, ai.modelName),
@@ -188,6 +194,7 @@ function AppContent() {
     const accept = (text?: string | null) => {
       if (!text) return
       setSharedText(text)
+      setAssistantAttachmentText(text)
       selectTab('tools')
     }
     const sub = shareIntentEvents.addListener('VS_SHARED_TEXT', (event: { text?: string }) => accept(event.text))
@@ -235,7 +242,7 @@ function AppContent() {
       {tab === 'stats' && <StatsView cases={w.cases} />}
       {tab === 'sms' && <SmsScannerView ai={ai} onAnalyze={(text) => { w.setTranscript(text); w.setFileName('sms-message.txt'); selectTab('tools') }} />}
       {tab === 'history' && <TranscriptHistoryView />}
-      {tab === 'llm' && <LLMAssistantView transcript={w.analysisTranscript} languageContext={w.ksc2LanguageContext} ai={ai} />}
+      {tab === 'llm' && <LLMAssistantView attachmentText={assistantAttachmentText} transcript={w.analysisTranscript} languageContext={[w.ksc2LanguageContext, assistantKnowledgeContext].filter(Boolean).join('\n\n')} ai={ai} />}
       {tab === 'demo' && <ProtectionWalkthroughView
         onOpenReview={(transcript) => { w.setTranscript(transcript); w.setFileName('protection-walkthrough.txt'); selectTab('review') }}
         onOpenAi={(transcript) => { w.setTranscript(transcript); w.setFileName('protection-walkthrough.txt'); selectTab('llm') }}

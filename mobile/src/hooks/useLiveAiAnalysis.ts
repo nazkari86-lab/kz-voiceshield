@@ -24,13 +24,14 @@ type Options = {
   isListening: boolean
   ruleRisk: string
   ruleScore: number
+  ruleEvidence: string
   ramBytes: number
   languageContext?: string
 }
 
 const LIVE_AI_ENABLED_KEY = 'voiceshield.live-ai.enabled.v1'
 
-export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleScore, ramBytes, languageContext = '' }: Options) {
+export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleScore, ruleEvidence, ramBytes, languageContext = '' }: Options) {
   const [enabled, setEnabledState] = useState(true)
   const [cloudLiveConsent, setCloudLiveConsent] = useState(false)
   const [cloudConsentHydrated, setCloudConsentHydrated] = useState(false)
@@ -137,7 +138,7 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
     try {
       await ai.ensureReady()
       setStatus('analyzing')
-      const request = buildLiveAiGenerationRequest(currentTranscript, languageContextRef.current)
+      const request = buildLiveAiGenerationRequest(currentTranscript, languageContextRef.current, `risk=${ruleRisk}; score=${ruleScore}; evidence=${ruleEvidence.slice(0, 800)}`)
       const full = await ai.generate({ ...request, owner: 'live', onToken: appendToken })
       tokenBufferRef.current = full
       flushDraft()
@@ -166,7 +167,7 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
         schedule(Math.max(1600, throttle))
       }
     }
-  }, [ai, appendToken, flushDraft, ramBytes, result, schedule])
+  }, [ai, appendToken, flushDraft, ramBytes, result, ruleEvidence, ruleRisk, ruleScore, schedule])
 
   runRef.current = runAnalysis
 

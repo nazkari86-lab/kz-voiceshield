@@ -39,6 +39,26 @@ describe('live AI analysis policy', () => {
     expect(invalidRisk.risk).toBe('unknown')
   })
 
+  it('keeps the second-stage explanation structured and bounded', () => {
+    const request = buildLiveAiGenerationRequest('Сотрудник банка просит код из SMS.', '', 'risk=high; score=82; evidence=запрос OTP')
+    expect(request.localUserMessage).toContain('rules/ML')
+    const parsed = parseLiveAiResponse(JSON.stringify({
+      risk: 'high',
+      scheme: 'лжесотрудник банка',
+      technique: 'давление и запрос OTP',
+      evidence: 'просит код из SMS',
+      whyRisk: 'код подтверждает операцию',
+      action: 'завершить звонок',
+      immediateSteps: ['не сообщать код', 'перезвонить в банк'],
+      doNotDo: ['не устанавливать приложения'],
+      uncertainty: 'слышна только одна сторона',
+    }))
+    expect(parsed.technique).toContain('OTP')
+    expect(parsed.immediateSteps).toHaveLength(2)
+    expect(parsed.doNotDo[0]).toContain('приложения')
+    expect(parsed.uncertainty).toContain('одна сторона')
+  })
+
   it('keeps an unstructured answer visible instead of dropping the analysis', () => {
     const parsed = parseLiveAiResponse('Вероятно высокий риск: собеседник торопит и просит деньги.')
     expect(parsed.risk).toBe('high')

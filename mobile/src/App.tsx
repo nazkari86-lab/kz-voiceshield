@@ -132,6 +132,7 @@ function AppContent() {
     isListening: w.isListening,
     ruleRisk: w.analysis.risk,
     ruleScore: w.analysis.score,
+    ruleEvidence: w.analysis.evidence.map((item) => item.title).join('; '),
     ramBytes: w.modelStorage?.ramBytes ?? 0,
   })
   const selectTab = (next: Tab) => { setHubOpen(false); setTab(next) }

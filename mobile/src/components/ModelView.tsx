@@ -1,104 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { Pressable, StyleSheet, TextInput, View } from 'react-native'
+import React from 'react'
+import { StyleSheet, Text, View } from 'react-native'
 import { colors } from '../theme'
 import { Card, Metric, SectionTitle, ui } from './ui'
 import { modelManifest } from '../data/modelManifest'
 import { kazakhQualityPackComponents } from '../data/kazakhQualityPack'
-import { whisperModels } from '../data/whisperModels'
-import { LocalizedText as Text } from './LocalizedText'
-import { buildKnowledgeGraph, personalizedRecommendations, relatedKnowledge, searchKnowledge, type KnowledgeNode } from '../data/knowledgeGraph'
-import { ModelDownloader } from '../bridge/WhisperBridge'
-import { getKnowledgeBackendConfig, loadKnowledgeGraphState, mergeKnowledgeGraph, pullKnowledgeGraph, saveKnowledgeGraphState, setKnowledgeBackendConfig, syncKnowledgeGraph, type KnowledgeGraphState } from '../data/knowledgeGraphStore'
 
 export function ModelView() {
   const { activeDetector, ml, privacy } = modelManifest
   const snap = ml.trainedOn
   const origins = Object.entries(snap.byOrigin ?? {})
   const langs = Object.entries(snap.byLanguage ?? {})
-  const [query, setQuery] = useState('')
-  const [graphState, setGraphState] = useState<KnowledgeGraphState>({ notes: [], customEdges: [], diagnostics: [], updatedAt: new Date(0).toISOString() })
-  const [storage, setStorage] = useState<Awaited<ReturnType<typeof ModelDownloader.getStorageInfo>> | null>(null)
-  const [readyModels, setReadyModels] = useState<Set<string>>(new Set())
-  const [noteText, setNoteText] = useState('')
-  const [edgeFrom, setEdgeFrom] = useState('')
-  const [edgeTo, setEdgeTo] = useState('')
-  const [edgeRelation, setEdgeRelation] = useState('supports')
-  const [backendUrl, setBackendUrl] = useState('')
-  const [backendToken, setBackendToken] = useState('')
-  const [syncStatus, setSyncStatus] = useState('')
-  useEffect(() => {
-    let alive = true
-    void Promise.all([loadKnowledgeGraphState(), getKnowledgeBackendConfig(), ModelDownloader.getStorageInfo(), ...whisperModels.map(async (model) => ({ id: model.id, path: await ModelDownloader.getVerifiedModelPath(model.file, model.sha256, model.size) }))])
-      .then(([state, info, ...models]) => {
-        if (!alive) return
-        setGraphState(state as KnowledgeGraphState)
-        const config = info as { url: string; token: string }
-        setBackendUrl(config.url); setBackendToken(config.token)
-        setStorage(models.shift() as Awaited<ReturnType<typeof ModelDownloader.getStorageInfo>>)
-        setReadyModels(new Set((models as Array<{ id: string; path: string | null }>).filter((model) => model.path).map((model) => model.id)))
-      }).catch(() => undefined)
-    return () => { alive = false }
-  }, [])
-  const baseGraph = useMemo(() => buildKnowledgeGraph(storage, readyModels), [readyModels, storage])
-  const graph = useMemo(() => mergeKnowledgeGraph(baseGraph, graphState), [baseGraph, graphState])
-  const graphResults = useMemo(() => searchKnowledge(graph, query).filter((node) => node.type !== 'app').slice(0, 12), [graph, query])
-  const recommendations = useMemo(() => personalizedRecommendations(graph, graphState.diagnostics, storage, readyModels), [graph, graphState.diagnostics, readyModels, storage])
-  const statusLabel = (node: KnowledgeNode) => node.status === 'active' ? 'ACTIVE' : node.status === 'ready' ? 'READY' : node.status === 'available' ? 'AVAILABLE' : node.status === 'downloadable' ? 'DOWNLOAD' : node.status === 'experimental' ? 'EXPERIMENTAL' : 'BLOCKED'
-  const addNote = async () => {
-    const text = noteText.trim()
-    if (!text) return
-    const note: KnowledgeNode = { id: `note:${Date.now()}`, type: 'advice', title: 'User note', summary: text, tags: ['user', 'note'], status: 'active' }
-    const next = { ...graphState, notes: [note, ...graphState.notes].slice(0, 100), updatedAt: new Date().toISOString() }
-    await saveKnowledgeGraphState(next); setGraphState(next); setNoteText('')
-  }
-  const addEdge = async () => {
-    const from = edgeFrom.trim(); const to = edgeTo.trim(); const relation = edgeRelation.trim()
-    if (!from || !to || !relation) return
-    const next = { ...graphState, customEdges: [...graphState.customEdges, { from, to, relation }].slice(-200), updatedAt: new Date().toISOString() }
-    await saveKnowledgeGraphState(next); setGraphState(next); setEdgeFrom(''); setEdgeTo('')
-  }
-  const syncGraph = async () => {
-    try {
-      const remote = await pullKnowledgeGraph()
-      const merged = remote ?? graphState
-      if (remote) { setGraphState(merged) }
-      const result = await syncKnowledgeGraph(baseGraph, merged)
-      setSyncStatus(`Synced ${new Date(result.syncedAt).toLocaleString()}`)
-    }
-    catch (error) { setSyncStatus(error instanceof Error && error.message === 'BACKEND_NOT_CONFIGURED' ? 'Backend URL and token are required' : (error instanceof Error ? error.message : 'Sync failed')) }
-  }
 
   return (
     <View>
-      <SectionTitle>Knowledge graph</SectionTitle>
-      <Card tone="low">
-        <Text style={styles.body}>Version {graph.schemaVersion} · app {graph.appVersion} · {graph.nodes.length} nodes · {graph.edges.length} links</Text>
-        {storage && <Text style={styles.meta}>Device: {Math.round(storage.availableBytes / 1024 ** 3 * 10) / 10} GB free · {Math.round(storage.ramBytes / 1024 ** 3 * 10) / 10} GB RAM · {readyModels.size} verified models ready</Text>}
-        <TextInput value={query} onChangeText={setQuery} placeholder="Search models, functions, datasets or advice" placeholderTextColor={colors.muted} style={styles.search} />
-        <TextInput value={noteText} onChangeText={setNoteText} placeholder="Add a private note or device finding" placeholderTextColor={colors.muted} style={styles.search} />
-        <Pressable style={styles.graphButton} onPress={() => { void addNote() }}><Text style={styles.graphButtonText}>Add encrypted note</Text></Pressable>
-        <TextInput value={edgeFrom} onChangeText={setEdgeFrom} placeholder="Connection from node id" placeholderTextColor={colors.muted} autoCapitalize="none" style={styles.search} />
-        <TextInput value={edgeTo} onChangeText={setEdgeTo} placeholder="Connection to node id" placeholderTextColor={colors.muted} autoCapitalize="none" style={styles.search} />
-        <View style={styles.graphActions}><TextInput value={edgeRelation} onChangeText={setEdgeRelation} placeholder="Relation" placeholderTextColor={colors.muted} style={[styles.search, styles.relationInput]} /><Pressable style={styles.graphButton} onPress={() => { void addEdge() }}><Text style={styles.graphButtonText}>Add connection</Text></Pressable></View>
-        <TextInput value={backendUrl} onChangeText={setBackendUrl} placeholder="Backend URL (optional)" placeholderTextColor={colors.muted} autoCapitalize="none" style={styles.search} />
-        <TextInput value={backendToken} onChangeText={setBackendToken} placeholder="Backend token (stored encrypted)" placeholderTextColor={colors.muted} secureTextEntry autoCapitalize="none" style={styles.search} />
-        <View style={styles.graphActions}><Pressable style={styles.graphButton} onPress={() => { void setKnowledgeBackendConfig(backendUrl, backendToken); setSyncStatus('Backend settings saved encrypted') }}><Text style={styles.graphButtonText}>Save backend</Text></Pressable><Pressable style={styles.graphButton} onPress={() => { void syncGraph() }}><Text style={styles.graphButtonText}>Sync graph</Text></Pressable></View>
-        {!!syncStatus && <Text style={styles.meta}>{syncStatus}</Text>}
-        {recommendations.length > 0 && <View style={styles.recommendation}><Text style={styles.subhead}>Personal recommendations</Text>{recommendations.map((node) => <Text key={node.id} style={styles.body}>• {node.title}: {node.summary}</Text>)}</View>}
-        {graphResults.map((node) => {
-          const related = relatedKnowledge(graph, node.id).slice(0, 2)
-          return (
-            <View key={node.id} style={styles.graphRow}>
-              <View style={styles.graphCopy}>
-                <Text style={styles.title}>{node.title}</Text>
-                <Text style={styles.meta}>{node.type.toUpperCase()} · {statusLabel(node)}{node.version ? ` · v${node.version}` : ''}</Text>
-                <Text style={styles.body}>{node.summary}</Text>
-                {related.length > 0 && <Text style={styles.graphLinks}>Связи: {related.map((item) => item.title).join(' · ')}</Text>}
-              </View>
-            </View>
-          )
-        })}
-      </Card>
       <SectionTitle>Active detector</SectionTitle>
       <Card>
         <Text style={styles.title}>{activeDetector.name}</Text>
@@ -222,13 +136,4 @@ const styles = StyleSheet.create({
   bundled: { backgroundColor: '#dcfce7', borderColor: '#86efac', color: '#166534' },
   downloadable: { backgroundColor: '#dbeafe', borderColor: '#93c5fd', color: '#1d4ed8' },
   external: { backgroundColor: '#fef3c7', borderColor: '#fcd34d', color: '#92400e' },
-  search: { backgroundColor: '#fff', borderColor: '#d6e4df', borderRadius: 8, borderWidth: 1, color: colors.ink, fontSize: 14, marginVertical: 10, paddingHorizontal: 12, paddingVertical: 10 },
-  graphRow: { borderTopColor: '#dce9e4', borderTopWidth: 1, paddingVertical: 10 },
-  graphCopy: { gap: 3 },
-  graphLinks: { color: colors.brandDark, fontSize: 11, lineHeight: 16 },
-  graphActions: { flexDirection: 'row', gap: 8 },
-  graphButton: { alignItems: 'center', backgroundColor: colors.brand, borderRadius: 8, marginBottom: 8, paddingHorizontal: 12, paddingVertical: 9 },
-  graphButtonText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  recommendation: { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0', borderRadius: 8, borderWidth: 1, gap: 4, marginBottom: 8, padding: 10 },
-  relationInput: { flex: 1, marginVertical: 0 },
 })

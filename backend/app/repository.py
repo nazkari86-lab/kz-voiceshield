@@ -62,11 +62,6 @@ class Repository:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS knowledge_graphs (
-                    user_id TEXT PRIMARY KEY,
-                    payload BLOB NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
                 """
             )
 
@@ -114,21 +109,11 @@ class Repository:
             row = self._connection.execute("SELECT payload FROM cases WHERE id = ?", (case_id,)).fetchone()
         return self._cipher.decrypt_json(row["payload"]) if row else None
 
-    def list_cases(self, status: str | None, limit: int, assigned_to: str | None = None) -> list[dict[str, Any]]:
+    def list_cases(self, status: str | None, limit: int) -> list[dict[str, Any]]:
         with self._lock:
-            if status and assigned_to:
-                rows = self._connection.execute(
-                    "SELECT payload FROM cases WHERE status = ? AND assigned_to = ? ORDER BY updated_at DESC LIMIT ?",
-                    (status, assigned_to, limit),
-                ).fetchall()
-            elif status:
+            if status:
                 rows = self._connection.execute(
                     "SELECT payload FROM cases WHERE status = ? ORDER BY updated_at DESC LIMIT ?", (status, limit)
-                ).fetchall()
-            elif assigned_to:
-                rows = self._connection.execute(
-                    "SELECT payload FROM cases WHERE assigned_to = ? ORDER BY updated_at DESC LIMIT ?",
-                    (assigned_to, limit),
                 ).fetchall()
             else:
                 rows = self._connection.execute("SELECT payload FROM cases ORDER BY updated_at DESC LIMIT ?", (limit,)).fetchall()
@@ -188,26 +173,6 @@ class Repository:
             }
             for row in rows
         ]
-
-    def save_knowledge_graph(self, user_id: str, payload: dict[str, Any]) -> str:
-        updated_at = utc_now()
-        with self._lock, self._connection:
-            self._connection.execute(
-                """INSERT INTO knowledge_graphs(user_id, payload, updated_at) VALUES (?, ?, ?)
-                   ON CONFLICT(user_id) DO UPDATE SET payload=excluded.payload, updated_at=excluded.updated_at""",
-                (user_id, self._cipher.encrypt_json(payload), updated_at),
-            )
-        self.audit(user_id, "knowledge_graph_synced", {"schemaVersion": payload.get("schemaVersion")})
-        return updated_at
-
-    def get_knowledge_graph(self, user_id: str) -> dict[str, Any] | None:
-        with self._lock:
-            row = self._connection.execute("SELECT payload, updated_at FROM knowledge_graphs WHERE user_id = ?", (user_id,)).fetchone()
-        if row is None:
-            return None
-        payload = self._cipher.decrypt_json(row["payload"])
-        payload["serverUpdatedAt"] = row["updated_at"]
-        return payload
 
     def create_audio_job(self, job_id: str, content_type: str, audio: bytes | None, actor: str) -> None:
         now = utc_now()

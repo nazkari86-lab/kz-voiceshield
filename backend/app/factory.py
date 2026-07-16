@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Principal, Settings
 from .ml_service import ModelService, ModelUnavailable
-from .models import AudioJobResponse, CasePayload, KnowledgeGraphPayload, TranscriptRequest, WorkflowPatch
+from .models import AudioJobResponse, CasePayload, TranscriptRequest, WorkflowPatch
 from .repository import CaseVersionConflict, Repository
 from .security import PayloadCipher, authenticate, require_roles
 from .transcription import Transcriber, transcriber_from_env
@@ -41,7 +41,7 @@ def create_app(
         yield
         repository.close()
 
-    app = FastAPI(title="KZ VoiceShield API", version="2.1.3", lifespan=lifespan)
+    app = FastAPI(title="KZ VoiceShield API", version="2.0.0", lifespan=lifespan)
     app.state.settings = resolved_settings
     app.state.repository = repository
     app.state.model_service = resolved_model
@@ -70,7 +70,7 @@ def create_app(
             "serverSttConfigured": resolved_transcriber.__class__.__name__ != "DisabledTranscriber",
             "retainAudio": resolved_settings.retain_audio,
             "maxAudioBytes": resolved_settings.max_audio_bytes,
-            "livekitConfigured": livekit_configured(),
+            "livekitConfigured": all((resolved_settings.livekit_url, resolved_settings.livekit_api_key, resolved_settings.livekit_api_secret)),
             "capabilities": {
                 "serverStt": resolved_transcriber.__class__.__name__ != "DisabledTranscriber",
                 "serverVad": resolved_transcriber.__class__.__name__ == "FasterWhisperTranscriber",
@@ -84,15 +84,16 @@ def create_app(
     def livekit_configured() -> bool:
         return all((resolved_settings.livekit_url, resolved_settings.livekit_api_key, resolved_settings.livekit_api_secret))
 
-    def livekit_token(room: str, identity: str) -> str:
+    def livekit_token(room: str, identity: str, name: str) -> str:
         try:
             from livekit import api
         except ImportError as error:
             raise HTTPException(status_code=503, detail="LiveKit server dependency is not installed") from error
         token = api.AccessToken(resolved_settings.livekit_api_key, resolved_settings.livekit_api_secret)
-        return token.with_identity(identity).with_name(identity).with_grants(
+        token = token.with_identity(identity).with_name(name).with_grants(
             api.VideoGrants(room_join=True, room=room, can_publish=True, can_subscribe=True)
-        ).to_jwt()
+        )
+        return token.to_jwt()
 
     @app.post("/calls/create")
     def create_call(principal: Principal = Depends(authenticate)) -> dict[str, Any]:
@@ -100,8 +101,8 @@ def create_app(
             raise HTTPException(status_code=503, detail="LiveKit is not configured on this backend")
         call_id = f"call_{uuid4().hex}"
         with livekit_lock:
-            livekit_rooms[call_id] = {"ended": False}
-        token = livekit_token(call_id, principal.user_id)
+            livekit_rooms[call_id] = {"createdBy": principal.user_id, "ended": False}
+        token = livekit_token(call_id, principal.user_id, principal.user_id)
         repository.audit(principal.user_id, "voip_call_created", {"callId": call_id})
         return {"callId": call_id, "room": call_id, "serverUrl": resolved_settings.livekit_url, "token": token}
 
@@ -111,9 +112,11 @@ def create_app(
             raise HTTPException(status_code=503, detail="LiveKit is not configured on this backend")
         with livekit_lock:
             call = livekit_rooms.get(call_id)
-        if not call or call["ended"]:
+        if not call or call.get("ended"):
             raise HTTPException(status_code=404, detail="VoIP call not found or already ended")
-        return {"callId": call_id, "room": call_id, "serverUrl": resolved_settings.livekit_url, "token": livekit_token(call_id, principal.user_id)}
+        token = livekit_token(call_id, principal.user_id, principal.user_id)
+        repository.audit(principal.user_id, "voip_call_joined", {"callId": call_id})
+        return {"callId": call_id, "room": call_id, "serverUrl": resolved_settings.livekit_url, "token": token}
 
     @app.post("/calls/{call_id}/end")
     def end_call(call_id: str, principal: Principal = Depends(authenticate)) -> dict[str, Any]:
@@ -134,24 +137,10 @@ def create_app(
             assessment = resolved_model.assess(body.transcript)
         except ModelUnavailable as error:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
-        rule_score = body.ruleAnalysis.get("score")
-        disagreement: dict[str, Any]
-        if isinstance(rule_score, (int, float)):
-            bounded_rule = max(0, min(100, float(rule_score)))
-            delta = round(float(assessment["score"]) - bounded_rule, 1)
-            if delta >= 20:
-                kind = "rules_low_ml_high"
-            elif delta <= -20:
-                kind = "rules_high_ml_low"
-            else:
-                kind = "aligned"
-            disagreement = {"kind": kind, "ruleScore": round(bounded_rule, 1), "mlScore": assessment["score"], "delta": delta}
-        else:
-            disagreement = {"kind": "insufficient_rule_score", "ruleScore": None, "mlScore": assessment["score"], "delta": None}
         safe_transcript = redact_text(body.transcript)
         language = detect_language(body.transcript)
-        repository.audit(principal.user_id, "transcript_analyzed", {"length": len(safe_transcript), "language": language, "disagreement": disagreement["kind"]})
-        return {"ml": assessment, "disagreement": disagreement, "redactedTranscript": safe_transcript, "language": language}
+        repository.audit(principal.user_id, "transcript_analyzed", {"length": len(safe_transcript), "language": language})
+        return {"ml": assessment, "redactedTranscript": safe_transcript, "language": language}
 
     def process_audio_job(job_id: str, audio_bytes: bytes, suffix: str, actor: str) -> None:
         repository.update_audio_job(job_id, "processing")
@@ -207,11 +196,10 @@ def create_app(
     @app.get("/cases")
     def list_cases(
         case_status: str | None = Query(default=None, alias="status", pattern="^(new|reviewing|escalated|closed)$"),
-        assigned_to: str | None = Query(default=None, alias="assignedTo", min_length=1, max_length=120),
         limit: int = Query(default=100, ge=1, le=500),
         _: Principal = Depends(require_roles("reviewer", "admin")),
     ) -> dict[str, Any]:
-        items = repository.list_cases(case_status, limit, assigned_to)
+        items = repository.list_cases(case_status, limit)
         return {"items": items, "count": len(items)}
 
     @app.get("/cases/{case_id}")
@@ -244,19 +232,5 @@ def create_app(
     ) -> dict[str, Any]:
         items = repository.list_audit(case_id, limit)
         return {"items": items, "count": len(items)}
-
-    @app.get("/knowledge-graph")
-    def get_knowledge_graph(principal: Principal = Depends(authenticate)) -> dict[str, Any]:
-        payload = repository.get_knowledge_graph(principal.user_id)
-        return {"graph": payload, "found": payload is not None}
-
-    @app.put("/knowledge-graph")
-    def sync_knowledge_graph(body: KnowledgeGraphPayload, principal: Principal = Depends(authenticate)) -> dict[str, Any]:
-        payload = body.model_dump(mode="json")
-        graph_size = len(str(payload.get("graph", {})).encode("utf-8"))
-        if graph_size > 2_000_000:
-            raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Knowledge graph is too large")
-        updated_at = repository.save_knowledge_graph(principal.user_id, payload)
-        return {"ok": True, "serverUpdatedAt": updated_at, "schemaVersion": body.schemaVersion}
 
     return app

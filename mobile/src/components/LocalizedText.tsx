@@ -2,17 +2,7 @@ import React, { Children, type ReactNode } from 'react'
 import { Text as NativeText, type TextProps } from 'react-native'
 import { useI18n } from '../I18nContext'
 
-const translations: Record<string, { en?: string; ru: string; kz: string }> = {
-  'Protection Intelligence': { ru: 'Интеллект защиты', kz: 'Қорғаныс интеллекті' },
-  'Incident Copilot · сейчас': { ru: 'Incident Copilot · сейчас', kz: 'Incident Copilot · қазір' },
-  'Attack graph': { ru: 'Граф атаки', kz: 'Шабуыл графы' },
-  'Family-safe alert': { ru: 'Безопасное уведомление семье', kz: 'Отбасыға қауіпсіз ескерту' },
-  'CONSENSUS': { ru: 'КОНСЕНСУС', kz: 'КЕЛІСІМ' },
-  'CONFIDENCE': { ru: 'УВЕРЕННОСТЬ', kz: 'СЕНІМДІЛІК' },
-  'DRIFT': { ru: 'DRIFT', kz: 'DRIFT' },
-  'ADAPTIVE COACH': { ru: 'АДАПТИВНЫЙ ТРЕНЕР', kz: 'БЕЙІМДЕЛЕТІН ЖАТТЫҚТЫРУШЫ' },
-  'Scam call training': { ru: 'Тренировка против мошеннических звонков', kz: 'Алаяқ қоңырауларға қарсы жаттығу' },
-  'Practice decisions under pressure. No real call or personal data is used.': { ru: 'Тренируйте решения под давлением. Реальные звонки и персональные данные не используются.', kz: 'Қысым кезіндегі шешімдерді жаттықтырыңыз. Нақты қоңырау мен жеке дерек қолданылмайды.' },
+const translations: Record<string, { ru: string; kz: string }> = {
   'Save current': { ru: 'Сохранить текущий', kz: 'Ағымдағыны сақтау' },
   'No saved cases yet': { ru: 'Сохранённых дел пока нет', kz: 'Сақталған істер әзірге жоқ' },
   'Save reviewed calls to build a local investigation library.': { ru: 'Сохраняйте проверенные звонки, чтобы создать локальную библиотеку расследований.', kz: 'Жергілікті тергеу қорын құру үшін тексерілген қоңырауларды сақтаңыз.' },
@@ -71,71 +61,11 @@ const translations: Record<string, { en?: string; ru: string; kz: string }> = {
   'Scan messages': { ru: 'Проверить сообщения', kz: 'Хабарламаларды тексеру' },
   'SMS Scanner': { ru: 'Проверка SMS', kz: 'SMS тексеру' },
   'No suspicious messages found': { ru: 'Подозрительных сообщений не найдено', kz: 'Күдікті хабарламалар табылмады' },
-  'Protection walkthrough': { ru: 'Пошаговая защита', kz: 'Қорғаныс нұсқаулығы' },
-  'Case review': { ru: 'Проверка дела', kz: 'Істі тексеру' },
-  'Evidence & signals': { ru: 'Доказательства и сигналы', kz: 'Дәлелдер мен сигналдар' },
-  'Incident timeline': { ru: 'Хронология инцидента', kz: 'Оқиға хронологиясы' },
-  'Threat library': { ru: 'Библиотека угроз', kz: 'Қауіптер кітапханасы' },
-  'Attack sequence': { ru: 'Цепочка атаки', kz: 'Шабуыл тізбегі' },
-  Emergency: { ru: 'Экстренная помощь', kz: 'Шұғыл көмек' },
-  'Voice messages': { ru: 'Голосовые сообщения', kz: 'Дауыстық хабарламалар' },
-  'Training dataset': { ru: 'Датасет обучения', kz: 'Оқыту деректер жиыны' },
-  Playbook: { ru: 'Сценарии действий', kz: 'Әрекет сценарийлері' },
-  Family: { ru: 'Семья', kz: 'Отбасы' },
-  Verify: { ru: 'Проверка', kz: 'Тексеру' },
-  'Number shield': { ru: 'Защита номера', kz: 'Нөмір қорғанысы' },
-  'Scam tools': { ru: 'Инструменты проверки', kz: 'Алаяқтықты тексеру құралдары' },
-  'Voice message': { ru: 'Голосовое сообщение', kz: 'Дауыстық хабарлама' },
-  'Data & model': { ru: 'Данные и модель', kz: 'Деректер мен модель' },
-  Statistics: { ru: 'Статистика', kz: 'Статистика' },
-  'SMS scanner': { ru: 'Проверка SMS', kz: 'SMS тексеру' },
-  'Call history': { ru: 'История звонков', kz: 'Қоңырау тарихы' },
-  'AI assistant': { ru: 'AI-ассистент', kz: 'AI-көмекші' },
-  Setup: { ru: 'Настройка', kz: 'Баптаулар' },
-  Learn: { ru: 'Обучение', kz: 'Оқу' },
-  Investigate: { ru: 'Анализ', kz: 'Талдау' },
-  Recover: { ru: 'Восстановление', kz: 'Қалпына келтіру' },
-  Workspace: { ru: 'Рабочая область', kz: 'Жұмыс кеңістігі' },
-  Protect: { ru: 'Защита', kz: 'Қорғаныс' },
-  'Everything else, clearly organized.': { ru: 'Все инструменты организованы понятно.', kz: 'Барлық құралдар түсінікті реттелген.' },
-  'Choose a tool for investigation, recovery, reviewers or device setup.': { ru: 'Выберите инструмент для анализа, восстановления, работы рецензента или настройки устройства.', kz: 'Талдау, қалпына келтіру, рецензент жұмысы немесе құрылғы баптауы үшін құралды таңдаңыз.' },
-  OPEN: { ru: 'ОТКРЫТЬ', kz: 'АШУ' },
-  'LOCAL MODEL HUB': { ru: 'ЛОКАЛЬНЫЕ МОДЕЛИ', kz: 'ЖЕРГІЛІКТІ МОДЕЛЬДЕР' },
-  'OFFICIAL API HUB': { ru: 'ОФИЦИАЛЬНЫЕ API', kz: 'РЕСМИ API' },
-  'KAZAKH QUALITY PACK': { ru: 'ПАКЕТ КАЗАХСКОГО КАЧЕСТВА', kz: 'ҚАЗАҚ ТІЛІ САПА ПАКЕТІ' },
-  'Active detector': { ru: 'Активный детектор', kz: 'Белсенді детектор' },
-  'Recent Kazakhstan operation coverage': { ru: 'Покрытие последних операций в Казахстане', kz: 'Қазақстандағы соңғы операцияларды қамту' },
-  'Kazakh quality pack status': { ru: 'Статус пакета казахского качества', kz: 'Қазақ тілі сапа пакетінің күйі' },
-  'Experimental ML model': { ru: 'Экспериментальная ML-модель', kz: 'Эксперименттік ML-модель' },
-  'Training corpus': { ru: 'Обучающая выборка', kz: 'Оқыту корпусы' },
-  'Baseline evaluation': { ru: 'Проверка baseline-модели', kz: 'Baseline моделін бағалау' },
-  'Data sources': { ru: 'Источники данных', kz: 'Дереккөздер' },
-  'How this model is built': { ru: 'Как построена модель', kz: 'Бұл модель қалай жасалған' },
-  Privacy: { ru: 'Конфиденциальность', kz: 'Құпиялылық' },
-  'free': { ru: 'бесплатно', kz: 'тегін' },
-  'paid': { ru: 'платно', kz: 'ақылы' },
-  'Connect API key': { ru: 'Подключить API-ключ', kz: 'API-кілтті қосу' },
-  'Disconnect': { ru: 'Отключить', kz: 'Ажырату' },
-  'Search models': { ru: 'Поиск моделей', kz: 'Модельдерді іздеу' },
-  'Download': { ru: 'Скачать', kz: 'Жүктеу' },
-  'Import': { ru: 'Импортировать', kz: 'Импорттау' },
-  'Delete model': { ru: 'Удалить модель', kz: 'Модельді жою' },
-  'Run': { ru: 'Запустить', kz: 'Іске қосу' },
 }
 
-function translateUi(value: string, lang: 'en' | 'ru' | 'kz'): string {
-  if (lang === 'en') return value
+function translateUi(value: string, lang: 'ru' | 'kz'): string {
   const exact = translations[value]
   if (exact) return exact[lang]
-  const lowerValue = value.toLowerCase()
-  const caseInsensitiveKey = Object.keys(translations).find((key) => key.toLowerCase() === lowerValue)
-  if (caseInsensitiveKey) {
-    const candidate = translations[caseInsensitiveKey]
-    if (candidate) {
-      const translated = candidate[lang]
-      return value === value.toUpperCase() ? translated.toUpperCase() : translated
-    }
-  }
   const saved = value.match(/^(\d+) saved cases$/)
   if (saved) return lang === 'ru' ? `${saved[1]} сохранённых дел` : `${saved[1]} сақталған іс`
   const donated = value.match(/^Donate (\d+) reviewed \(redacted\)$/)

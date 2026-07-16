@@ -1,6 +1,4 @@
 import generatedPack from '../data/ksc2LanguagePack.generated.json'
-import { detectTranscriptLanguage, identifyWordLanguages, languageConfidence, type DetectedWordLanguage, type DetectedLanguage } from './kazakhLanguageIdentifier'
-import { applyKazakhGec } from './kazakhGec'
 
 export type TranscriptLanguage = 'kk' | 'ru' | 'mixed' | 'unknown'
 
@@ -9,7 +7,7 @@ export type TranscriptCorrection = {
   replacement: string
   confidence: number
   applied: boolean
-  source: 'ksc2_lexicon' | 'normalization' | 'gec'
+  source: 'ksc2_lexicon' | 'normalization'
 }
 
 export type LanguageSegment = {
@@ -23,8 +21,6 @@ export type TranscriptEnhancement = {
   corrections: TranscriptCorrection[]
   languageSegments: LanguageSegment[]
   dominantLanguage: TranscriptLanguage
-  languageConfidence: number
-  wordLanguages: Array<{ word: string; language: DetectedWordLanguage; confidence: number }>
   lexiconCoverage: number | null
   packVersion: string
   packReady: boolean
@@ -50,16 +46,6 @@ export type Ksc2LanguagePack = {
 const pack = generatedPack as Ksc2LanguagePack
 const tokenPattern = /[а-яёәғқңөұүһі]+(?:-[а-яёәғқңөұүһі]+)?/giu
 const kazakhChars = /[әғқңөұүһі]/iu
-const kazakhOnlyChars = /[әғқңөұүһі]/iu
-
-// High-confidence fixes for common Kazakh ASR spellings. KSC2 is a language
-// resource, not a grammar model, so arbitrary words must not be rewritten.
-const commonKazakhAsrCorrections: Record<string, string> = {
-  'қауіпсі': 'қауіпсіз', 'қауіпсиз': 'қауіпсіз', 'кауіпсіз': 'қауіпсіз',
-  'казір': 'қазір', 'қазыр': 'қазір', 'кызметкер': 'қызметкер', 'кызметкері': 'қызметкері',
-  'айтпаныз': 'айтпаңыз', 'айтпаныздар': 'айтпаңыздар', 'кодыныз': 'кодыңыз',
-  'картаныз': 'картаңыз', 'аударыныз': 'аударыңыз', 'жібериниз': 'жіберіңіз', 'орнатыныз': 'орнатыңыз',
-}
 
 const normalizeSurface = (text: string): string => text
   .normalize('NFC')
@@ -70,14 +56,6 @@ const normalizeSurface = (text: string): string => text
   .replace(/([,.;:!?])(?=[а-яёәғқңөұүһі])/giu, '$1 ')
   .replace(/\s+/gu, ' ')
   .trim()
-
-const foldKazakhLetters = (text: string): string => text.toLocaleLowerCase('kk-KZ')
-  .replace(/[ә]/gu, 'а').replace(/[ғ]/gu, 'г').replace(/[қ]/gu, 'к').replace(/[ң]/gu, 'н')
-  .replace(/[ө]/gu, 'о').replace(/[ұү]/gu, 'у').replace(/[һ]/gu, 'х').replace(/[і]/gu, 'и')
-
-const preserveCase = (surface: string, replacement: string): string => surface[0] === surface[0]?.toUpperCase()
-  ? `${replacement[0]?.toUpperCase() ?? ''}${replacement.slice(1)}`
-  : replacement
 
 const editDistanceAtMostOne = (left: string, right: string): boolean => {
   if (Math.abs(left.length - right.length) > 1 || left === right) return false
@@ -102,11 +80,18 @@ const editDistanceAtMostOne = (left: string, right: string): boolean => {
   return edits + Number(a < left.length || b < right.length) === 1
 }
 
-const mapLanguage = (language: DetectedLanguage): TranscriptLanguage => language
+const inferLanguage = (text: string): TranscriptLanguage => {
+  const tokens = text.toLowerCase().match(tokenPattern) ?? []
+  if (tokens.length === 0) return 'unknown'
+  const kazakh = tokens.filter((token) => kazakhChars.test(token)).length
+  if (kazakh === 0) return 'ru'
+  const ratio = kazakh / tokens.length
+  return ratio >= 0.3 ? 'kk' : 'mixed'
+}
 
-const splitLanguageSegments = (text: string, vocabulary: Set<string>): LanguageSegment[] => {
+const splitLanguageSegments = (text: string): LanguageSegment[] => {
   const chunks = text.match(/[^.!?]+[.!?]?/gu)?.map((item) => item.trim()).filter(Boolean) ?? []
-  return chunks.map((chunk) => ({ text: chunk, language: mapLanguage(detectTranscriptLanguage(chunk, vocabulary)) }))
+  return chunks.map((chunk) => ({ text: chunk, language: inferLanguage(chunk) }))
 }
 
 const bucketVocabulary = (languagePack: Ksc2LanguagePack): Map<string, string[]> => {
@@ -123,19 +108,6 @@ const bucketVocabulary = (languagePack: Ksc2LanguagePack): Map<string, string[]>
 
 const generatedVocabulary = new Set(pack.vocabulary)
 const generatedBuckets = bucketVocabulary(pack)
-const bucketFoldedVocabulary = (languagePack: Ksc2LanguagePack): Map<string, string[]> => {
-  const buckets = new Map<string, string[]>()
-  languagePack.vocabulary.forEach((token) => {
-    if (token.length < 4 || !kazakhOnlyChars.test(token)) return
-    const folded = foldKazakhLetters(token)
-    const key = `${folded[0]}:${folded.length}`
-    const current = buckets.get(key) ?? []
-    if (current.length < 300) current.push(token)
-    buckets.set(key, current)
-  })
-  return buckets
-}
-const generatedFoldedBuckets = bucketFoldedVocabulary(pack)
 
 export function enhanceTranscript(text: string, languagePack: Ksc2LanguagePack = pack): TranscriptEnhancement {
   const rawTranscript = text
@@ -143,7 +115,6 @@ export function enhanceTranscript(text: string, languagePack: Ksc2LanguagePack =
   const corrections: TranscriptCorrection[] = []
   const vocabulary = languagePack === pack ? generatedVocabulary : new Set(languagePack.vocabulary)
   const buckets = languagePack === pack ? generatedBuckets : bucketVocabulary(languagePack)
-  const foldedBuckets = languagePack === pack ? generatedFoldedBuckets : bucketFoldedVocabulary(languagePack)
   const packReady = languagePack.statistics.utterances > 0 && vocabulary.size > 0
 
   if (normalizedTranscript !== rawTranscript.trim()) {
@@ -156,62 +127,37 @@ export function enhanceTranscript(text: string, languagePack: Ksc2LanguagePack =
     })
   }
 
-  if (packReady) {
+  if (packReady && inferLanguage(normalizedTranscript) !== 'ru') {
     normalizedTranscript = normalizedTranscript.replace(tokenPattern, (surface) => {
       if (corrections.filter((item) => item.source === 'ksc2_lexicon').length >= 8) return surface
       const token = surface.toLowerCase()
-      const direct = commonKazakhAsrCorrections[token]
-      if (direct) {
-        const replacement = preserveCase(surface, direct)
-        corrections.push({ original: surface, replacement, confidence: 0.98, applied: true, source: 'ksc2_lexicon' })
-        return replacement
-      }
-      if (token.length < 5 || vocabulary.has(token)) return surface
-      const folded = foldKazakhLetters(token)
+      if (token.length < 5 || vocabulary.has(token) || !kazakhChars.test(token)) return surface
       const candidates = [
         ...(buckets.get(`${token[0]}:${token.length}`) ?? []),
         ...(buckets.get(`${token[0]}:${token.length - 1}`) ?? []),
         ...(buckets.get(`${token[0]}:${token.length + 1}`) ?? []),
       ].filter((candidate) => editDistanceAtMostOne(token, candidate))
-      const foldedCandidates = [
-        ...(foldedBuckets.get(`${folded[0]}:${folded.length}`) ?? []),
-        ...(foldedBuckets.get(`${folded[0]}:${folded.length - 1}`) ?? []),
-        ...(foldedBuckets.get(`${folded[0]}:${folded.length + 1}`) ?? []),
-      ].filter((candidate) => editDistanceAtMostOne(folded, foldKazakhLetters(candidate)))
-      const unique = [...new Set([...candidates, ...foldedCandidates])]
+      const unique = [...new Set(candidates)]
       if (unique.length !== 1) return surface
       const replacement = unique[0]
       if (!replacement) return surface
-      const casedReplacement = preserveCase(surface, replacement)
+      const casedReplacement = surface[0] === surface[0]?.toUpperCase()
+        ? `${replacement[0]?.toUpperCase() ?? ''}${replacement.slice(1)}`
+        : replacement
       corrections.push({ original: surface, replacement: casedReplacement, confidence: 0.96, applied: true, source: 'ksc2_lexicon' })
       return casedReplacement
     })
   }
 
-  const detectedBeforeGec = mapLanguage(detectTranscriptLanguage(normalizedTranscript, vocabulary))
-  const gec = applyKazakhGec(normalizedTranscript, detectedBeforeGec)
-  normalizedTranscript = gec.text
-  corrections.push(...gec.corrections.map((item) => ({
-    original: item.original,
-    replacement: item.replacement,
-    confidence: item.confidence,
-    applied: true,
-    source: 'gec' as const,
-  })))
-
   const tokens = normalizedTranscript.toLowerCase().match(tokenPattern) ?? []
   const covered = packReady ? tokens.filter((token) => vocabulary.has(token)).length : 0
-  const dominantLanguage = mapLanguage(detectTranscriptLanguage(normalizedTranscript, vocabulary))
-  const languageResults = identifyWordLanguages(normalizedTranscript, vocabulary)
-  const languageSegments = splitLanguageSegments(normalizedTranscript, vocabulary)
+  const languageSegments = splitLanguageSegments(normalizedTranscript)
   return {
     rawTranscript,
     normalizedTranscript,
     corrections,
     languageSegments,
-    dominantLanguage,
-    languageConfidence: languageConfidence(normalizedTranscript, vocabulary),
-    wordLanguages: languageResults.map(({ word, language, confidence }) => ({ word, language, confidence })),
+    dominantLanguage: inferLanguage(normalizedTranscript),
     lexiconCoverage: packReady && tokens.length > 0 ? covered / tokens.length : null,
     packVersion: languagePack.packVersion,
     packReady,
@@ -229,7 +175,7 @@ export function buildKsc2LanguageContext(enhancement: TranscriptEnhancement): st
         : 'unknown'
   const coverage = enhancement.lexiconCoverage === null ? 'unavailable' : `${Math.round(enhancement.lexiconCoverage * 100)}%`
   const applied = enhancement.corrections
-    .filter((item) => item.applied && (item.source === 'ksc2_lexicon' || item.source === 'gec'))
+    .filter((item) => item.applied && item.source === 'ksc2_lexicon')
     .map((item) => `${item.original} -> ${item.replacement}`)
     .slice(0, 5)
   return [

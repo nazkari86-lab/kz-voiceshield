@@ -22,23 +22,22 @@ export function WaveformView({ audioLevel, isActive, barCount = 30, height = 40,
     if (!isActive) {
       // Decay all bars to 0
       historyRef.current = Array(HISTORY_LEN).fill(0)
-      animValues.forEach(v => Animated.timing(v, { toValue: 0, duration: 250, useNativeDriver: true }).start())
+      animValues.forEach(v => Animated.timing(v, { toValue: 0, duration: 400, useNativeDriver: false }).start())
       return
     }
     // Shift history left, push new level
     const hist = historyRef.current
     hist.push(audioLevel)
     if (hist.length > HISTORY_LEN) hist.shift()
-    // Scale transforms stay on the native animation thread. Animating height
-    // forced React Native to schedule hundreds of JS layout animations/second.
+    // Animate each bar to its historical value
     hist.forEach((level, i) => {
       const bar = animValues[i]
       if (!bar) return
       Animated.timing(bar, {
         toValue: Math.min(1, level * 6),
-        duration: 160,
+        duration: 80,
         easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start()
     })
   }, [audioLevel, isActive, animValues])
@@ -61,11 +60,10 @@ export function WaveformView({ audioLevel, isActive, barCount = 30, height = 40,
                 width: barWidth,
                 backgroundColor: isCurrent ? activeColor : activeColor,
                 opacity,
-                height,
-                transform: [{ scaleY: anim.interpolate({
+                height: anim.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0.05, 1],
-                }) }],
+                  outputRange: [2, height],
+                }),
               },
             ]}
           />

@@ -9,33 +9,21 @@ export type KnowledgeNode = {
   title: string
   summary: string
   tags: string[]
-  status?: 'active' | 'ready' | 'available' | 'experimental' | 'downloadable' | 'blocked'
+  status?: 'active' | 'available' | 'experimental' | 'downloadable' | 'blocked'
   version?: string
   bytes?: number
 }
 export type KnowledgeEdge = { from: string; to: string; relation: string }
 export type KnowledgeGraph = { schemaVersion: 'voiceshield.knowledge.v1'; appVersion: string; nodes: KnowledgeNode[]; edges: KnowledgeEdge[] }
 
-export function knowledgeGraphPromptContext(graph: KnowledgeGraph): string {
-  const nodes = graph.nodes.slice(0, 80).map((node) => `${node.id} | ${node.title} | ${node.status ?? 'unknown'} | ${node.summary}`).join('\n')
-  const edges = graph.edges.slice(0, 120).map((edge) => `${edge.from} -[${edge.relation}]-> ${edge.to}`).join('\n')
-  return [
-    `VoiceShield app version: ${graph.appVersion}`,
-    `Knowledge schema: ${graph.schemaVersion}`,
-    'Use this as product metadata. Do not invent capabilities not listed here.',
-    'NODES:', nodes,
-    'RELATIONSHIPS:', edges,
-  ].join('\n')
-}
-
-export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null, readyModelIds: ReadonlySet<string> = new Set()): KnowledgeGraph {
+export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null): KnowledgeGraph {
   const modelNodes: KnowledgeNode[] = whisperModels.map((model) => ({
     id: `model:${model.id}`,
     type: 'model',
     title: model.title,
     summary: `${model.detail}. ${model.id === 'fastconformer' ? 'Специализирована для русского и казахского.' : 'Универсальная Whisper-модель.'}`,
     tags: ['asr', 'ru', 'kz', model.tier],
-    status: readyModelIds.has(model.id) ? 'ready' : storage && fitsDevice(model, storage) ? 'available' : 'blocked',
+    status: storage && fitsDevice(model, storage) ? 'available' : 'blocked',
     bytes: model.size,
   }))
   modelNodes.push(
@@ -80,13 +68,4 @@ export function searchKnowledge(graph: KnowledgeGraph, query: string): Knowledge
 export function relatedKnowledge(graph: KnowledgeGraph, nodeId: string): KnowledgeNode[] {
   const ids = graph.edges.flatMap((edge) => edge.from === nodeId ? [edge.to] : edge.to === nodeId ? [edge.from] : [])
   return graph.nodes.filter((node) => ids.includes(node.id))
-}
-
-export function personalizedRecommendations(graph: KnowledgeGraph, diagnostics: Array<{ message: string }>, storage: ModelStorageInfo | null, readyModelIds: ReadonlySet<string>): KnowledgeNode[] {
-  const messages = diagnostics.map((item) => item.message.toLocaleLowerCase()).join(' ')
-  const ids: string[] = []
-  if (messages.includes('microphone') || messages.includes('speaker') || messages.includes('audio') || messages.includes('call')) ids.push('advice:phone-audio')
-  if (messages.includes('storage') || messages.includes('model') || (storage?.availableBytes ?? Number.MAX_SAFE_INTEGER) < 512 * 1024 ** 2) ids.push('advice:auto-model')
-  if (readyModelIds.size === 0) ids.push('model:fastconformer')
-  return ids.map((id) => graph.nodes.find((node) => node.id === id)).filter((node): node is KnowledgeNode => Boolean(node))
 }

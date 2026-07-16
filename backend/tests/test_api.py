@@ -66,12 +66,12 @@ def case_payload(case_id: str = "case-1") -> dict:
 
 def test_health_is_public_and_auth_is_required(api):
     client, _ = api
-    assert client.get("/health").json() == {"ok": True, "version": "2.1.3", "mlAvailable": True}
+    assert client.get("/health").json() == {"ok": True, "version": "2.0.0", "mlAvailable": True}
     readiness = client.get("/readyz")
     assert readiness.status_code == 200
     assert readiness.json() == {
         "ok": True,
-        "version": "2.1.3",
+        "version": "2.0.0",
         "database": "ok",
         "mlAvailable": True,
         "serverSttConfigured": True,
@@ -90,6 +90,13 @@ def test_health_is_public_and_auth_is_required(api):
     assert client.post("/analyze-transcript", json={"transcript": "Назовите код"}).status_code == 401
 
 
+def test_livekit_is_explicitly_disabled_without_server_secrets(api):
+    client, _ = api
+    response = client.post("/calls/create", headers=auth("analyst-token"))
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"]
+
+
 def test_analyzes_with_experimental_model(api):
     client, _ = api
     response = client.post(
@@ -99,19 +106,6 @@ def test_analyzes_with_experimental_model(api):
     )
     assert response.status_code == 200
     assert response.json()["ml"]["verdict"] == "fraud"
-    assert response.json()["disagreement"]["kind"] == "aligned"
-
-
-def test_analyze_reports_rule_ml_disagreement(api):
-    client, _ = api
-    response = client.post(
-        "/analyze-transcript",
-        headers=auth("analyst-token"),
-        json={"transcript": "Обычный разговор без опасных слов", "ruleAnalysis": {"score": 90}},
-    )
-    assert response.status_code == 200
-    assert response.json()["disagreement"]["kind"] == "rules_high_ml_low"
-    assert response.json()["disagreement"]["delta"] == -86
 
 
 def test_case_storage_is_encrypted_and_role_guarded(api):
@@ -213,22 +207,3 @@ def test_rejects_large_or_unsupported_audio(api):
         "/transcribe-audio", headers=auth("analyst-token"), files={"audio": ("call.wav", b"x" * 65, "audio/wav")}
     )
     assert too_large.status_code == 413
-
-
-def test_knowledge_graph_is_encrypted_and_scoped_to_user(api):
-    client, database_path = api
-    payload = {
-        "schemaVersion": "voiceshield.knowledge.v1",
-        "appVersion": "1.9.7",
-        "graph": {"nodes": [{"id": "note:test", "summary": "private"}], "edges": []},
-    }
-    saved = client.put("/knowledge-graph", headers=auth("analyst-token"), json=payload)
-    assert saved.status_code == 200
-    loaded = client.get("/knowledge-graph", headers=auth("analyst-token"))
-    assert loaded.status_code == 200
-    assert loaded.json()["graph"]["graph"]["nodes"][0]["id"] == "note:test"
-    other = client.get("/knowledge-graph", headers=auth("reviewer-token"))
-    assert other.json()["found"] is False
-    with sqlite3.connect(database_path) as connection:
-        encrypted = connection.execute("SELECT payload FROM knowledge_graphs").fetchone()[0]
-    assert b"private" not in encrypted

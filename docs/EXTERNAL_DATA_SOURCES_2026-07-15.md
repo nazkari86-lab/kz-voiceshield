@@ -41,3 +41,31 @@ python3 ml/train_baseline.py ml/artifacts/difraud_sms.jsonl ml/artifacts/difraud
 ```
 
 The resulting model is a transfer baseline only. It must remain shadow-scored beside rules until a reviewer-labelled RU/KZ test set exists.
+
+## Safe registry and quality checks
+
+The raw files are registered without copying them into the APK. Generate a local
+inventory with file sizes and SHA-256 hashes:
+
+```bash
+python3 ml/dataset_registry.py \
+  --root data/external/2026-07-15 \
+  --out ml/artifacts/dataset_registry.json
+```
+
+The registry marks every external entry as `trusted=false` and
+`liveDecisionUse=false`. This is deliberate: ASVspoof labels are suitable for
+offline deepfake evaluation, while the Kazakh speech CSV is suitable for ASR
+quality/WER evaluation. Neither is a fraud ground-truth set.
+
+Inspect the downloaded LCNN checkpoint before attempting conversion:
+
+```bash
+python3 ml/inspect_antispoof_checkpoint.py \
+  data/external/2026-07-15/deepfake/lcnn_best.pt \
+  --out ml/artifacts/lcnn_checkpoint_report.json
+```
+
+The inspector reports tensor shapes but never declares Android compatibility.
+The LFCC frontend, architecture, ONNX numerical parity, and anti-spoof EER
+must be validated offline before any separate Audio Lab module is considered.

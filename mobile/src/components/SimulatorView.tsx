@@ -1,12 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useEffect, useRef, useState } from 'react'
-import { Animated, Pressable, StyleSheet, View } from 'react-native'
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native'
 import { colors } from '../theme'
 import { dailyTrainingScenario, examScenarios, scenarioSkill, trainingScenarios, trainingScore, trainingSkillLabels } from '../training'
 import type { TrainingSkill } from '../training'
 import { TrainingVoiceModule } from '../bridge/TrainingVoiceBridge'
-import { adaptiveTrainingRecommendation } from '../utils/protectionIntelligence'
-import { LocalizedText as Text } from './LocalizedText'
 
 export function SimulatorView() {
   const [scenarioId, setScenarioId] = useState<string | null>(null)
@@ -133,7 +131,6 @@ export function SimulatorView() {
   return (
     <View>
       <View style={styles.trainingHero}><Text style={styles.kicker}>VOICE LAB</Text><Text style={styles.trainingHeroTitle}>Scam call training</Text><Text style={styles.heroHint}>Practice decisions under pressure. No real call or personal data is used.</Text><View style={styles.stats}><Text style={styles.stat}>{completedCount} sessions</Text><Text style={styles.stat}>{bestScore} best score</Text><Text style={styles.stat}>{trainingScenarios.length} scenarios</Text></View></View>
-      <View style={styles.recommendation}><Text style={styles.recommendationTitle}>ADAPTIVE COACH</Text><Text style={styles.recommendationText}>{adaptiveTrainingRecommendation(bestScore, completedCount, selectedSkill)}</Text></View>
       <View style={styles.modeRow}><Pressable style={styles.daily} onPress={() => start(daily.id)}><Text style={styles.modeKicker}>TODAY</Text><Text style={styles.modeTitle}>{daily.title}</Text><Text style={styles.modeCopy}>Daily practice</Text></Pressable><Pressable style={styles.exam} onPress={startExam}><Text style={styles.modeKicker}>EXAM</Text><Text style={styles.modeTitle}>5-case challenge</Text><Text style={styles.modeCopy}>Measure your skills</Text></Pressable></View>
       <Text style={styles.filterTitle}>Practice by skill</Text>
       <View style={styles.filters}><Pressable style={[styles.filter, selectedSkill === 'all' && styles.filterActive]} onPress={() => setSelectedSkill('all')}><Text style={[styles.filterText, selectedSkill === 'all' && styles.filterTextActive]}>All</Text></Pressable>{(Object.keys(trainingSkillLabels) as TrainingSkill[]).map((skill) => <Pressable key={skill} style={[styles.filter, selectedSkill === skill && styles.filterActive]} onPress={() => setSelectedSkill(skill)}><Text style={[styles.filterText, selectedSkill === skill && styles.filterTextActive]}>{trainingSkillLabels[skill]}</Text></Pressable>)}</View>
@@ -157,9 +154,6 @@ const styles = StyleSheet.create({
   hint: { color: colors.sub, fontSize: 12, lineHeight: 18, marginBottom: 4 },
   heroHint: { color: '#d8ebe1', fontSize: 12, lineHeight: 18, marginBottom: 4 },
   stats: { flexDirection: 'row', gap: 8 }, stat: { backgroundColor: '#1e5948', borderRadius: 5, color: '#e8f7ef', fontSize: 11, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 5 },
-  recommendation: { backgroundColor: '#eef6ff', borderColor: '#a8c7f0', borderRadius: 8, borderWidth: 1, gap: 4, marginBottom: 12, padding: 12 },
-  recommendationTitle: { color: '#1e4e72', fontSize: 9, fontWeight: '900', letterSpacing: 0.9 },
-  recommendationText: { color: '#23425e', fontSize: 12, lineHeight: 18 },
   modeRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   daily: { backgroundColor: '#e8f7ef', borderColor: '#88c5ad', borderRadius: 8, borderWidth: 1, flex: 1, gap: 4, padding: 13 },
   exam: { backgroundColor: '#eef5ff', borderColor: '#a8c7f0', borderRadius: 8, borderWidth: 1, flex: 1, gap: 4, padding: 13 },

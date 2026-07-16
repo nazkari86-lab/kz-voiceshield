@@ -10,22 +10,10 @@ describe('speech model manifest', () => {
     expect(model.sha256).toMatch(/^[a-f0-9]{64}$/)
   })
 
-  it('uses Hugging Face download mode so LFS/Xet returns a resumable object', () => {
-    expect(modelFor('turboFull').url).toBe('https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin?download=true')
-    expect(modelFor('turboFull').size).toBe(1_624_555_275)
-  })
-
   it('requires only the model file and a small first-download reserve', () => {
     const fast = modelFor('fastconformer')
     expect(requiredStorageBytes(fast)).toBe(fast.size + 64 * 1024 * 1024)
     expect(fitsDevice(fast, { availableBytes: fast.size, totalBytes: fast.size, ramBytes: 8_000_000_000 })).toBe(false)
     expect(recommendedModel({ availableBytes: 100_000_000, totalBytes: 1_000_000_000, ramBytes: 1_000_000_000 }).id).toBe('tiny')
-  })
-
-  it('allows Turbo Q5 on an 8 GB phone reported as 7 GB by Android', () => {
-    const sevenGbPhone = { availableBytes: 4_000_000_000, totalBytes: 8_000_000_000, ramBytes: 7_000_000_000 }
-    expect(fitsDevice(modelFor('turboQ5'), sevenGbPhone)).toBe(true)
-    expect(fitsDevice(modelFor('turboQ8'), sevenGbPhone)).toBe(false)
-    expect(fitsDevice(modelFor('turboFull'), sevenGbPhone)).toBe(false)
   })
 })

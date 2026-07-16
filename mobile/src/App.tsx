@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SetupScreen } from '@screens/SetupScreen'
@@ -40,8 +40,6 @@ import { VoiceMessageModule, voiceMessageEvents } from './bridge/VoiceMessageBri
 import { useOnDeviceAiRuntime } from './hooks/useOnDeviceAiRuntime'
 import { useLiveAiAnalysis } from './hooks/useLiveAiAnalysis'
 import { buildKazakhIntelligenceContext } from './utils/kazakhIntelligence'
-import { useI18n } from './I18nContext'
-import { LocalizedText as Text } from './components/LocalizedText'
 
 type Tab =
   | 'live' | 'review' | 'evidence' | 'timeline' | 'threats' | 'chain'
@@ -56,6 +54,7 @@ const primaryTabs: Array<[Tab, string, string]> = [
   ['demo', 'Walkthrough', 'RUN'],
   ['simulator', 'Learn', 'LAB'],
   ['cases', 'Cases', 'CASE'],
+  ['voip', 'VoIP', 'CALL'],
 ]
 
 const toolTabs: Array<[Tab, string, string]> = [
@@ -117,7 +116,6 @@ export default function App() {
 
 function AppContent() {
   const { colors } = useTheme()
-  const { t } = useI18n()
   const [tab, setTab] = useState<Tab>('live')
   const [sharedText, setSharedText] = useState('')
   const [pendingSharedAudio, setPendingSharedAudio] = useState(false)
@@ -125,7 +123,7 @@ function AppContent() {
   const [onboardingDone, setOnboardingDone] = useState(true)
   const lastAlertRiskRef = useRef<string>('')
   const ai = useOnDeviceAiRuntime()
-  const w = useWorkspace(ai)
+  const w = useWorkspace()
   const { isListening, startListening } = w
   const liveLanguageContext = useMemo(() => [
     w.ksc2LanguageContext,
@@ -140,12 +138,11 @@ function AppContent() {
     ruleScore: w.analysis.score,
     ruleEvidence: w.analysis.evidence.map((item) => item.title).join('; '),
     captureCompleteness: w.captureCompleteness,
-    autoDisconnectCritical: false,
+    autoDisconnectCritical: w.autoDisconnectCritical,
     onAutoDisconnect: w.endActiveCall,
     ramBytes: w.modelStorage?.ramBytes ?? 0,
   })
   const selectTab = (next: Tab) => { setHubOpen(false); setTab(next) }
-  const primaryLabel = (key: Tab) => key === 'live' ? t.nav.live : key === 'tools' ? t.nav.scan : key === 'simulator' ? t.nav.learn : key === 'cases' ? t.nav.cases : t.nav.more
 
   // Check if onboarding has been completed
   useEffect(() => {
@@ -217,26 +214,26 @@ function AppContent() {
   const primaryActive = primaryTabs.some(([key]) => key === tab) && !hubOpen
   const content = (
     <>
-      {tab === 'live' && <LiveView analysis={w.analysis} rawAnalysis={w.rawAnalysis} modelCorrection={w.modelCorrection} transcript={w.transcript} enhancement={w.transcriptEnhancement} source={w.source} isListening={w.isListening} audioLevel={w.audioLevel} error={w.captureError} notice={w.captureNotice} callStatus={w.callStatus} storageError={w.storageError} trustedContactName={w.trustedContact?.name} callbackWarning={w.callbackInfo?.warning} liveAi={liveAi} onChangeTranscript={w.setTranscript} onToggleListening={() => { void (w.isListening ? w.stopListening() : w.startListening()) }} onUseMicrophoneFallback={() => { void w.switchToMicrophoneFallback() }} onEndCall={w.endActiveCall} onSave={w.saveCurrentCase} onExportReport={w.exportReport} onCallTrusted={() => { void w.callTrustedContact() }} onOpenEmergency={() => selectTab('emergency')} onOpenSimulator={() => selectTab('simulator')} onOpenAi={() => selectTab('llm')} />}
-      {tab === 'review' && <ReviewView analysis={w.analysis} rawAnalysis={w.rawAnalysis} modelCorrection={w.modelCorrection} enhancement={w.transcriptEnhancement} highSignals={w.highSignals} pressureAnalysis={w.pressureAnalysis} semanticMatches={w.semanticMatches} callbackInfo={w.callbackInfo} repeatBonus={w.repeatBonusData ?? undefined} llmAutoAnalysis={liveAi.result?.raw ?? w.llmAutoAnalysis} captureCompleteness={w.captureCompleteness} onOpenEvidence={() => selectTab('evidence')} onOpenTimeline={() => selectTab('timeline')} onOpenChain={() => selectTab('chain')} />}
+      {tab === 'live' && <LiveView analysis={w.analysis} transcript={w.transcript} enhancement={w.transcriptEnhancement} source={w.source} isListening={w.isListening} audioLevel={w.audioLevel} error={w.captureError} notice={w.captureNotice} callStatus={w.callStatus} storageError={w.storageError} trustedContactName={w.trustedContact?.name} callbackWarning={w.callbackInfo?.warning} liveAi={liveAi} onChangeTranscript={w.setTranscript} onToggleListening={() => { void (w.isListening ? w.stopListening() : w.startListening()) }} onUseMicrophoneFallback={() => { void w.switchToMicrophoneFallback() }} onEndCall={w.endActiveCall} onSave={w.saveCurrentCase} onExportReport={w.exportReport} onCallTrusted={() => { void w.callTrustedContact() }} onOpenEmergency={() => selectTab('emergency')} onOpenSimulator={() => selectTab('simulator')} onOpenAi={() => selectTab('llm')} />}
+      {tab === 'review' && <ReviewView analysis={w.analysis} transcript={w.analysisTranscript} ai={ai} enhancement={w.transcriptEnhancement} highSignals={w.highSignals} pressureAnalysis={w.pressureAnalysis} semanticMatches={w.semanticMatches} callbackInfo={w.callbackInfo} repeatBonus={w.repeatBonusData ?? undefined} llmAutoAnalysis={liveAi.result?.raw ?? w.llmAutoAnalysis} captureCompleteness={w.captureCompleteness} onOpenEvidence={() => selectTab('evidence')} onOpenTimeline={() => selectTab('timeline')} onOpenChain={() => selectTab('chain')} />}
       {tab === 'evidence' && <EvidenceView analysis={w.analysis} />}
       {tab === 'timeline' && <TimelineView timeline={w.timeline} />}
       {tab === 'threats' && <ThreatsView />}
       {tab === 'chain' && <AttackChainView analysis={w.analysis} />}
       {tab === 'simulator' && <SimulatorView />}
-      {tab === 'emergency' && <EmergencyView trustedContactName={w.trustedContact?.name} onCallTrusted={() => { void w.callTrustedContact() }} onOpenVerify={() => selectTab('verify')} />}
+      {tab === 'emergency' && <EmergencyView ai={ai} trustedContactName={w.trustedContact?.name} onCallTrusted={() => { void w.callTrustedContact() }} onOpenVerify={() => selectTab('verify')} />}
       {tab === 'cases' && <CasesView cases={w.cases} onSaveCurrent={w.saveCurrentCase} onLoadCase={(item) => { w.loadCase(item); selectTab('review') }} onUpdateLabel={w.updateCaseLabel} onUpdateStatus={w.updateCaseStatus} onToggleFlag={w.toggleCaseFlag} onExportBundle={w.exportEvidenceBundle} onDeleteCase={w.deleteCase} />}
       {tab === 'operations' && <OperationsView operations={w.operations} onLoadCase={(item) => { w.loadCase(item); selectTab('review') }} onUpdateStatus={w.updateCaseStatus} onToggleFlag={w.toggleCaseFlag} onExportBundle={w.exportEvidenceBundle} />}
       {tab === 'dataset' && <DatasetView quality={w.quality} caseCount={w.cases.length} labelledCount={w.cases.filter((item) => item.label !== 'unreviewed').length} datasetStageTotals={w.datasetStageTotals} donationConsent={w.donationConsent} onSetDonation={(accepted) => { void w.setDonation(accepted) }} onDonate={() => { void w.donateDataset() }} onExportJsonl={w.exportJsonlCases} onExportCsv={w.exportCsvCases} onExportSplit={w.exportSplitCases} onClear={w.clearCases} />}
       {tab === 'playbook' && <PlaybookView />}
       {tab === 'family' && <FamilyView contact={w.trustedContact} privacyConsent={w.privacyConsent} onSave={w.saveTrustedContact} onClear={w.clearTrustedContact} onCall={w.callTrustedContact} onShareAlert={w.shareTrustedAlert} onLoadContacts={w.loadDeviceContacts} />}
-      {tab === 'number' && <NumberShieldView autoDeleteTranscript={w.autoDeleteTranscript} onSetAutoDeleteTranscript={w.updateAutoDeleteTranscript} />}
+      {tab === 'number' && <NumberShieldView ai={ai} autoDeleteTranscript={w.autoDeleteTranscript} onSetAutoDeleteTranscript={w.updateAutoDeleteTranscript} />}
       {tab === 'tools' && <ScamToolsView initialText={sharedText} onAnalyzeAsCall={(text) => { w.setTranscript(text); w.setFileName('manual-scam-check.txt'); selectTab('review') }} />}
       {tab === 'voiceMsg' && <VoiceMessageView modelReady={w.modelReady} pendingSharedAudio={pendingSharedAudio} onClearSharedAudio={() => setPendingSharedAudio(false)} onAnalyzeAsCall={(transcript) => { w.setTranscript(transcript); w.setFileName('voice-message.ogg'); selectTab('review') }} />}
       {tab === 'voip' && <VoipCallView />}
       {tab === 'verify' && <VerifyView />}
       {tab === 'stats' && <StatsView cases={w.cases} />}
-      {tab === 'sms' && <SmsScannerView onAnalyze={(text) => { w.setTranscript(text); w.setFileName('sms-message.txt'); selectTab('tools') }} />}
+      {tab === 'sms' && <SmsScannerView ai={ai} onAnalyze={(text) => { w.setTranscript(text); w.setFileName('sms-message.txt'); selectTab('tools') }} />}
       {tab === 'history' && <TranscriptHistoryView />}
       {tab === 'llm' && <LLMAssistantView transcript={w.analysisTranscript} languageContext={w.ksc2LanguageContext} ai={ai} />}
       {tab === 'demo' && <ProtectionWalkthroughView
@@ -245,7 +242,7 @@ function AppContent() {
         onOpenEmergency={() => selectTab('emergency')}
       />}
       {tab === 'model' && <ModelView />}
-      {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} modelSizePref={w.modelSizePref} modelStorage={w.modelStorage} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onSetModelSize={w.updateModelSize} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
+      {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} modelSizePref={w.modelSizePref} recognitionLanguage={w.recognitionLanguage} autoDisconnectCritical={w.autoDisconnectCritical} modelStorage={w.modelStorage} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onSetModelSize={w.updateModelSize} onSetRecognitionLanguage={w.updateRecognitionLanguage} onSetAutoDisconnectCritical={w.updateAutoDisconnectCritical} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
     </>
   )
 
@@ -263,18 +260,18 @@ function AppContent() {
       <View style={{ alignItems: 'center', backgroundColor: colors.brandDark, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 17 }}>
         <View style={styles.headerText}>
           <Text style={styles.brand}>KZ VOICESHIELD</Text>
-          <Text style={styles.title}>{hubOpen ? t.app.tagline : tabMeta[tab].label}</Text>
-          <Text style={styles.subtitle}>{hubOpen ? t.nav.more : tabMeta[tab].group.toUpperCase()}</Text>
+          <Text style={styles.title}>{hubOpen ? 'Protection center' : tabMeta[tab].label}</Text>
+          <Text style={styles.subtitle}>{hubOpen ? 'ALL PROTECTION, REVIEW AND RECOVERY TOOLS' : tabMeta[tab].group.toUpperCase()}</Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: riskColor[w.analysis.risk] }]}><Text style={styles.badgeText}>{w.analysis.score}</Text><Text style={styles.badgeLabel}>{t.risk[w.analysis.risk]}</Text></View>
+        <View style={[styles.badge, { backgroundColor: riskColor[w.analysis.risk] }]}><Text style={styles.badgeText}>{w.analysis.score}</Text><Text style={styles.badgeLabel}>RISK</Text></View>
       </View>
 
       <View style={{ backgroundColor: colors.card, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: 'row', gap: 4, paddingHorizontal: 10, paddingVertical: 8 }}>
-        {primaryTabs.map(([key, , glyph]) => {
+        {primaryTabs.map(([key, label, glyph]) => {
           const active = !hubOpen && tab === key
-          return <Pressable key={key} onPress={() => selectTab(key)} style={[styles.navItem, active && { backgroundColor: colors.softBrand }]}><Text style={[styles.navGlyph, { color: active ? colors.brandDark : colors.muted }]}>{glyph}</Text><Text style={[styles.navText, { color: active ? colors.brandDark : colors.sub, fontWeight: active ? '900' : '800' }]}>{primaryLabel(key)}</Text></Pressable>
+          return <Pressable key={key} onPress={() => selectTab(key)} style={[styles.navItem, active && { backgroundColor: colors.softBrand }]}><Text style={[styles.navGlyph, { color: active ? colors.brandDark : colors.muted }]}>{glyph}</Text><Text style={[styles.navText, { color: active ? colors.brandDark : colors.sub, fontWeight: active ? '900' : '800' }]}>{label}</Text></Pressable>
         })}
-        {(() => { const active = !primaryActive || hubOpen; return <Pressable onPress={() => setHubOpen((current) => !current)} style={[styles.navItem, active && { backgroundColor: colors.softBrand }]}><Text style={[styles.navGlyph, { color: active ? colors.brandDark : colors.muted }]}>ALL</Text><Text style={[styles.navText, { color: active ? colors.brandDark : colors.sub, fontWeight: active ? '900' : '800' }]}>{t.nav.more}</Text></Pressable> })()}
+        {(() => { const active = !primaryActive || hubOpen; return <Pressable onPress={() => setHubOpen((current) => !current)} style={[styles.navItem, active && { backgroundColor: colors.softBrand }]}><Text style={[styles.navGlyph, { color: active ? colors.brandDark : colors.muted }]}>ALL</Text><Text style={[styles.navText, { color: active ? colors.brandDark : colors.sub, fontWeight: active ? '900' : '800' }]}>More</Text></Pressable> })()}
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">

@@ -58,9 +58,6 @@ jobs:
       - name: Fetch verified Sherpa-ONNX JNI
         run: ./scripts/fetch-sherpa-onnx.sh
 
-      - name: Verify protected Live Shield baseline
-        run: sh ./scripts/verify-live-shield-baseline.sh
-
       - name: Typecheck
         run: npm run typecheck
 
@@ -125,7 +122,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(grep -m1 versionName mobile/android/app/build.gradle | sed -E 's/.*"([^"]+)".*/\1/')
-          RELEASE_TAG="android-v${VERSION}"
+          RELEASE_TAG="web-v${VERSION}"
           APK_ASSET="kz-voiceshield-${VERSION}.apk"
           AAB_ASSET="kz-voiceshield-${VERSION}.aab"
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then

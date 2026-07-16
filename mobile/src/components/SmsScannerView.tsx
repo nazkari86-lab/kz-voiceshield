@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Share, StyleSheet, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, PermissionsAndroid, Platform, Share, StyleSheet, TouchableOpacity, View } from 'react-native'
 import { SmsScannerModule, type SmsMessage } from '../bridge/SmsScannerBridge'
 import { checkScamNumber } from '../data/scamNumbers'
 import { colors } from '../theme'
 import { Card, SectionTitle } from './ui'
 import { LocalizedText as Text } from './LocalizedText'
+import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
+import { AiAssistButton } from './AiAssistButton'
 
 const SCAM_KEYWORDS = [
   'банк', 'карта', 'заблокир', 'код подтверждени', 'код из смс',
@@ -42,7 +44,7 @@ function RiskChip({ score }: { score: number }) {
   return <View style={[styles.chip, { backgroundColor: bg }]}><Text style={[styles.chipText, { color: fg }]}>{level.toUpperCase()} {score > 0 ? `·${score}` : ''}</Text></View>
 }
 
-export function SmsScannerView({ onAnalyze }: { onAnalyze?: (text: string) => void }) {
+export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) => void; ai?: OnDeviceAiRuntime }) {
   const [messages, setMessages] = useState<(SmsMessage & { scamScore: number; scamReasons: string[] })[]>([])
   const [loading, setLoading] = useState(false)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
@@ -71,13 +73,26 @@ export function SmsScannerView({ onAnalyze }: { onAnalyze?: (text: string) => vo
     }
   }, [])
 
+  const requestSmsPermission = useCallback(async () => {
+    if (Platform.OS !== 'android' || !SmsScannerModule) return
+    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_SMS, {
+      title: 'VoiceShield SMS access',
+      message: 'Allow access only to scan recent messages for scam indicators locally. Messages are not uploaded and VoiceShield does not send SMS.',
+      buttonPositive: 'Allow',
+      buttonNegative: 'Not now',
+    })
+    setHasPermission(result === PermissionsAndroid.RESULTS.GRANTED)
+  }, [])
+
   if (hasPermission === null) return <ActivityIndicator style={styles.center} />
 
   if (!hasPermission) {
     return (
       <View style={styles.center}>
         <Text style={styles.permTitle}>SMS-сканер недоступен</Text>
-        <Text style={styles.permSub}>Эта сборка не запрашивает доступ ко всем SMS. Для проверки сообщения отправьте его в VoiceShield через системное меню «Поделиться».</Text>
+        <Text style={styles.permSub}>Разрешение нужно только для ручного сканирования последних SMS. Сообщения анализируются локально, не отправляются и не изменяются.</Text>
+        <TouchableOpacity style={styles.scanBtn} onPress={() => { void requestSmsPermission() }}><Text style={styles.scanBtnText}>Разрешить SMS-сканирование</Text></TouchableOpacity>
+        <Text style={styles.permSub}>Можно также отправить отдельное сообщение в VoiceShield через системное меню «Поделиться».</Text>
       </View>
     )
   }
@@ -133,6 +148,7 @@ export function SmsScannerView({ onAnalyze }: { onAnalyze?: (text: string) => vo
             <Text style={styles.body} numberOfLines={4}>{msg.body}</Text>
             {msg.scamReasons.length > 0 && <Text style={styles.reasons}>Почему отмечено: {msg.scamReasons.slice(0, 3).join(' · ')}</Text>}
             {onAnalyze && <TouchableOpacity style={styles.analyzeBtn} onPress={() => onAnalyze(msg.body)}><Text style={styles.analyzeBtnText}>Открыть полный анализ</Text></TouchableOpacity>}
+            {ai && <AiAssistButton ai={ai} context={`SMS sender: ${msg.address}\nLocal SMS score: ${msg.scamScore}/100\nReasons: ${msg.scamReasons.join('; ')}\nMessage: ${msg.body}`} label="Объяснить SMS через AI" />}
             <Text style={styles.date}>{new Date(msg.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Text>
           </Card>
         )

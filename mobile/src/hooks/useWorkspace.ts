@@ -16,9 +16,7 @@ import { matchSemanticTemplates } from '../utils/semanticMatcher'
 import { getRepeatRiskBonus, recordCall } from '../utils/callMemory'
 import { saveTranscriptEntry } from '../utils/transcriptHistory'
 import { addFineTuneExample } from '../utils/fineTuneDataCollector'
-import { recordKnowledgeDiagnostic } from '../data/knowledgeGraphStore'
-import { useTranscriptCorrection } from './useTranscriptCorrection'
-import type { OnDeviceAiRuntime } from './useOnDeviceAiRuntime'
+import { assessTranscriptQuality } from '../utils/transcriptQuality'
 import { modelFor, recommendedModel, whisperModels } from '../data/whisperModels'
 import type { ModelStorageInfo, WhisperModelChoice } from '../data/whisperModels'
 import {
@@ -46,10 +44,12 @@ import type { CaseLabel, CaseStatus, RiskSignal, SavedCase, WorkflowFlags } from
 const validStatuses: CaseStatus[] = ['new', 'reviewing', 'escalated', 'closed']
 
 const modelSizeKey = 'voiceshield.model-size.v1'
+const recognitionLanguageKey = 'voiceshield.recognition-language.v1'
 const privacyConsentKey = 'voiceshield.privacy-consent.v1'
 const donationConsentKey = 'voiceshield.donation-consent.v1'
 const trustedContactKey = 'voiceshield.trusted-contact.v1'
 const autoDeleteTranscriptKey = 'voiceshield.auto-delete-transcript.v1'
+const autoDisconnectKey = 'voiceshield.auto-disconnect-critical.v1'
 
 const ensureMicrophonePermission = async (): Promise<boolean> => {
   if (Platform.OS !== 'android') return true
@@ -82,7 +82,7 @@ const normalizeSavedCase = (item: SavedCase): SavedCase => {
   }
 }
 
-export function useWorkspace(ai?: OnDeviceAiRuntime) {
+export function useWorkspace() {
   // ---- intake + analysis ----
   const [transcript, setTranscript] = useState('')
   const [fileName, setFileName] = useState('manual-call.txt')
@@ -94,6 +94,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
   // ---- model size preference ----
   const [modelSizePref, setModelSizePref] = useState<WhisperModelChoice>('auto')
   const [modelStorage, setModelStorage] = useState<ModelStorageInfo | null>(null)
+  const [recognitionLanguage, setRecognitionLanguage] = useState<'auto' | 'ru' | 'kk'>('auto')
 
   // ---- live capture ----
   const [isListening, setIsListening] = useState(false)
@@ -109,6 +110,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
   const [callStatus, setCallStatus] = useState('No active call context')
   const [trustedContact, setTrustedContact] = useState<TrustedContact | null>(null)
   const [autoDeleteTranscript, setAutoDeleteTranscript] = useState(true)
+  const [autoDisconnectCritical, setAutoDisconnectCritical] = useState(false)
   const [captureCompleteness, setCaptureCompleteness] = useState(1.0)
   // Hysteresis: track displayed risk to avoid bouncing alerts
   const lastAlertedRiskRef = useRef<string>('low')
@@ -120,7 +122,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
   const signalTimestampsRef = useRef<Map<string, number>>(new Map())
   const lastAudibleAtRef = useRef(Date.now())
   const sessionStartRef = useRef(Date.now())
-  const restoredWhisperModelRef = useRef<string | null>(null)
+  const captureTransitionRef = useRef(false)
 
   // ---- saved cases ----
   const [cases, setCases] = useState<SavedCase[]>([])
@@ -129,14 +131,8 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
   const llmAutoAnalysis: string | null = null
 
   const transcriptEnhancement = useMemo(() => enhanceTranscript(transcript), [transcript])
-  // Running a second local model after every partial ASR result competes for the
-  // same CPU/RAM and can freeze mid-range phones. Correct once capture is idle;
-  // deterministic normalization and fraud rules remain live during the call.
-  const modelCorrection = useTranscriptCorrection(ai ?? null, transcript, transcriptEnhancement, !isListening)
-  const modelCorrectionActive = modelCorrection.status === 'ready' && !modelCorrection.rejected && modelCorrection.rawTranscript === transcript.trim()
-  const analysisTranscript = modelCorrectionActive ? modelCorrection.correctedTranscript : transcriptEnhancement.normalizedTranscript
+  const analysisTranscript = transcriptEnhancement.normalizedTranscript
   const ksc2LanguageContext = useMemo(() => buildKsc2LanguageContext(transcriptEnhancement), [transcriptEnhancement])
-  const rawAnalysis = useMemo(() => analyzeTranscript(transcriptEnhancement.normalizedTranscript, { signals: deviceSignals, captureCompleteness }), [transcriptEnhancement.normalizedTranscript, deviceSignals, captureCompleteness])
   const analysis = useMemo(() => analyzeTranscript(analysisTranscript, { signals: deviceSignals, captureCompleteness }), [analysisTranscript, deviceSignals, captureCompleteness])
   const pressureAnalysis = useMemo(() => analyzePressure(analysisTranscript), [analysisTranscript])
   const semanticMatches = useMemo(() => matchSemanticTemplates(analysisTranscript), [analysisTranscript])
@@ -191,12 +187,15 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
       SecureStorage.getItem(trustedContactKey).catch(() => null),
       SecureStorage.getItem(donationConsentKey).catch(() => null),
       SecureStorage.getItem(autoDeleteTranscriptKey).catch(() => null),
+      SecureStorage.getItem(autoDisconnectKey).catch(() => null),
       AsyncStorage.getItem(modelSizeKey).catch(() => null),
+      AsyncStorage.getItem(recognitionLanguageKey).catch(() => null),
     ])
-      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete, storedModelSize]) => {
+      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete, autoDisconnect, storedModelSize, storedRecognitionLanguage]) => {
         if (storedModelSize === 'auto' || whisperModels.some((model) => model.id === storedModelSize)) {
           setModelSizePref(storedModelSize as WhisperModelChoice)
         }
+        if (storedRecognitionLanguage === 'auto' || storedRecognitionLanguage === 'ru' || storedRecognitionLanguage === 'kk') setRecognitionLanguage(storedRecognitionLanguage)
         if (!active) return
         const stored = encryptedCases ?? legacyCases
         if (stored) {
@@ -218,6 +217,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
         if (consent === 'accepted') void CallModule.updateProtectionConfig({ enabled: true }).catch(() => undefined)
         setDonationConsent(donation === 'accepted')
         setAutoDeleteTranscript(autoDelete !== 'disabled')
+        setAutoDisconnectCritical(autoDisconnect === 'enabled')
         if (storedTrustedContact) {
           try {
             const parsed = JSON.parse(storedTrustedContact) as TrustedContact
@@ -303,6 +303,11 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     })
     const whisperSub = whisperEvents.addListener('VS_WHISPER_TRANSCRIPT', (event: { text?: string }) => {
       if (!event.text) return
+      const quality = assessTranscriptQuality(event.text)
+      if (!quality.accepted) {
+        setCaptureNotice('Speech segment was too noisy or repetitive and was ignored. Keep the speakerphone close and try again.')
+        return
+      }
       const incoming = event.text.trim().toLowerCase().slice(-60)
       // Dedup: skip if Live Caption recently produced the same text
       if (lastLiveCaptionRef.current && incoming && lastLiveCaptionRef.current.includes(incoming)) return
@@ -310,19 +315,13 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
       setSource('Whisper')
       setTranscript((current) => `${current} ${event.text}`.trim())
     })
-    const whisperErrorSub = whisperEvents.addListener('VS_WHISPER_ERROR', (event: { message?: string }) => {
-      if (event.message) {
-        setCaptureError(`Speech recognition failed: ${event.message}`)
-        void recordKnowledgeDiagnostic('whisper_decode', event.message)
-      }
-    })
     const levelSub = audioEvents.addListener('VS_AUDIO_LEVEL', (event: { level?: number }) => {
       const level = event.level ?? 0
       if (level >= 0.015) lastAudibleAtRef.current = Date.now()
       setAudioLevel(level)
     })
     const audioErrorSub = audioEvents.addListener('VS_AUDIO_CAPTURE_ERROR', (event: { message?: string }) => {
-      if (event.message) { setCaptureError(event.message); void recordKnowledgeDiagnostic('audio_capture', event.message) }
+      if (event.message) setCaptureError(event.message)
     })
     const audioStartedSub = audioEvents.addListener('VS_AUDIO_CAPTURE_STARTED', (event: { source?: string }) => {
       if (event.source === 'microphone') {
@@ -333,8 +332,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     })
     const audioRouteSub = audioEvents.addListener('VS_AUDIO_ROUTE_STATUS', (event: { bluetoothScoOn?: boolean; microphoneMuted?: boolean; speakerphoneOn?: boolean }) => {
       if (event.microphoneMuted) {
-        const message = 'The phone microphone is muted. Unmute it before VoiceShield can transcribe speakerphone audio.'
-        setCaptureError(message); void recordKnowledgeDiagnostic('microphone_muted', message)
+        setCaptureError('The phone microphone is muted. Unmute it before VoiceShield can transcribe speakerphone audio.')
       } else if (event.bluetoothScoOn) {
         setCaptureNotice('Bluetooth call audio is active. Switch the call to the phone speaker for reliable local transcription.')
       } else if (!event.speakerphoneOn) {
@@ -352,7 +350,6 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     return () => {
       liveCaptionSub.remove()
       whisperSub.remove()
-      whisperErrorSub.remove()
       levelSub.remove()
       audioErrorSub.remove()
       audioStartedSub.remove()
@@ -424,9 +421,14 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
 
   const updateModelSize = useCallback(async (size: WhisperModelChoice) => {
     setModelSizePref(size)
-    restoredWhisperModelRef.current = null
     await AsyncStorage.setItem(modelSizeKey, size)
     // Reset model ready state — new model needs to be downloaded/verified
+    setModelReady(false)
+  }, [])
+
+  const updateRecognitionLanguage = useCallback(async (language: 'auto' | 'ru' | 'kk') => {
+    setRecognitionLanguage(language)
+    await AsyncStorage.setItem(recognitionLanguageKey, language)
     setModelReady(false)
   }, [])
 
@@ -441,9 +443,8 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
         throw new Error('Import the verified FastConformer INT8 model from Setup before preparing it.')
       }
       const path = existing ?? (await ModelDownloader.downloadModel(cfg.url, cfg.file, cfg.sha256, cfg.size))
-      await WhisperModule.initialize(path, 'auto')
+      await WhisperModule.initialize(path, recognitionLanguage)
       await ModelDownloader.setActiveWhisperModel(cfg.file)
-      restoredWhisperModelRef.current = cfg.file
       setModelReady(true)
       setModelProgress(null)
       void ModelDownloader.getStorageInfo().then(setModelStorage).catch(() => undefined)
@@ -453,39 +454,11 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
       setCaptureError(error instanceof Error ? error.message : 'Could not prepare the speech model. Check internet access and free storage.')
       throw error
     }
-  }, [modelSizePref, modelStorage])
-
-  // Re-open the selected verified model after an app restart without starting
-  // a download. The native context is process-local, so the Ready badge must
-  // be restored from the on-device model file on every fresh process.
-  useEffect(() => {
-    if (!hydrated || !modelStorage || isListening) return
-    let active = true
-    const restoreWhisper = async () => {
-      const cfg = modelSizePref === 'auto' ? recommendedModel(modelStorage) : modelFor(modelSizePref)
-      if (restoredWhisperModelRef.current === cfg.file) return
-      try {
-        const path = await ModelDownloader.getVerifiedModelPath(cfg.file, cfg.sha256, cfg.size)
-        if (!path) {
-          if (active) setModelReady(false)
-          return
-        }
-        await WhisperModule.initialize(path, 'auto')
-        if (active) {
-          restoredWhisperModelRef.current = cfg.file
-          setModelReady(true)
-        }
-      } catch {
-        if (active) setModelReady(false)
-      }
-    }
-    void restoreWhisper()
-    return () => {
-      active = false
-    }
-  }, [hydrated, isListening, modelSizePref, modelStorage])
+  }, [modelSizePref, modelStorage, recognitionLanguage])
 
   const startListening = useCallback(async () => {
+    if (captureTransitionRef.current || isListening) return
+    captureTransitionRef.current = true
     setCaptureError(null)
     setCaptureNotice(null)
     setDeviceSignals((current) => current.filter((signal) => signal.id === 'caller_verification_failed' || signal.id === 'caller_unverified'))
@@ -500,28 +473,22 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
         return
       }
       const accessibilityEnabled = await AccessibilityModule.isEnabled()
-      let microphoneStarted = false
-      try {
+      if (!accessibilityEnabled) {
         const microphoneReady = await ensureMicrophonePermission()
-        if (microphoneReady) {
-          // Prefer the direct, proven microphone -> Whisper path. Caption
-          // service remains an additional source, not a reason to skip audio.
-          const nativeModelReady = await WhisperModule.isInitialized()
-          if (!nativeModelReady) await prepareWhisper()
-          await WhisperModule.resetBuffer()
-          await WhisperModule.startStreaming()
-          await AudioCaptureModule.startCapture()
-          microphoneStarted = true
+        if (!microphoneReady) {
+          setCaptureError('Microphone access is required for local Whisper protection. Enable it in Setup or Android app settings.')
+          return
         }
-      } catch (error) {
-        if (!accessibilityEnabled) throw error
+        // A downloaded model is only a file. After an app restart, its native
+        // Whisper context must be recreated before audio chunks can be decoded.
+        const nativeModelReady = await WhisperModule.isInitialized()
+        if (!nativeModelReady || !modelReady) await prepareWhisper()
+        await WhisperModule.resetBuffer()
       }
-      if (!microphoneStarted && !accessibilityEnabled) {
-        setCaptureError('Microphone access and a verified Whisper model are required for local protection. Enable them in Setup.')
-        return
-      }
-      await OverlayModule.show(microphoneStarted)
-      if (microphoneStarted) {
+      await OverlayModule.show(!accessibilityEnabled)
+      if (!accessibilityEnabled) {
+        await WhisperModule.startStreaming()
+        await AudioCaptureModule.startCapture()
         lastAudibleAtRef.current = Date.now()
         setAudioLevel(0)
         setSource('Whisper')
@@ -538,8 +505,10 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
       await OverlayModule.hide().catch(() => undefined)
       setIsListening(false)
       setCaptureError('Protection could not start. Enable microphone, overlay and accessibility permissions in setup.')
+    } finally {
+      captureTransitionRef.current = false
     }
-  }, [prepareWhisper, privacyConsent])
+  }, [isListening, modelReady, prepareWhisper, privacyConsent])
 
   const endActiveCall = useCallback(async () => {
     try {
@@ -563,7 +532,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
         return
       }
       const nativeModelReady = await WhisperModule.isInitialized()
-      if (!nativeModelReady) await prepareWhisper()
+      if (!nativeModelReady || !modelReady) await prepareWhisper()
       await WhisperModule.resetBuffer()
       await WhisperModule.startStreaming()
       await AudioCaptureModule.startCapture()
@@ -575,21 +544,11 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     } catch {
       setCaptureError('Microphone fallback could not start. Check the microphone permission and Whisper model in Setup.')
     }
-  }, [prepareWhisper])
-
-  // Some Xiaomi/HyperOS builds report the caption accessibility service as
-  // enabled but never emit caption text during a phone call. Keep captions as
-  // the preferred source, then recover automatically to the local microphone
-  // path instead of leaving Live Shield silently idle.
-  useEffect(() => {
-    if (!isListening || source !== 'Live Caption' || transcript.trim()) return undefined
-    const timeout = setTimeout(() => {
-      void switchToMicrophoneFallback()
-    }, 6000)
-    return () => clearTimeout(timeout)
-  }, [isListening, source, switchToMicrophoneFallback, transcript])
+  }, [modelReady, prepareWhisper])
 
   const stopListening = useCallback(async () => {
+    if (captureTransitionRef.current || !isListening) return
+    captureTransitionRef.current = true
     // Record fingerprint before stopping for cross-call memory
     const snap = analyzeTranscript(analysisTranscript, { signals: deviceSignals })
     const durationSec = Math.round((Date.now() - sessionStartRef.current) / 1000)
@@ -606,20 +565,24 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     const ftLabel = snap.risk === 'critical' || snap.risk === 'high' ? 'scam' : snap.risk === 'low' ? 'safe' : 'uncertain'
     // labelSource='auto_rules' — weight 0.2; user must confirm before gold training
     void addFineTuneExample(transcript, ftLabel, snap.schemeLabel, snap.score, 'auto_rules')
-    await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
-    await AudioCaptureModule.stopCapture().catch(() => undefined)
-    await WhisperModule.stopStreaming().catch(() => undefined)
-    await OverlayModule.hide().catch(() => undefined)
-    setIsListening(false)
-    setDeviceSignals([])
-    setCaptureNotice(null)
-    setCallStatus('No active call context')
-    if (autoDeleteTranscript) {
-      setTranscript('')
-      setFileName('manual-call.txt')
-      setSource('Manual')
+    try {
+      await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
+      await AudioCaptureModule.stopCapture().catch(() => undefined)
+      await WhisperModule.stopStreaming().catch(() => undefined)
+      await OverlayModule.hide().catch(() => undefined)
+      setIsListening(false)
+      setDeviceSignals([])
+      setCaptureNotice(null)
+      setCallStatus('No active call context')
+      if (autoDeleteTranscript) {
+        setTranscript('')
+        setFileName('manual-call.txt')
+        setSource('Manual')
+      }
+    } finally {
+      captureTransitionRef.current = false
     }
-  }, [analysisTranscript, autoDeleteTranscript, deviceSignals, transcript])
+  }, [analysisTranscript, autoDeleteTranscript, deviceSignals, isListening, transcript])
 
   useEffect(() => () => {
     void AccessibilityModule.setProtectionActive(false).catch(() => undefined)
@@ -641,9 +604,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     const now = new Date().toISOString()
     const safeTranscript = redactSensitiveText(transcript)
     const safeEnhancement = enhanceTranscript(safeTranscript)
-    const safeNormalizedTranscript = redactSensitiveText(modelCorrectionActive && modelCorrection.rawTranscript === transcript.trim()
-      ? modelCorrection.correctedTranscript
-      : safeEnhancement.normalizedTranscript)
+    const safeNormalizedTranscript = safeEnhancement.normalizedTranscript
     const current = analyzeTranscript(safeNormalizedTranscript, { signals: deviceSignals })
     setCases((existingCases) => {
       const existing = existingCases.find((item) => item.id === current.caseId)
@@ -666,7 +627,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
           packVersion: safeEnhancement.packVersion,
           dominantLanguage: safeEnhancement.dominantLanguage,
           lexiconCoverage: safeEnhancement.lexiconCoverage,
-          corrections: [...safeEnhancement.corrections, ...(modelCorrectionActive ? modelCorrection.corrections : [])],
+          corrections: safeEnhancement.corrections,
         },
         label: caseLabel,
         status: existing?.status ?? workflow.status,
@@ -685,7 +646,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
       }
       return [next, ...existingCases.filter((item) => item.id !== next.id)]
     })
-  }, [analystNote, caseLabel, deviceSignals, fileName, modelCorrection, modelCorrectionActive, reviewerName, source, transcript])
+  }, [analystNote, caseLabel, deviceSignals, fileName, reviewerName, source, transcript])
 
   const acceptPrivacy = useCallback(async () => {
     await SecureStorage.setItem(privacyConsentKey, 'accepted')
@@ -712,6 +673,12 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     else await SecureStorage.setItem(autoDeleteTranscriptKey, 'disabled')
     setAutoDeleteTranscript(enabled)
   }, [])
+
+  const updateAutoDisconnectCritical = useCallback(async (enabled: boolean) => {
+    if (enabled && !privacyConsent) return
+    setAutoDisconnectCritical(enabled)
+    await SecureStorage.setItem(autoDisconnectKey, enabled ? 'enabled' : 'disabled')
+  }, [privacyConsent])
 
   const deleteAllLocalData = useCallback(async () => {
     await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
@@ -743,6 +710,20 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     setTrustedContact(normalized)
   }, [])
 
+  const loadDeviceContacts = useCallback(async (): Promise<DeviceContact[]> => {
+    if (Platform.OS !== 'android') return []
+    if (await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CONTACTS) === false) {
+      const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_CONTACTS, {
+        title: 'VoiceShield contacts access',
+        message: 'Allow access only to choose a trusted family contact for local protection. Contacts are not uploaded.',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Not now',
+      })
+      if (result !== PermissionsAndroid.RESULTS.GRANTED) return []
+    }
+    return ContactsModule.getContacts(120)
+  }, [])
+
   const clearTrustedContact = useCallback(async () => {
     await SecureStorage.removeItem(trustedContactKey)
     setTrustedContact(null)
@@ -752,17 +733,6 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     if (!trustedContact) return
     await Linking.openURL(`tel:${trustedContact.phone}`)
   }, [trustedContact])
-
-  const loadDeviceContacts = useCallback(async (): Promise<DeviceContact[]> => {
-    if (Platform.OS === 'android') {
-      const permission = PermissionsAndroid.PERMISSIONS.READ_CONTACTS
-      if ((await PermissionsAndroid.check(permission)) !== true) {
-        const result = await PermissionsAndroid.request(permission)
-        if (result !== PermissionsAndroid.RESULTS.GRANTED) return []
-      }
-    }
-    return ContactsModule?.getContacts?.(200) ?? []
-  }, [])
 
   const shareTrustedAlert = useCallback(async () => {
     if (!trustedContact) return
@@ -857,17 +827,18 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
 
   return {
     // intake
-    transcript, setTranscript, transcriptEnhancement, analysisTranscript, modelCorrection, rawAnalysis, ksc2LanguageContext,
+    transcript, setTranscript, transcriptEnhancement, analysisTranscript, ksc2LanguageContext,
     fileName, setFileName,
     caseLabel, setCaseLabel,
     analystNote, setAnalystNote,
     reviewerName, setReviewerName,
     source,
     // capture
-    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript, modelStorage,
+    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript, autoDisconnectCritical, modelStorage,
     startListening, stopListening, prepareWhisper, switchToMicrophoneFallback,
     endActiveCall,
-    modelSizePref, updateModelSize,
+    modelSizePref, updateModelSize, recognitionLanguage, updateRecognitionLanguage,
+    updateAutoDisconnectCritical,
     repeatBonusData, llmAutoAnalysis, captureCompleteness,
     // computed
     analysis, pressureAnalysis, semanticMatches, callbackInfo,

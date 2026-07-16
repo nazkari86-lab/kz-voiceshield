@@ -7,13 +7,11 @@ import type { PressureScore } from '../utils/pressureAnalyzer'
 import type { TemplateMatch } from '../utils/semanticMatcher'
 import type { CallbackResult } from '../utils/callbackDetector'
 import type { TranscriptEnhancement } from '../utils/transcriptEnhancer'
-import type { TranscriptCorrectionState } from '../hooks/useTranscriptCorrection'
-import { ProtectionIntelligencePanel } from './ProtectionIntelligencePanel'
+import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
+import { AiAssistButton } from './AiAssistButton'
 
 type Props = {
   analysis: Analysis
-  rawAnalysis?: Analysis
-  modelCorrection?: TranscriptCorrectionState
   enhancement?: TranscriptEnhancement
   highSignals: number
   pressureAnalysis?: PressureScore
@@ -25,9 +23,11 @@ type Props = {
   onOpenEvidence?: () => void
   onOpenTimeline?: () => void
   onOpenChain?: () => void
+  transcript?: string
+  ai?: OnDeviceAiRuntime
 }
 
-export function ReviewView({ analysis, rawAnalysis, modelCorrection, enhancement, highSignals, pressureAnalysis, semanticMatches, callbackInfo, repeatBonus, llmAutoAnalysis, captureCompleteness, onOpenEvidence, onOpenTimeline, onOpenChain }: Props) {
+export function ReviewView({ analysis, enhancement, highSignals, pressureAnalysis, semanticMatches, callbackInfo, repeatBonus, llmAutoAnalysis, captureCompleteness, onOpenEvidence, onOpenTimeline, onOpenChain, transcript = '', ai }: Props) {
   const cashOut = analysis.evidence.some((item) => item.stage === 'Cash-out')
   return (
     <View>
@@ -42,7 +42,6 @@ export function ReviewView({ analysis, rawAnalysis, modelCorrection, enhancement
           <View style={[styles.meterFill, { backgroundColor: riskColor[analysis.risk], width: `${analysis.score}%` }]} />
         </View>
         <Text style={styles.next}>{analysis.nextAction}</Text>
-        <Text style={styles.meta}>Confidence {analysis.confidence}/100 · Capture {Math.round((captureCompleteness ?? analysis.captureCompleteness) * 100)}%</Text>
       </Card>
 
       <View style={styles.navigationRow}>
@@ -68,24 +67,14 @@ export function ReviewView({ analysis, rawAnalysis, modelCorrection, enhancement
         </View>
       )}
 
-      {modelCorrection && modelCorrection.status !== 'idle' && (
-        <View style={styles.correctionBanner}>
-          <Text style={styles.correctionTitle}>AI transcript correction</Text>
-          <Text style={styles.correctionText}>{modelCorrection.status === 'running' ? 'Модель проверяет вероятные ASR-ошибки…' : modelCorrection.status === 'ready' ? `${modelCorrection.corrections.length} correction(s) applied · confidence ${Math.round(modelCorrection.confidence * 100)}%` : modelCorrection.status === 'rejected' ? `Correction rejected: ${modelCorrection.error}` : modelCorrection.error ?? 'Waiting for a compatible AI model.'}</Text>
-          {rawAnalysis && (rawAnalysis.risk !== analysis.risk || rawAnalysis.score !== analysis.score) && <Text style={styles.correctionText}>DISAGREEMENT: raw rules {rawAnalysis.score}/100 ({rawAnalysis.risk}) → corrected rules {analysis.score}/100 ({analysis.risk})</Text>}
-        </View>
-      )}
-
       {enhancement && (
         <Card>
           <SectionTitle>KSC2 transcript provenance</SectionTitle>
           <Text style={styles.bullet}>Pack: {enhancement.packReady ? enhancement.packVersion : 'bootstrap only'}</Text>
           <Text style={styles.bullet}>Language: {enhancement.dominantLanguage.toUpperCase()}</Text>
-          <Text style={styles.bullet}>Language confidence: {Math.round(enhancement.languageConfidence * 100)}%</Text>
-          <Text style={styles.bullet}>Word labels: {enhancement.wordLanguages.slice(0, 10).map((item) => `${item.word}=${item.language.toUpperCase()}`).join(' · ') || 'not available'}</Text>
           <Text style={styles.bullet}>Lexicon coverage: {enhancement.lexiconCoverage === null ? 'not available' : `${Math.round(enhancement.lexiconCoverage * 100)}%`}</Text>
           <Text style={styles.muted}>Raw evidence is preserved. The score uses the separately stored normalized transcript.</Text>
-          {enhancement.corrections.filter((item) => item.source === 'ksc2_lexicon' || item.source === 'gec').map((item, index) => (
+          {enhancement.corrections.filter((item) => item.source === 'ksc2_lexicon').map((item, index) => (
             <Text key={`${item.original}-${index}`} style={styles.bullet}>• {item.original} → {item.replacement} ({Math.round(item.confidence * 100)}%)</Text>
           ))}
         </Card>
@@ -122,6 +111,7 @@ export function ReviewView({ analysis, rawAnalysis, modelCorrection, enhancement
           analysis.contextSignals.map((signal) => <Text key={signal.id} style={styles.bullet}>• {signal.label}</Text>)
         )}
       </Card>
+      {ai && <AiAssistButton ai={ai} context={`Rules result: risk=${analysis.risk}, score=${analysis.score}, scheme=${analysis.schemeLabel}. Evidence: ${analysis.evidence.map((item) => item.title).join('; ')}. Transcript: ${transcript}`} />}
 
       <Card>
         <SectionTitle>Escalation reasons</SectionTitle>
@@ -134,8 +124,6 @@ export function ReviewView({ analysis, rawAnalysis, modelCorrection, enhancement
         <SectionTitle>Response checklist</SectionTitle>
         {analysis.responseChecklist.map((item) => <Text key={item} style={styles.bullet}>• {item}</Text>)}
       </Card>
-
-      <ProtectionIntelligencePanel analysis={analysis} repeatBonus={repeatBonus?.bonus} />
 
       <Card>
         <SectionTitle>Threat stage coverage</SectionTitle>
@@ -231,7 +219,6 @@ export function ReviewView({ analysis, rawAnalysis, modelCorrection, enhancement
 const styles = StyleSheet.create({
   topline: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   caseId: { color: colors.sub, fontSize: 12, fontWeight: '700' },
-  meta: { color: colors.sub, fontSize: 11, lineHeight: 16 },
   score: { fontSize: 48, fontWeight: '900' },
   scheme: { color: colors.ink, fontSize: 15, fontWeight: '900' },
   meterTrack: { backgroundColor: colors.chipBg, borderRadius: 999, height: 8, overflow: 'hidden' },
@@ -260,9 +247,6 @@ const styles = StyleSheet.create({
   aiAnalysisText: { color: colors.ink, fontSize: 13, lineHeight: 20 },
   captureWarning: { backgroundColor: '#fef3c7', borderColor: '#fbbf24', borderRadius: 8, borderWidth: 1, marginBottom: 8, padding: 10 },
   captureWarningText: { color: '#92400e', fontSize: 12, lineHeight: 18 },
-  correctionBanner: { backgroundColor: '#eef6ff', borderColor: '#93c5fd', borderRadius: 8, borderWidth: 1, gap: 4, marginBottom: 8, padding: 10 },
-  correctionTitle: { color: '#1e3a8a', fontSize: 12, fontWeight: '900' },
-  correctionText: { color: '#1e40af', fontSize: 12, lineHeight: 18 },
   protectiveNote: { backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderRadius: 8, borderWidth: 1, marginBottom: 8, padding: 10 },
   protectiveNoteText: { color: '#1e40af', fontSize: 12, lineHeight: 18 },
   navigationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 8 },

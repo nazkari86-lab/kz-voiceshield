@@ -24,12 +24,8 @@ import { Card, SectionTitle } from './ui'
 import type { AssistantEngine, OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
 import { buildKazakhIntelligenceContext, validateKazakhResponse, type KazakhResponseQuality } from '../utils/kazakhIntelligence'
 import { enhanceTranscript } from '../utils/transcriptEnhancer'
-import { ChatFileModule, type ChatAttachment } from '../bridge/ChatFileBridge'
-import type { CloudAttachment } from '../services/cloudAiClient'
-import { buildKnowledgeGraph, knowledgeGraphPromptContext } from '../data/knowledgeGraph'
-import { loadKnowledgeGraphState, mergeKnowledgeGraph } from '../data/knowledgeGraphStore'
 
-type ChatMessage = { role: 'user' | 'assistant'; text: string; attachments?: ChatAttachment[]; streaming?: boolean; quality?: KazakhResponseQuality }
+type ChatMessage = { role: 'user' | 'assistant'; text: string; streaming?: boolean; quality?: KazakhResponseQuality }
 
 type Props = { transcript: string; languageContext?: string; modelBasePath?: string; ai: OnDeviceAiRuntime }
 const GEMMA_TERMS_ACCEPTED_KEY = 'voiceshield.gemma.terms.v1'
@@ -51,7 +47,6 @@ const importedModelRecord = (source: 'imported' | 'legacy', fileName: string): I
 export function LLMAssistantView({ transcript, languageContext = '', modelBasePath, ai }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([])
   const [generating, setGenerating] = useState(false)
   const [loadingModel, setLoadingModel] = useState(false)
   const [showCatalog, setShowCatalog] = useState(false)
@@ -63,7 +58,6 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
   const [storageInfo, setStorageInfo] = useState<ModelStorageInfo>({ availableBytes: 0, totalBytes: 0, ramBytes: 0 })
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null)
-  const [knowledgeContext, setKnowledgeContext] = useState('')
   const scrollRef = useRef<ScrollView>(null)
   const currentTokensRef = useRef('')
   const modelReady = ai.modelReady
@@ -75,12 +69,6 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
     () => buildKazakhIntelligenceContext(enhanceTranscript(transcript), ai.engine, ai.modelName),
     [ai.engine, ai.modelName, transcript],
   )
-
-  useEffect(() => {
-    void loadKnowledgeGraphState().then((state) => {
-      setKnowledgeContext(knowledgeGraphPromptContext(mergeKnowledgeGraph(buildKnowledgeGraph(), state)))
-    }).catch(() => setKnowledgeContext(knowledgeGraphPromptContext(buildKnowledgeGraph())))
-  }, [])
 
   useEffect(() => {
     void AsyncStorage.getItem(GEMMA_TERMS_ACCEPTED_KEY).then(value => setTermsAccepted(value === 'accepted')).catch(() => undefined)
@@ -293,47 +281,28 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
     await AsyncStorage.setItem(GEMMA_TERMS_ACCEPTED_KEY, nextValue ? 'accepted' : 'declined')
   }, [termsAccepted])
 
-  const pickChatFile = useCallback(async () => {
-    if (generating || ai.generating) return
-    try {
-      const file = await ChatFileModule.pickFile()
-      if (file) setAttachments((current) => [...current, file].slice(-4))
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Не удалось прикрепить файл.')
-    }
-  }, [ai.generating, generating])
-
-  const send = useCallback(async (text: string, selectedAttachments = attachments) => {
-    if ((!text.trim() && selectedAttachments.length === 0) || generating || ai.generating || !modelReady) return
-    const attachmentLabel = selectedAttachments.length > 0
-      ? `\nВложения: ${selectedAttachments.map((item) => item.name).join(', ')}`
-      : ''
-    const userMsg: ChatMessage = { role: 'user', text: `${text.trim()}${attachmentLabel}`.trim(), attachments: selectedAttachments }
+  const send = useCallback(async (text: string) => {
+    if (!text.trim() || generating || ai.generating || !modelReady) return
+    const userMsg: ChatMessage = { role: 'user', text: text.trim() }
     setMessages(prev => [...prev, userMsg, { role: 'assistant', text: '', streaming: true }])
     setInputText('')
-    setAttachments([])
     setGenerating(true)
     currentTokensRef.current = ''
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100)
     try {
       const contextualQuestion = [
-        text.trim() || 'Проанализируй прикреплённые файлы.',
+        text.trim(),
         languageContext ? `Производный KSC2-языковой контекст (не доказательство): ${languageContext.slice(0, 700)}` : '',
         `Казахский semantic runtime: ${modelKazakhContext.slice(0, 1000)}`,
-        `VoiceShield knowledge graph:\n${knowledgeContext.slice(0, 9000)}`,
         '',
       ].filter(Boolean).join('\n\n')
-      const attachmentText = selectedAttachments.map((item) => item.text || item.note ? `Вложение ${item.name}:\n${item.text || item.note}` : `Вложение ${item.name}: изображение прикреплено для vision-модели.`).join('\n\n')
-      const questionWithFiles = `${contextualQuestion}\n\n${attachmentText}`.trim()
-      const userMessage = buildUserMessage(`${questionWithFiles}\n\n`, transcript)
-      const fullPrompt = buildPrompt(SYSTEM_PROMPT, `${questionWithFiles}\n\n`, transcript)
-      const cloudAttachments: CloudAttachment[] = selectedAttachments.map(({ name, mimeType, text, base64, note }) => ({ name, mimeType, text, base64, note }))
+      const userMessage = buildUserMessage(`${contextualQuestion}\n\n`, transcript)
+      const fullPrompt = buildPrompt(SYSTEM_PROMPT, `${contextualQuestion}\n\n`, transcript)
       const full = await ai.generate({
         owner: 'assistant',
         gemmaPrompt: fullPrompt,
         localSystemPrompt: SYSTEM_PROMPT,
         localUserMessage: userMessage,
-        attachments: cloudAttachments,
         onToken: (token) => {
           currentTokensRef.current += token
           setMessages(prev => {
@@ -350,12 +319,12 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
     } catch (e: any) {
       setMessages(prev => {
         const last = prev[prev.length - 1]
-        if (last?.streaming) return [...prev.slice(0, -1), { role: 'assistant', text: `⚠ ${e?.message ?? 'Error'}`, streaming: false }]
+        if (last?.streaming) return [...prev.slice(0, -1), { role: 'assistant', text: `⚠ ${e?.message ?? 'Error'}` }]
         return prev
       })
       setGenerating(false)
     }
-  }, [ai, attachments, generating, knowledgeContext, languageContext, modelKazakhContext, modelReady, transcript])
+  }, [ai, generating, languageContext, modelKazakhContext, modelReady, transcript])
 
   const sendQuick = useCallback((q: (typeof QUICK_QUESTIONS)[number]) => {
     void send(q.prompt)
@@ -533,7 +502,6 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
             {msg.role === 'assistant' && (
               <Text style={styles.aiLabel}>VoiceShield AI{msg.streaming ? ' ●' : ''}</Text>
             )}
-            {msg.attachments?.map((item) => <Text key={`${idx}-${item.name}`} style={styles.attachmentLabel}>📎 {item.name}</Text>)}
             <Text style={[styles.bubbleText, msg.role === 'user' && styles.userBubbleText]}>
               {msg.text || (msg.streaming ? '…' : '')}
             </Text>
@@ -559,19 +527,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
         </View>
       )}
 
-      {attachments.length > 0 && (
-        <View style={styles.attachmentRow}>
-          {attachments.map((item) => (
-            <TouchableOpacity key={item.name} style={styles.attachmentChip} onPress={() => setAttachments((current) => current.filter((file) => file !== item))}>
-              <Text numberOfLines={1} style={styles.attachmentChipText}>📎 {item.name} ×</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
       <View style={styles.inputRow}>
-        <TouchableOpacity style={styles.attachBtn} onPress={() => { void pickChatFile() }} disabled={generating || ai.generating}>
-          <Text style={styles.attachBtnText}>＋</Text>
-        </TouchableOpacity>
         <TextInput
           style={styles.input}
           value={inputText}
@@ -588,9 +544,9 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
               <Text style={styles.stopBtnText}>■</Text>
             </TouchableOpacity>
           : <TouchableOpacity
-              style={[styles.sendBtn, (!inputText.trim() && attachments.length === 0 || ai.generating) && styles.sendBtnDisabled]}
+              style={[styles.sendBtn, (!inputText.trim() || ai.generating) && styles.sendBtnDisabled]}
               onPress={() => { void send(inputText) }}
-              disabled={(!inputText.trim() && attachments.length === 0) || ai.generating}
+              disabled={!inputText.trim() || ai.generating}
             >
               <Text style={styles.sendBtnText}>→</Text>
             </TouchableOpacity>
@@ -651,12 +607,6 @@ const styles = StyleSheet.create({
   qualityScore: { color: colors.brandDark, fontSize: 9, fontWeight: '900', marginBottom: 3 },
   qualityText: { color: colors.sub, fontSize: 10, lineHeight: 14 },
   inputRow: { alignItems: 'flex-end', flexDirection: 'row', gap: 8, marginTop: 8 },
-  attachmentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  attachmentChip: { backgroundColor: colors.softBrand, borderColor: colors.brand, borderRadius: 7, borderWidth: 1, maxWidth: '90%', paddingHorizontal: 9, paddingVertical: 6 },
-  attachmentChipText: { color: colors.brandDark, fontSize: 10, fontWeight: '800' },
-  attachmentLabel: { color: colors.brandDark, fontSize: 10, fontWeight: '800', marginBottom: 5 },
-  attachBtn: { alignItems: 'center', backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 10, borderWidth: 1, height: 44, justifyContent: 'center', width: 44 },
-  attachBtnText: { color: colors.brandDark, fontSize: 24, fontWeight: '700' },
   input: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 10, borderWidth: 1, color: colors.ink, flex: 1, maxHeight: 90, minHeight: 44, padding: 10 },
   sendBtn: { alignItems: 'center', backgroundColor: colors.brand, borderRadius: 10, height: 44, justifyContent: 'center', width: 44 },
   sendBtnDisabled: { opacity: 0.4 },

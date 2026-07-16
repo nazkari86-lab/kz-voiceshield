@@ -17,14 +17,6 @@ export const ACTIVE_CLOUD_SPEECH_MODEL_KEY = 'voiceshield.cloud-speech-model.v1'
 
 type JsonRecord = Record<string, unknown>
 
-export type CloudAttachment = {
-  name: string
-  mimeType: string
-  text?: string
-  base64?: string
-  note?: string
-}
-
 const asRecord = (value: unknown): JsonRecord => value && typeof value === 'object' ? value as JsonRecord : {}
 const asArray = (value: unknown): unknown[] => Array.isArray(value) ? value : []
 const asString = (value: unknown): string => typeof value === 'string' ? value : ''
@@ -281,7 +273,6 @@ export async function generateCloudResponse(
   systemPrompt: string,
   userMessage: string,
   signal?: AbortSignal,
-  attachments: CloudAttachment[] = [],
 ): Promise<string> {
   const provider = cloudProviderById[config.providerId]
   if (!await hasProviderDataConsent(config.providerId)) {
@@ -289,27 +280,19 @@ export async function generateCloudResponse(
   }
   const apiKey = await readProviderApiKey(config.providerId)
   const safeUserMessage = prepareCloudUserMessage(userMessage)
-  const textAttachments = attachments
-    .filter((item) => item.text || item.note)
-    .map((item) => `\n\n[Вложение: ${item.name}]\n${prepareCloudUserMessage(item.text || item.note || '')}`)
-    .join('')
-  const promptWithAttachments = `${safeUserMessage}${textAttachments}`
-  const imageAttachments = attachments.filter((item) => item.base64 && item.mimeType.startsWith('image/'))
   let url: string
   let body: JsonRecord
   let extract: (payload: unknown) => string
 
   if (provider.apiStyle === 'anthropic') {
     url = `${provider.baseUrl}/messages`
-    const content: unknown[] = [{ type: 'text', text: promptWithAttachments }]
-    imageAttachments.forEach((item) => content.push({ type: 'image', source: { type: 'base64', media_type: item.mimeType, data: item.base64 } }))
-    body = { model: config.modelId, max_tokens: 700, system: systemPrompt, messages: [{ role: 'user', content }] }
+    body = { model: config.modelId, max_tokens: 700, system: systemPrompt, messages: [{ role: 'user', content: safeUserMessage }] }
     extract = extractAnthropicText
   } else if (provider.apiStyle === 'gemini') {
     url = `${provider.baseUrl}/models/${encodeURIComponent(config.modelId)}:generateContent`
     body = {
       systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: 'user', parts: [{ text: promptWithAttachments }, ...imageAttachments.map((item) => ({ inlineData: { mimeType: item.mimeType, data: item.base64 } }))] }],
+      contents: [{ role: 'user', parts: [{ text: safeUserMessage }] }],
       generationConfig: { maxOutputTokens: 700, temperature: 0.2 },
     }
     extract = extractGeminiText
@@ -318,9 +301,7 @@ export async function generateCloudResponse(
     const openAiReasoningModel = provider.id === 'openai' && /^(gpt-5|o[1345](?:-|$))/iu.test(config.modelId)
     body = {
       model: config.modelId,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: imageAttachments.length > 0
-        ? [{ type: 'text', text: promptWithAttachments }, ...imageAttachments.map((item) => ({ type: 'image_url', image_url: { url: `data:${item.mimeType};base64,${item.base64}` } }))]
-        : promptWithAttachments }],
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: safeUserMessage }],
       ...(openAiReasoningModel ? { max_completion_tokens: 700 } : { max_tokens: 700, temperature: 0.2 }),
       stream: false,
     }

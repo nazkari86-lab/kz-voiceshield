@@ -23,7 +23,6 @@ class MainPackage : ReactPackage {
       ImageScanModule(reactContext),
       TrainingVoiceModule(reactContext),
       VoiceMessageModule(reactContext),
-      ChatFileModule(reactContext),
       LiveAlertModule(reactContext),
       SileroVADModule(reactContext),
       DeepfakeDetectorModule(reactContext),

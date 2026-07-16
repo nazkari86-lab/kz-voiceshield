@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Linking, Pressable, StyleSheet, TextInput, View } from 'react-native'
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import {
   DEFAULT_MODEL_SEARCH,
   formatModelBytes,
@@ -17,7 +17,6 @@ import {
   recommendedQoldaVariant,
 } from '../data/kazakhQualityPack'
 import { colors } from '../theme'
-import { LocalizedText as Text } from './LocalizedText'
 
 type Props = {
   installedModels: InstalledLocalModel[]

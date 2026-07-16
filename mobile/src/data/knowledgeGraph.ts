@@ -16,6 +16,18 @@ export type KnowledgeNode = {
 export type KnowledgeEdge = { from: string; to: string; relation: string }
 export type KnowledgeGraph = { schemaVersion: 'voiceshield.knowledge.v1'; appVersion: string; nodes: KnowledgeNode[]; edges: KnowledgeEdge[] }
 
+export function knowledgeGraphPromptContext(graph: KnowledgeGraph): string {
+  const nodes = graph.nodes.slice(0, 80).map((node) => `${node.id} | ${node.title} | ${node.status ?? 'unknown'} | ${node.summary}`).join('\n')
+  const edges = graph.edges.slice(0, 120).map((edge) => `${edge.from} -[${edge.relation}]-> ${edge.to}`).join('\n')
+  return [
+    `VoiceShield app version: ${graph.appVersion}`,
+    `Knowledge schema: ${graph.schemaVersion}`,
+    'Use this as product metadata. Do not invent capabilities not listed here.',
+    'NODES:', nodes,
+    'RELATIONSHIPS:', edges,
+  ].join('\n')
+}
+
 export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null, readyModelIds: ReadonlySet<string> = new Set()): KnowledgeGraph {
   const modelNodes: KnowledgeNode[] = whisperModels.map((model) => ({
     id: `model:${model.id}`,

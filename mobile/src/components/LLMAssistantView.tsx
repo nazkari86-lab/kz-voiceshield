@@ -26,6 +26,8 @@ import { buildKazakhIntelligenceContext, validateKazakhResponse, type KazakhResp
 import { enhanceTranscript } from '../utils/transcriptEnhancer'
 import { ChatFileModule, type ChatAttachment } from '../bridge/ChatFileBridge'
 import type { CloudAttachment } from '../services/cloudAiClient'
+import { buildKnowledgeGraph, knowledgeGraphPromptContext } from '../data/knowledgeGraph'
+import { loadKnowledgeGraphState, mergeKnowledgeGraph } from '../data/knowledgeGraphStore'
 
 type ChatMessage = { role: 'user' | 'assistant'; text: string; attachments?: ChatAttachment[]; streaming?: boolean; quality?: KazakhResponseQuality }
 
@@ -61,6 +63,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
   const [storageInfo, setStorageInfo] = useState<ModelStorageInfo>({ availableBytes: 0, totalBytes: 0, ramBytes: 0 })
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null)
+  const [knowledgeContext, setKnowledgeContext] = useState('')
   const scrollRef = useRef<ScrollView>(null)
   const currentTokensRef = useRef('')
   const modelReady = ai.modelReady
@@ -72,6 +75,12 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
     () => buildKazakhIntelligenceContext(enhanceTranscript(transcript), ai.engine, ai.modelName),
     [ai.engine, ai.modelName, transcript],
   )
+
+  useEffect(() => {
+    void loadKnowledgeGraphState().then((state) => {
+      setKnowledgeContext(knowledgeGraphPromptContext(mergeKnowledgeGraph(buildKnowledgeGraph(), state)))
+    }).catch(() => setKnowledgeContext(knowledgeGraphPromptContext(buildKnowledgeGraph())))
+  }, [])
 
   useEffect(() => {
     void AsyncStorage.getItem(GEMMA_TERMS_ACCEPTED_KEY).then(value => setTermsAccepted(value === 'accepted')).catch(() => undefined)
@@ -311,6 +320,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
         text.trim() || 'Проанализируй прикреплённые файлы.',
         languageContext ? `Производный KSC2-языковой контекст (не доказательство): ${languageContext.slice(0, 700)}` : '',
         `Казахский semantic runtime: ${modelKazakhContext.slice(0, 1000)}`,
+        `VoiceShield knowledge graph:\n${knowledgeContext.slice(0, 9000)}`,
         '',
       ].filter(Boolean).join('\n\n')
       const attachmentText = selectedAttachments.map((item) => item.text || item.note ? `Вложение ${item.name}:\n${item.text || item.note}` : `Вложение ${item.name}: изображение прикреплено для vision-модели.`).join('\n\n')
@@ -345,7 +355,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
       })
       setGenerating(false)
     }
-  }, [ai, attachments, generating, languageContext, modelKazakhContext, modelReady, transcript])
+  }, [ai, attachments, generating, knowledgeContext, languageContext, modelKazakhContext, modelReady, transcript])
 
   const sendQuick = useCallback((q: (typeof QUICK_QUESTIONS)[number]) => {
     void send(q.prompt)

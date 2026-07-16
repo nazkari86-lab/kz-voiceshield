@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { StyleSheet, Text, View } from 'react-native'
+import { StyleSheet, Text, TextInput, View } from 'react-native'
 import { AudioSession, LiveKitRoom } from '@livekit/react-native'
-import { createVoipCall, endVoipCall, joinVoipCall, type VoipSession } from '../services/voipClient'
+import { createVoipCall, endVoipCall, getVoipConfig, joinVoipCall, saveVoipConfig, type VoipSession } from '../services/voipClient'
 import { MotionPressable } from './MotionPressable'
 import { useTheme } from '../ThemeContext'
 
@@ -12,6 +12,11 @@ export function VoipCallView() {
   const [session, setSession] = useState<VoipSession | null>(null)
   const [status, setStatus] = useState<Status>('idle')
   const [error, setError] = useState('')
+  const [backendUrl, setBackendUrl] = useState('')
+  const [apiToken, setApiToken] = useState('')
+  const [callId, setCallId] = useState('')
+
+  useEffect(() => { void getVoipConfig().then((config) => { setBackendUrl(config.url); setApiToken(config.token) }).catch(() => undefined) }, [])
 
   useEffect(() => () => { void AudioSession.stopAudioSession() }, [])
 
@@ -27,6 +32,12 @@ export function VoipCallView() {
       setError(cause instanceof Error ? cause.message : 'Не удалось создать защищённый звонок.')
     }
   }, [])
+
+  const join = useCallback(async () => {
+    setStatus('starting'); setError('')
+    try { const next = await joinVoipCall(callId.trim()); await AudioSession.startAudioSession(); setSession(next) }
+    catch (cause) { setStatus('error'); setError(cause instanceof Error ? cause.message : 'Не удалось подключиться к звонку.') }
+  }, [callId])
 
   const end = useCallback(async () => {
     if (!session) return
@@ -55,9 +66,14 @@ export function VoipCallView() {
         </LiveKitRoom>
       ) : (
         <View style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <TextInput value={backendUrl} onChangeText={setBackendUrl} placeholder="Backend URL, например http://192.168.1.10:8000" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.ink, borderColor: colors.border }]} autoCapitalize="none" />
+          <TextInput value={apiToken} onChangeText={setApiToken} placeholder="API token" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.ink, borderColor: colors.border }]} secureTextEntry autoCapitalize="none" />
+          <MotionPressable onPress={() => { void saveVoipConfig(backendUrl, apiToken); setError('Настройки VoIP сохранены на устройстве.') }} style={[styles.secondaryButton, { borderColor: colors.border }]}><Text style={[styles.secondaryText, { color: colors.ink }]}>Сохранить backend</Text></MotionPressable>
           <Text style={[styles.status, { color: colors.ink }]}>Готово к защищённому звонку</Text>
           <Text style={[styles.muted, { color: colors.sub }]}>Для работы нужен запущенный backend VoiceShield и LiveKit server. Для звонка второго участника он должен присоединиться по тому же call ID.</Text>
           <MotionPressable onPress={() => { void start() }} style={[styles.button, { backgroundColor: colors.brandDark }]}><Text style={styles.buttonText}>{status === 'starting' ? 'Создание комнаты...' : 'Создать звонок'}</Text></MotionPressable>
+          <TextInput value={callId} onChangeText={setCallId} placeholder="Call ID для подключения" placeholderTextColor={colors.muted} style={[styles.input, { color: colors.ink, borderColor: colors.border }]} autoCapitalize="none" />
+          <MotionPressable onPress={() => { void join() }} style={[styles.secondaryButton, { borderColor: colors.border }]}><Text style={[styles.secondaryText, { color: colors.ink }]}>Подключиться по Call ID</Text></MotionPressable>
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>
       )}
@@ -77,4 +93,7 @@ const styles = StyleSheet.create({
   button: { alignItems: 'center', borderRadius: 7, marginTop: 5, padding: 14 },
   buttonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   error: { color: '#b42318', fontSize: 12, lineHeight: 18 },
+  input: { borderRadius: 7, borderWidth: 1, fontSize: 12, padding: 11 },
+  secondaryButton: { alignItems: 'center', borderRadius: 7, borderWidth: 1, padding: 12 },
+  secondaryText: { fontSize: 12, fontWeight: '900' },
 })

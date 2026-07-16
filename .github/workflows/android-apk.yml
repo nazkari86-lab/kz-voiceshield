@@ -58,6 +58,9 @@ jobs:
       - name: Fetch verified Sherpa-ONNX JNI
         run: ./scripts/fetch-sherpa-onnx.sh
 
+      - name: Verify protected Live Shield baseline
+        run: sh ./scripts/verify-live-shield-baseline.sh
+
       - name: Typecheck
         run: npm run typecheck
 

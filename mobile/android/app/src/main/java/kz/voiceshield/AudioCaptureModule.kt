@@ -1,6 +1,7 @@
 package kz.voiceshield
 
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import com.facebook.react.bridge.Arguments
@@ -52,24 +53,18 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
       val started = Arguments.createMap()
       started.putString("source", source)
       AppRegistry.sendEvent("VS_AUDIO_CAPTURE_STARTED", started)
+      emitRouteStatus()
       job = scope.launch {
         val buffer = ShortArray(1600)
-        var lastLevelEventAt = 0L
         while (recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
           val read = recorder?.read(buffer, 0, buffer.size) ?: 0
           if (read > 0) {
             // Do not run model inference on the AudioRecord thread. WhisperModule
             // owns a bounded worker queue and will drop stale chunks under load.
             AppRegistry.whisperModule?.pushAudio(preprocessor.process(buffer.copyOf(read)))
-            val now = System.currentTimeMillis()
-            if (now - lastLevelEventAt >= LEVEL_EVENT_INTERVAL_MS) {
-              var peak = 0
-              for (index in 0 until read) peak = maxOf(peak, abs(buffer[index].toInt()))
-              val payload = Arguments.createMap()
-              payload.putDouble("level", peak / 32768.0)
-              AppRegistry.sendEvent("VS_AUDIO_LEVEL", payload)
-              lastLevelEventAt = now
-            }
+            val payload = Arguments.createMap()
+            payload.putDouble("level", buffer.take(read).maxOf { abs(it.toInt()) } / 32768.0)
+            AppRegistry.sendEvent("VS_AUDIO_LEVEL", payload)
           } else if (read < 0) {
             val payload = Arguments.createMap()
             payload.putString("message", "Android microphone read failed (code $read). Stop protection and start it again.")
@@ -146,7 +141,12 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
     return null
   }
 
-  private companion object {
-    const val LEVEL_EVENT_INTERVAL_MS = 250L
+  private fun emitRouteStatus() {
+    val manager = context.getSystemService(AudioManager::class.java)
+    val payload = Arguments.createMap()
+    payload.putBoolean("speakerphoneOn", manager.isSpeakerphoneOn)
+    payload.putBoolean("bluetoothScoOn", manager.isBluetoothScoOn)
+    payload.putBoolean("microphoneMuted", manager.isMicrophoneMute)
+    AppRegistry.sendEvent("VS_AUDIO_ROUTE_STATUS", payload)
   }
 }

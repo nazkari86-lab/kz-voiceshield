@@ -77,8 +77,16 @@ def test_health_is_public_and_auth_is_required(api):
         "serverSttConfigured": True,
         "retainAudio": False,
         "maxAudioBytes": 64,
+        "livekitConfigured": False,
     }
     assert client.post("/analyze-transcript", json={"transcript": "Назовите код"}).status_code == 401
+
+
+def test_livekit_is_explicitly_disabled_without_server_secrets(api):
+    client, _ = api
+    response = client.post("/calls/create", headers=auth("analyst-token"))
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"]
 
 
 def test_analyzes_with_experimental_model(api):

@@ -45,6 +45,19 @@ For real deployment, store the encryption key and tokens in a cloud secret manag
 use managed PostgreSQL/object storage, terminate TLS at the ingress, enable backups,
 and replace static tokens with an OIDC provider.
 
+## LiveKit VoIP prototype
+
+The backend exposes `POST /calls/create`, `POST /calls/{callId}/join`, and
+`POST /calls/{callId}/end`. It issues room tokens only when `LIVEKIT_URL`,
+`LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` are configured. The LiveKit secret
+is never part of the mobile app. These endpoints establish the secure token
+boundary; a native LiveKit client and a separate consented STT/analyzer worker
+must be deployed before real calls are enabled.
+
+For local development, run LiveKit on the same Wi-Fi network and set
+`LIVEKIT_URL=ws://<mac-ip>:7880`. Use TLS and a real identity/session service
+before exposing it outside the local network.
+
 ## Audio transcription
 
 The default transcriber fails explicitly because no STT engine is configured. To use

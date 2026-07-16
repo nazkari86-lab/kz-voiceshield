@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+from threading import Lock
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +32,8 @@ def create_app(
     repository = Repository(resolved_settings.database_path, cipher)
     resolved_model = model_service or ModelService(resolved_settings.model_path)
     resolved_transcriber = transcriber or transcriber_from_env()
+    livekit_rooms: dict[str, dict[str, Any]] = {}
+    livekit_lock = Lock()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -66,7 +69,55 @@ def create_app(
             "serverSttConfigured": resolved_transcriber.__class__.__name__ != "DisabledTranscriber",
             "retainAudio": resolved_settings.retain_audio,
             "maxAudioBytes": resolved_settings.max_audio_bytes,
+            "livekitConfigured": all((resolved_settings.livekit_url, resolved_settings.livekit_api_key, resolved_settings.livekit_api_secret)),
         }
+
+    def livekit_configured() -> bool:
+        return all((resolved_settings.livekit_url, resolved_settings.livekit_api_key, resolved_settings.livekit_api_secret))
+
+    def livekit_token(room: str, identity: str, name: str) -> str:
+        try:
+            from livekit import api
+        except ImportError as error:
+            raise HTTPException(status_code=503, detail="LiveKit server dependency is not installed") from error
+        token = api.AccessToken(resolved_settings.livekit_api_key, resolved_settings.livekit_api_secret)
+        token = token.with_identity(identity).with_name(name).with_grants(
+            api.VideoGrants(room_join=True, room=room, can_publish=True, can_subscribe=True)
+        )
+        return token.to_jwt()
+
+    @app.post("/calls/create")
+    def create_call(principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        if not livekit_configured():
+            raise HTTPException(status_code=503, detail="LiveKit is not configured on this backend")
+        call_id = f"call_{uuid4().hex}"
+        with livekit_lock:
+            livekit_rooms[call_id] = {"createdBy": principal.user_id, "ended": False}
+        token = livekit_token(call_id, principal.user_id, principal.user_id)
+        repository.audit(principal.user_id, "voip_call_created", {"callId": call_id})
+        return {"callId": call_id, "room": call_id, "serverUrl": resolved_settings.livekit_url, "token": token}
+
+    @app.post("/calls/{call_id}/join")
+    def join_call(call_id: str, principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        if not livekit_configured():
+            raise HTTPException(status_code=503, detail="LiveKit is not configured on this backend")
+        with livekit_lock:
+            call = livekit_rooms.get(call_id)
+        if not call or call.get("ended"):
+            raise HTTPException(status_code=404, detail="VoIP call not found or already ended")
+        token = livekit_token(call_id, principal.user_id, principal.user_id)
+        repository.audit(principal.user_id, "voip_call_joined", {"callId": call_id})
+        return {"callId": call_id, "room": call_id, "serverUrl": resolved_settings.livekit_url, "token": token}
+
+    @app.post("/calls/{call_id}/end")
+    def end_call(call_id: str, principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        with livekit_lock:
+            call = livekit_rooms.get(call_id)
+            if not call:
+                raise HTTPException(status_code=404, detail="VoIP call not found")
+            call["ended"] = True
+        repository.audit(principal.user_id, "voip_call_ended", {"callId": call_id})
+        return {"ok": True, "callId": call_id}
 
     @app.post("/analyze-transcript")
     def analyze_transcript(

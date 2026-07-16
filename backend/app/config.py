@@ -21,6 +21,9 @@ class Settings:
     retain_audio: bool = False
     max_audio_bytes: int = 25 * 1024 * 1024
     cors_origins: tuple[str, ...] = ()
+    livekit_url: str | None = None
+    livekit_api_key: str | None = None
+    livekit_api_secret: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -52,4 +55,7 @@ class Settings:
             max_audio_bytes=int(os.environ.get("VOICESHIELD_MAX_AUDIO_BYTES", str(25 * 1024 * 1024))),
             model_path=Path(model_value) if model_value else None,
             retain_audio=os.environ.get("VOICESHIELD_RETAIN_AUDIO", "false").lower() == "true",
+            livekit_url=os.environ.get("LIVEKIT_URL", "").strip() or None,
+            livekit_api_key=os.environ.get("LIVEKIT_API_KEY", "").strip() or None,
+            livekit_api_secret=os.environ.get("LIVEKIT_API_SECRET", "").strip() or None,
         )

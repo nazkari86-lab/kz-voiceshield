@@ -2,6 +2,27 @@
 
 This pipeline trains a comparison model; it does not replace the deterministic rules. It accepts only `voiceshield.dataset.v2` JSONL cases whose provenance is reviewer-trusted, removes duplicate transcripts, requires all three labels, and exports explicit rules-vs-ML disagreements.
 
+## Reproducible model evaluation
+
+Use the offline evaluator for a larger holdout instead of asserting exact
+answers in unit tests:
+
+```bash
+python ml/evaluate_models.py \
+  ml/artifacts/trilingual_fraud.jsonl \
+  ml/artifacts/difraud_sms.jsonl \
+  ml/artifacts/difraud_job_scams.jsonl \
+  --allow-untrusted \
+  --out ml/artifacts/evaluation-latest.json
+```
+
+`--allow-untrusted` is required for transfer corpora and never means that the
+result is production evidence. The report includes macro-F1, balanced
+accuracy, per-label precision/recall/F1, and rules-vs-model disagreements.
+To compare an LLM, provide a JSONL file with one record per holdout case:
+`{"id":"case-id","label":"true_positive"}`. Predictions are paired by
+case ID; missing or duplicate predictions are rejected.
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate

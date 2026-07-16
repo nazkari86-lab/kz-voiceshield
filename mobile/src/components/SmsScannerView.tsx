@@ -5,6 +5,8 @@ import { checkScamNumber } from '../data/scamNumbers'
 import { colors } from '../theme'
 import { Card, SectionTitle } from './ui'
 import { LocalizedText as Text } from './LocalizedText'
+import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
+import { AiAssistButton } from './AiAssistButton'
 
 const SCAM_KEYWORDS = [
   'банк', 'карта', 'заблокир', 'код подтверждени', 'код из смс',
@@ -42,7 +44,7 @@ function RiskChip({ score }: { score: number }) {
   return <View style={[styles.chip, { backgroundColor: bg }]}><Text style={[styles.chipText, { color: fg }]}>{level.toUpperCase()} {score > 0 ? `·${score}` : ''}</Text></View>
 }
 
-export function SmsScannerView({ onAnalyze }: { onAnalyze?: (text: string) => void }) {
+export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) => void; ai?: OnDeviceAiRuntime }) {
   const [messages, setMessages] = useState<(SmsMessage & { scamScore: number; scamReasons: string[] })[]>([])
   const [loading, setLoading] = useState(false)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
@@ -146,6 +148,7 @@ export function SmsScannerView({ onAnalyze }: { onAnalyze?: (text: string) => vo
             <Text style={styles.body} numberOfLines={4}>{msg.body}</Text>
             {msg.scamReasons.length > 0 && <Text style={styles.reasons}>Почему отмечено: {msg.scamReasons.slice(0, 3).join(' · ')}</Text>}
             {onAnalyze && <TouchableOpacity style={styles.analyzeBtn} onPress={() => onAnalyze(msg.body)}><Text style={styles.analyzeBtnText}>Открыть полный анализ</Text></TouchableOpacity>}
+            {ai && <AiAssistButton ai={ai} context={`SMS sender: ${msg.address}\nLocal SMS score: ${msg.scamScore}/100\nReasons: ${msg.scamReasons.join('; ')}\nMessage: ${msg.body}`} label="Объяснить SMS через AI" />}
             <Text style={styles.date}>{new Date(msg.date).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Text>
           </Card>
         )

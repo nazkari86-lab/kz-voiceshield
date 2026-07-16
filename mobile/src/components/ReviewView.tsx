@@ -7,6 +7,8 @@ import type { PressureScore } from '../utils/pressureAnalyzer'
 import type { TemplateMatch } from '../utils/semanticMatcher'
 import type { CallbackResult } from '../utils/callbackDetector'
 import type { TranscriptEnhancement } from '../utils/transcriptEnhancer'
+import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
+import { AiAssistButton } from './AiAssistButton'
 
 type Props = {
   analysis: Analysis
@@ -21,9 +23,11 @@ type Props = {
   onOpenEvidence?: () => void
   onOpenTimeline?: () => void
   onOpenChain?: () => void
+  transcript?: string
+  ai?: OnDeviceAiRuntime
 }
 
-export function ReviewView({ analysis, enhancement, highSignals, pressureAnalysis, semanticMatches, callbackInfo, repeatBonus, llmAutoAnalysis, captureCompleteness, onOpenEvidence, onOpenTimeline, onOpenChain }: Props) {
+export function ReviewView({ analysis, enhancement, highSignals, pressureAnalysis, semanticMatches, callbackInfo, repeatBonus, llmAutoAnalysis, captureCompleteness, onOpenEvidence, onOpenTimeline, onOpenChain, transcript = '', ai }: Props) {
   const cashOut = analysis.evidence.some((item) => item.stage === 'Cash-out')
   return (
     <View>
@@ -107,6 +111,7 @@ export function ReviewView({ analysis, enhancement, highSignals, pressureAnalysi
           analysis.contextSignals.map((signal) => <Text key={signal.id} style={styles.bullet}>• {signal.label}</Text>)
         )}
       </Card>
+      {ai && <AiAssistButton ai={ai} context={`Rules result: risk=${analysis.risk}, score=${analysis.score}, scheme=${analysis.schemeLabel}. Evidence: ${analysis.evidence.map((item) => item.title).join('; ')}. Transcript: ${transcript}`} />}
 
       <Card>
         <SectionTitle>Escalation reasons</SectionTitle>

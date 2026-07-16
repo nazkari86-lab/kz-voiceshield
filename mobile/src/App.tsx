@@ -211,7 +211,7 @@ function AppContent() {
   const content = (
     <>
       {tab === 'live' && <LiveView analysis={w.analysis} transcript={w.transcript} enhancement={w.transcriptEnhancement} source={w.source} isListening={w.isListening} audioLevel={w.audioLevel} error={w.captureError} notice={w.captureNotice} callStatus={w.callStatus} storageError={w.storageError} trustedContactName={w.trustedContact?.name} callbackWarning={w.callbackInfo?.warning} liveAi={liveAi} onChangeTranscript={w.setTranscript} onToggleListening={() => { void (w.isListening ? w.stopListening() : w.startListening()) }} onUseMicrophoneFallback={() => { void w.switchToMicrophoneFallback() }} onEndCall={w.endActiveCall} onSave={w.saveCurrentCase} onExportReport={w.exportReport} onCallTrusted={() => { void w.callTrustedContact() }} onOpenEmergency={() => selectTab('emergency')} onOpenSimulator={() => selectTab('simulator')} onOpenAi={() => selectTab('llm')} />}
-      {tab === 'review' && <ReviewView analysis={w.analysis} enhancement={w.transcriptEnhancement} highSignals={w.highSignals} pressureAnalysis={w.pressureAnalysis} semanticMatches={w.semanticMatches} callbackInfo={w.callbackInfo} repeatBonus={w.repeatBonusData ?? undefined} llmAutoAnalysis={liveAi.result?.raw ?? w.llmAutoAnalysis} captureCompleteness={w.captureCompleteness} onOpenEvidence={() => selectTab('evidence')} onOpenTimeline={() => selectTab('timeline')} onOpenChain={() => selectTab('chain')} />}
+      {tab === 'review' && <ReviewView analysis={w.analysis} transcript={w.analysisTranscript} ai={ai} enhancement={w.transcriptEnhancement} highSignals={w.highSignals} pressureAnalysis={w.pressureAnalysis} semanticMatches={w.semanticMatches} callbackInfo={w.callbackInfo} repeatBonus={w.repeatBonusData ?? undefined} llmAutoAnalysis={liveAi.result?.raw ?? w.llmAutoAnalysis} captureCompleteness={w.captureCompleteness} onOpenEvidence={() => selectTab('evidence')} onOpenTimeline={() => selectTab('timeline')} onOpenChain={() => selectTab('chain')} />}
       {tab === 'evidence' && <EvidenceView analysis={w.analysis} />}
       {tab === 'timeline' && <TimelineView timeline={w.timeline} />}
       {tab === 'threats' && <ThreatsView />}
@@ -228,7 +228,7 @@ function AppContent() {
       {tab === 'voiceMsg' && <VoiceMessageView modelReady={w.modelReady} pendingSharedAudio={pendingSharedAudio} onClearSharedAudio={() => setPendingSharedAudio(false)} onAnalyzeAsCall={(transcript) => { w.setTranscript(transcript); w.setFileName('voice-message.ogg'); selectTab('review') }} />}
       {tab === 'verify' && <VerifyView />}
       {tab === 'stats' && <StatsView cases={w.cases} />}
-      {tab === 'sms' && <SmsScannerView onAnalyze={(text) => { w.setTranscript(text); w.setFileName('sms-message.txt'); selectTab('tools') }} />}
+      {tab === 'sms' && <SmsScannerView ai={ai} onAnalyze={(text) => { w.setTranscript(text); w.setFileName('sms-message.txt'); selectTab('tools') }} />}
       {tab === 'history' && <TranscriptHistoryView />}
       {tab === 'llm' && <LLMAssistantView transcript={w.analysisTranscript} languageContext={w.ksc2LanguageContext} ai={ai} />}
       {tab === 'demo' && <ProtectionWalkthroughView

@@ -1,6 +1,6 @@
 {
   "name": "kz-voiceshield-mobile",
-  "version": "1.10.1",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
@@ -9,8 +9,11 @@
     "test": "jest"
   },
   "dependencies": {
+    "@livekit/react-native": "^2.11.1",
+    "@livekit/react-native-webrtc": "^144.1.1",
     "@pocketpalai/llama.rn": "^0.8.1-0",
     "@react-native-async-storage/async-storage": "^2.1.2",
+    "livekit-client": "^2.20.1",
     "react": "19.0.0",
     "react-native": "0.79.2",
     "react-native-safe-area-context": "^5.4.0"

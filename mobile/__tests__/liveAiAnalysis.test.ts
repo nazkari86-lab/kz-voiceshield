@@ -5,6 +5,7 @@ import {
   liveAiDisagreement,
   parseLiveAiResponse,
   shouldAnalyzeLiveTranscript,
+  shouldAutoDisconnectCritical,
 } from '../src/utils/liveAiAnalysis'
 
 describe('live AI analysis policy', () => {
@@ -39,6 +40,26 @@ describe('live AI analysis policy', () => {
     expect(invalidRisk.risk).toBe('unknown')
   })
 
+  it('keeps the second-stage explanation structured and bounded', () => {
+    const request = buildLiveAiGenerationRequest('Сотрудник банка просит код из SMS.', '', 'risk=high; score=82; evidence=запрос OTP')
+    expect(request.localUserMessage).toContain('rules/ML')
+    const parsed = parseLiveAiResponse(JSON.stringify({
+      risk: 'high',
+      scheme: 'лжесотрудник банка',
+      technique: 'давление и запрос OTP',
+      evidence: 'просит код из SMS',
+      whyRisk: 'код подтверждает операцию',
+      action: 'завершить звонок',
+      immediateSteps: ['не сообщать код', 'перезвонить в банк'],
+      doNotDo: ['не устанавливать приложения'],
+      uncertainty: 'слышна только одна сторона',
+    }))
+    expect(parsed.technique).toContain('OTP')
+    expect(parsed.immediateSteps).toHaveLength(2)
+    expect(parsed.doNotDo[0]).toContain('приложения')
+    expect(parsed.uncertainty).toContain('одна сторона')
+  })
+
   it('keeps an unstructured answer visible instead of dropping the analysis', () => {
     const parsed = parseLiveAiResponse('Вероятно высокий риск: собеседник торопит и просит деньги.')
     expect(parsed.risk).toBe('high')
@@ -66,5 +87,15 @@ describe('live AI analysis policy', () => {
     expect(concurrentAiModelLimit(8 * 1024 ** 3)).toBeGreaterThan(1024 ** 3)
     expect(liveAiDisagreement('critical', 'low')).toBe('Rules high, AI low')
     expect(liveAiDisagreement('high', 'medium')).toBeNull()
+  })
+
+  it('requires strict local dual-confirmation before automatic disconnect', () => {
+    const base = { enabled: true, localModel: true, aiRisk: 'critical' as const, ruleRisk: 'critical', ruleScore: 97, captureCompleteness: 0.9, uncertainty: 'нет существенных ограничений' }
+    expect(shouldAutoDisconnectCritical(base)).toBe(true)
+    expect(shouldAutoDisconnectCritical({ ...base, enabled: false })).toBe(false)
+    expect(shouldAutoDisconnectCritical({ ...base, localModel: false })).toBe(false)
+    expect(shouldAutoDisconnectCritical({ ...base, ruleScore: 94 })).toBe(false)
+    expect(shouldAutoDisconnectCritical({ ...base, captureCompleteness: 0.84 })).toBe(false)
+    expect(shouldAutoDisconnectCritical({ ...base, uncertainty: 'слышна только одна сторона' })).toBe(false)
   })
 })

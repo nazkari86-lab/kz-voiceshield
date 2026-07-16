@@ -7,7 +7,7 @@
 
 KZ VoiceShield is a local-first anti-scam call review workspace for Kazakh and Russian conversations.
 
-It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. Version 1.9.0 is a private-beta system: the web and Android apps can run locally, and the optional FastAPI backend supports authenticated case sync, reviewer workflow, audit logging, queued audio transcription, and experimental ML comparison. It is still not a production anti-fraud platform until public deployment, real RU/KZ validation, durable storage/queues, and production identity are in place.
+It helps a reviewer paste or capture a call transcript, score scam risk, inspect matched evidence, review the risk timeline, explore threat rules, simulate real-world scam scenarios, save cases, label outcomes, and export reports or datasets. Version 2.0.0 is a private-beta system: the web and Android apps can run locally, and the optional FastAPI backend supports authenticated case sync, reviewer workflow, audit logging, queued audio transcription, and experimental ML comparison. It is still not a production anti-fraud platform until public deployment, real RU/KZ validation, durable storage/queues, and production identity are in place.
 
 ## Core Workflow
 
@@ -180,7 +180,7 @@ with deterministic rules. Only one LLM context is kept in memory. Devices with
 insufficient RAM are asked to choose a smaller model instead of attempting an
 unsafe concurrent load.
 
-## Mobile 1.9.0
+## Mobile 2.0.0
 
 Android can optionally become the default SIM phone UI through the official
 `ROLE_DIALER` and `InCallService` APIs. Its incoming and active-call screen

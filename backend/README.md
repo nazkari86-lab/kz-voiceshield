@@ -45,6 +45,19 @@ For real deployment, store the encryption key and tokens in a cloud secret manag
 use managed PostgreSQL/object storage, terminate TLS at the ingress, enable backups,
 and replace static tokens with an OIDC provider.
 
+## LiveKit VoIP prototype
+
+The backend exposes `POST /calls/create`, `POST /calls/{callId}/join`, and
+`POST /calls/{callId}/end`. It issues room tokens only when `LIVEKIT_URL`,
+`LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` are configured. The LiveKit secret
+is never part of the mobile app. These endpoints establish the secure token
+boundary; a native LiveKit client and a separate consented STT/analyzer worker
+must be deployed before real calls are enabled.
+
+For local development, run LiveKit on the same Wi-Fi network and set
+`LIVEKIT_URL=ws://<mac-ip>:7880`. Use TLS and a real identity/session service
+before exposing it outside the local network.
+
 ## Audio transcription
 
 The default transcriber fails explicitly because no STT engine is configured. To use
@@ -59,6 +72,13 @@ The upload endpoint returns `202` plus a job ID. Poll `GET /audio-jobs/{jobId}` 
 the status is `completed` or `failed`. The web adapter does this automatically.
 The built-in worker is process-local: interrupted jobs are marked failed on restart.
 Use Redis/Celery, SQS, or another durable queue before running multiple API instances.
+
+`GET /readyz` reports explicit capability flags. `serverVad` is true only for the
+Faster-Whisper transcriber, while `trainedKazakhStreamingAsr` and `deepfakeModel`
+remain false until real, versioned model artifacts are installed and verified.
+Audio jobs and transcript analysis also return a redacted transcript and a
+conservative `kk`/`ru`/`mixed` signal. The redacted value is the one suitable for
+audit, export, and cloud model transmission.
 
 ## Reviewer workflow API
 

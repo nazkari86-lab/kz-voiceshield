@@ -1,6 +1,6 @@
 # VoiceShield Capability Matrix
 
-Status as of 1.9.0. "Implemented" means code and deterministic tests exist in this repository; it does not imply public deployment or production validation.
+Status as of 2.0.0. "Implemented" means code and deterministic tests exist in this repository; it does not imply public deployment or production validation.
 
 ## Implemented locally
 

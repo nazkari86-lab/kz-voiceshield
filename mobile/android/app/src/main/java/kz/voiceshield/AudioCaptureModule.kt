@@ -20,6 +20,7 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
   private var recorder: AudioRecord? = null
   private var job: Job? = null
+  private val preprocessor = AudioPreprocessor()
 
   override fun getName(): String = "AudioCaptureModule"
 
@@ -38,6 +39,7 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
         promise.reject("AUDIO_UNAVAILABLE", "Microphone input is unavailable on this device")
         return
       }
+      preprocessor.reset()
       // MIC is intentionally first. On several Xiaomi/MIUI builds VOICE_RECOGNITION
       // can interfere with the active call audio route, muting the speaker or leaving
       // the recorder silent. MIC captures the acoustic speaker output without changing
@@ -55,7 +57,9 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
         while (recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
           val read = recorder?.read(buffer, 0, buffer.size) ?: 0
           if (read > 0) {
-            AppRegistry.whisperModule?.pushAudio(buffer.copyOf(read))
+            // Do not run model inference on the AudioRecord thread. WhisperModule
+            // owns a bounded worker queue and will drop stale chunks under load.
+            AppRegistry.whisperModule?.pushAudio(preprocessor.process(buffer.copyOf(read)))
             val payload = Arguments.createMap()
             payload.putDouble("level", buffer.take(read).maxOf { abs(it.toInt()) } / 32768.0)
             AppRegistry.sendEvent("VS_AUDIO_LEVEL", payload)
@@ -96,6 +100,7 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
     }
     recorder?.release()
     recorder = null
+    preprocessor.reset()
   }
 
   private fun startRecorder(minBuffer: Int): String? {

@@ -33,6 +33,7 @@ import { ProtectionWalkthroughView } from './components/ProtectionWalkthroughVie
 import { EmergencyView } from './components/EmergencyView'
 import { ScreenMotion } from './components/ScreenMotion'
 import { VoiceMessageView } from './components/VoiceMessageView'
+import { VoipCallView } from './components/VoipCallView'
 import { MotionPressable } from './components/MotionPressable'
 import { ShareIntentModule, shareIntentEvents } from './bridge/ShareIntentBridge'
 import { VoiceMessageModule, voiceMessageEvents } from './bridge/VoiceMessageBridge'
@@ -47,7 +48,7 @@ type Tab =
   | 'simulator' | 'emergency' | 'cases' | 'operations' | 'dataset'
   | 'playbook' | 'family' | 'verify' | 'number' | 'tools' | 'voiceMsg'
   | 'model' | 'setup' | 'stats' | 'sms' | 'history' | 'llm'
-  | 'demo'
+  | 'demo' | 'voip'
 
 const primaryTabs: Array<[Tab, string, string]> = [
   ['live', 'Shield', 'LIVE'],
@@ -58,6 +59,7 @@ const primaryTabs: Array<[Tab, string, string]> = [
 ]
 
 const toolTabs: Array<[Tab, string, string]> = [
+  ['voip', 'Protected VoIP', 'Private app-to-app calls with a LiveKit audio room'],
   ['demo', 'Protection walkthrough', 'Run the complete protection workflow with synthetic data'],
   ['review', 'Case review', 'Explain live risk, evidence and response steps'],
   ['evidence', 'Evidence & signals', 'Inspect matched signals and device context'],
@@ -96,6 +98,7 @@ const tabMeta: Record<Tab, { label: string; group: string }> = {
   history: { label: 'Call history', group: 'Investigate' },
   llm: { label: 'AI assistant', group: 'Investigate' },
   setup: { label: 'Setup', group: 'Workspace' },
+  voip: { label: 'Protected VoIP', group: 'Protect' },
 }
 
 const ONBOARDING_KEY = 'voiceshield.onboarding-done.v1'
@@ -135,6 +138,10 @@ function AppContent() {
     isListening: w.isListening,
     ruleRisk: w.analysis.risk,
     ruleScore: w.analysis.score,
+    ruleEvidence: w.analysis.evidence.map((item) => item.title).join('; '),
+    captureCompleteness: w.captureCompleteness,
+    autoDisconnectCritical: false,
+    onAutoDisconnect: w.endActiveCall,
     ramBytes: w.modelStorage?.ramBytes ?? 0,
   })
   const selectTab = (next: Tab) => { setHubOpen(false); setTab(next) }
@@ -222,10 +229,11 @@ function AppContent() {
       {tab === 'operations' && <OperationsView operations={w.operations} onLoadCase={(item) => { w.loadCase(item); selectTab('review') }} onUpdateStatus={w.updateCaseStatus} onToggleFlag={w.toggleCaseFlag} onExportBundle={w.exportEvidenceBundle} />}
       {tab === 'dataset' && <DatasetView quality={w.quality} caseCount={w.cases.length} labelledCount={w.cases.filter((item) => item.label !== 'unreviewed').length} datasetStageTotals={w.datasetStageTotals} donationConsent={w.donationConsent} onSetDonation={(accepted) => { void w.setDonation(accepted) }} onDonate={() => { void w.donateDataset() }} onExportJsonl={w.exportJsonlCases} onExportCsv={w.exportCsvCases} onExportSplit={w.exportSplitCases} onClear={w.clearCases} />}
       {tab === 'playbook' && <PlaybookView />}
-      {tab === 'family' && <FamilyView contact={w.trustedContact} privacyConsent={w.privacyConsent} onSave={w.saveTrustedContact} onClear={w.clearTrustedContact} onCall={w.callTrustedContact} onShareAlert={w.shareTrustedAlert} />}
+      {tab === 'family' && <FamilyView contact={w.trustedContact} privacyConsent={w.privacyConsent} onSave={w.saveTrustedContact} onClear={w.clearTrustedContact} onCall={w.callTrustedContact} onShareAlert={w.shareTrustedAlert} onLoadContacts={w.loadDeviceContacts} />}
       {tab === 'number' && <NumberShieldView autoDeleteTranscript={w.autoDeleteTranscript} onSetAutoDeleteTranscript={w.updateAutoDeleteTranscript} />}
       {tab === 'tools' && <ScamToolsView initialText={sharedText} onAnalyzeAsCall={(text) => { w.setTranscript(text); w.setFileName('manual-scam-check.txt'); selectTab('review') }} />}
       {tab === 'voiceMsg' && <VoiceMessageView modelReady={w.modelReady} pendingSharedAudio={pendingSharedAudio} onClearSharedAudio={() => setPendingSharedAudio(false)} onAnalyzeAsCall={(transcript) => { w.setTranscript(transcript); w.setFileName('voice-message.ogg'); selectTab('review') }} />}
+      {tab === 'voip' && <VoipCallView />}
       {tab === 'verify' && <VerifyView />}
       {tab === 'stats' && <StatsView cases={w.cases} />}
       {tab === 'sms' && <SmsScannerView onAnalyze={(text) => { w.setTranscript(text); w.setFileName('sms-message.txt'); selectTab('tools') }} />}

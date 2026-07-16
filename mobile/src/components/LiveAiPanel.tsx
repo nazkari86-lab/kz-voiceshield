@@ -91,13 +91,24 @@ export function LiveAiPanel({ controller, hasTranscript, onOpenAssistant }: Prop
             </View>
           </View>
           <View style={styles.field}>
+            <Text style={styles.fieldLabel}>ТЕХНИКА</Text>
+            <Text style={styles.fieldText}>{controller.result.technique}</Text>
+          </View>
+          <View style={styles.field}>
             <Text style={styles.fieldLabel}>УЛИКИ МОДЕЛИ</Text>
             <Text style={styles.fieldText}>{controller.result.evidence}</Text>
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>ПОЧЕМУ ЭТО ОПАСНО</Text>
+            <Text style={styles.fieldText}>{controller.result.whyRisk}</Text>
           </View>
           <View style={styles.actionField}>
             <Text style={styles.actionLabel}>ДЕЙСТВИЕ СЕЙЧАС</Text>
             <Text style={styles.actionText}>{controller.result.action}</Text>
+            {controller.result.immediateSteps.length > 0 && controller.result.immediateSteps.map((step, index) => <Text key={`${step}-${index}`} style={styles.actionText}>{index + 1}. {step}</Text>)}
           </View>
+          {controller.result.doNotDo.length > 0 && <View style={styles.warningField}><Text style={styles.fieldLabel}>ЧЕГО НЕ ДЕЛАТЬ</Text>{controller.result.doNotDo.map((step, index) => <Text key={`${step}-${index}`} style={styles.warningText}>• {step}</Text>)}</View>}
+          <Text style={styles.uncertainty}>Ограничения: {controller.result.uncertainty}</Text>
           {controller.disagreement && <Text style={styles.disagreement}>DISAGREEMENT: {controller.disagreement}</Text>}
         </>
       )}
@@ -163,6 +174,9 @@ const styles = StyleSheet.create({
   actionField: { backgroundColor: '#e8f7f0', borderColor: '#b5e4cf', borderRadius: 6, borderWidth: 1, padding: 10 },
   actionLabel: { color: colors.brandDark, fontSize: 8, fontWeight: '900', letterSpacing: 0.7 },
   actionText: { color: colors.brandDark, fontSize: 12, fontWeight: '800', lineHeight: 18, marginTop: 4 },
+  warningField: { backgroundColor: '#fff7ed', borderColor: '#fdba74', borderRadius: 6, borderWidth: 1, padding: 10 },
+  warningText: { color: '#9a3412', fontSize: 12, lineHeight: 18, marginTop: 4 },
+  uncertainty: { color: colors.muted, fontSize: 10, lineHeight: 15 },
   disagreement: { backgroundColor: '#fff7ed', borderRadius: 5, color: '#9a3412', fontSize: 10, fontWeight: '900', padding: 8 },
   streamingBox: { backgroundColor: colors.card, borderRadius: 6, minHeight: 64, padding: 10 },
   streamingText: { color: colors.ink, fontSize: 12, lineHeight: 18, marginTop: 4 },

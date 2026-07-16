@@ -3,6 +3,7 @@ import { Linking, PermissionsAndroid, Platform, Share, Vibration } from 'react-n
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { accessibilityEvents, AccessibilityModule } from '@bridge/AccessibilityBridge'
 import { callEvents, CallModule } from '@bridge/CallModule'
+import { ContactsModule, type DeviceContact } from '@bridge/ContactsBridge'
 import type { SafeCallEvent } from '@bridge/CallModule'
 import { AudioCaptureModule, audioEvents, ModelDownloader, modelEvents, WhisperModule, whisperEvents } from '@bridge/WhisperBridge'
 import { OverlayModule } from '@bridge/OverlayBridge'
@@ -749,6 +750,17 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     await Linking.openURL(`tel:${trustedContact.phone}`)
   }, [trustedContact])
 
+  const loadDeviceContacts = useCallback(async (): Promise<DeviceContact[]> => {
+    if (Platform.OS === 'android') {
+      const permission = PermissionsAndroid.PERMISSIONS.READ_CONTACTS
+      if ((await PermissionsAndroid.check(permission)) !== true) {
+        const result = await PermissionsAndroid.request(permission)
+        if (result !== PermissionsAndroid.RESULTS.GRANTED) return []
+      }
+    }
+    return ContactsModule?.getContacts?.(200) ?? []
+  }, [])
+
   const shareTrustedAlert = useCallback(async () => {
     if (!trustedContact) return
     await Share.share({
@@ -860,6 +872,7 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
     // handlers
     loadSample, saveCurrentCase, loadCase, acceptPrivacy, declinePrivacy, deleteAllLocalData,
     saveTrustedContact, clearTrustedContact, callTrustedContact, shareTrustedAlert,
+    loadDeviceContacts,
     updateCaseLabel, updateCaseStatus, toggleCaseFlag, deleteCase, clearCases,
     exportReport, exportEvidenceBundle,
     exportJsonlCases, exportCsvCases, exportSplitCases,

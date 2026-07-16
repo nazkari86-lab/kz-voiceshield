@@ -1,6 +1,6 @@
 # Cloud AI security and provider support
 
-VoiceShield 1.9.0 supports user-supplied API credentials for OpenAI, Anthropic,
+VoiceShield 2.0.0 supports user-supplied API credentials for OpenAI, Anthropic,
 Google Gemini, Groq, Cerebras, OpenRouter, xAI, DeepSeek, and Mistral.
 
 ## Implemented runtime

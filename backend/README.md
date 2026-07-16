@@ -73,6 +73,13 @@ the status is `completed` or `failed`. The web adapter does this automatically.
 The built-in worker is process-local: interrupted jobs are marked failed on restart.
 Use Redis/Celery, SQS, or another durable queue before running multiple API instances.
 
+`GET /readyz` reports explicit capability flags. `serverVad` is true only for the
+Faster-Whisper transcriber, while `trainedKazakhStreamingAsr` and `deepfakeModel`
+remain false until real, versioned model artifacts are installed and verified.
+Audio jobs and transcript analysis also return a redacted transcript and a
+conservative `kk`/`ru`/`mixed` signal. The redacted value is the one suitable for
+audit, export, and cloud model transmission.
+
 ## Reviewer workflow API
 
 Reviewers and admins can list cases with `GET /cases`, read one case with

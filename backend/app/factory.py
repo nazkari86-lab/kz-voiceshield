@@ -15,6 +15,7 @@ from .models import AudioJobResponse, CasePayload, TranscriptRequest, WorkflowPa
 from .repository import CaseVersionConflict, Repository
 from .security import PayloadCipher, authenticate, require_roles
 from .transcription import Transcriber, transcriber_from_env
+from .privacy import detect_language, redact_text
 
 
 ALLOWED_AUDIO_TYPES = {
@@ -70,6 +71,14 @@ def create_app(
             "retainAudio": resolved_settings.retain_audio,
             "maxAudioBytes": resolved_settings.max_audio_bytes,
             "livekitConfigured": all((resolved_settings.livekit_url, resolved_settings.livekit_api_key, resolved_settings.livekit_api_secret)),
+            "capabilities": {
+                "serverStt": resolved_transcriber.__class__.__name__ != "DisabledTranscriber",
+                "serverVad": resolved_transcriber.__class__.__name__ == "FasterWhisperTranscriber",
+                "liveKitVoip": livekit_configured(),
+                "serverPiiRedaction": True,
+                "trainedKazakhStreamingAsr": False,
+                "deepfakeModel": False,
+            },
         }
 
     def livekit_configured() -> bool:
@@ -128,14 +137,16 @@ def create_app(
             assessment = resolved_model.assess(body.transcript)
         except ModelUnavailable as error:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
-        repository.audit(principal.user_id, "transcript_analyzed", {"length": len(body.transcript)})
-        return {"ml": assessment}
+        safe_transcript = redact_text(body.transcript)
+        language = detect_language(body.transcript)
+        repository.audit(principal.user_id, "transcript_analyzed", {"length": len(safe_transcript), "language": language})
+        return {"ml": assessment, "redactedTranscript": safe_transcript, "language": language}
 
     def process_audio_job(job_id: str, audio_bytes: bytes, suffix: str, actor: str) -> None:
         repository.update_audio_job(job_id, "processing")
         try:
             transcript, confidence = resolved_transcriber.transcribe(audio_bytes, suffix)
-            result: dict[str, Any] = {"transcript": transcript, "transcriptConfidence": confidence}
+            result: dict[str, Any] = {"transcript": transcript, "redactedTranscript": redact_text(transcript), "language": detect_language(transcript), "transcriptConfidence": confidence}
             if resolved_model.available:
                 result["ml"] = resolved_model.assess(transcript)
             repository.update_audio_job(job_id, "completed", result=result)

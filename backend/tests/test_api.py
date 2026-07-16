@@ -78,6 +78,14 @@ def test_health_is_public_and_auth_is_required(api):
         "retainAudio": False,
         "maxAudioBytes": 64,
         "livekitConfigured": False,
+        "capabilities": {
+            "serverStt": True,
+            "serverVad": False,
+            "liveKitVoip": False,
+            "serverPiiRedaction": True,
+            "trainedKazakhStreamingAsr": False,
+            "deepfakeModel": False,
+        },
     }
     assert client.post("/analyze-transcript", json={"transcript": "Назовите код"}).status_code == 401
 

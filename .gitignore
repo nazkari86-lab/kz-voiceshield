@@ -41,3 +41,4 @@ playwright-report/
 *.sw?
 __pycache__/
 *.pyc
+.tooling/

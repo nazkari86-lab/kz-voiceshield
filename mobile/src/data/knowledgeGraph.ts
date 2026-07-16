@@ -41,7 +41,8 @@ const featureCatalog: KnowledgeNode[] = [
 ]
 
 const releaseCatalog: KnowledgeNode[] = [
-  { id: 'release:v2.0.2', type: 'release', title: 'v2.0.2 verified baseline', summary: 'Подтверждённая пользователем Xiaomi baseline. Любое последующее изменение должно выпускаться отдельным patch-версией и не перезаписывать этот ориентир.', tags: ['release', 'baseline', 'xiaomi'], version: '2.0.2', status: 'active' },
+  { id: 'release:v2.0.3', type: 'release', title: 'v2.0.3 patch release', summary: 'Исправляет переполнение Family contacts, обрывы облачных AI-ответов, SMS false positives, каталог функций knowledge graph и idle walkthrough UI. Нужна отдельная проверка на физическом Xiaomi.', tags: ['release', 'patch', 'fixes'], version: '2.0.3', status: 'active' },
+  { id: 'release:v2.0.2', type: 'release', title: 'v2.0.2 verified baseline', summary: 'Подтверждённая пользователем Xiaomi baseline, сохранённая для отката и сравнения с patch-релизами.', tags: ['release', 'baseline', 'xiaomi'], version: '2.0.2', status: 'available' },
   { id: 'release:v2.0.0', type: 'release', title: 'v2.0.0 historical baseline', summary: 'Историческая private-beta baseline. Репозиторий не содержит полного машинно-проверенного списка различий между каждым старым релизом; ассистент обязан сообщать это вместо догадок.', tags: ['release', 'history', 'private-beta'], version: '2.0.0', status: 'available' },
 ]
 
@@ -81,7 +82,7 @@ export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null, run
 
   const edges: KnowledgeEdge[] = ([
     ...featureCatalog.map((feature) => ['app:voiceshield', feature.id, 'provides'] as [string, string, string]),
-    ['app:voiceshield', 'release:v2.0.2', 'current verified baseline'], ['release:v2.0.2', 'release:v2.0.0', 'succeeds'],
+    ['app:voiceshield', 'release:v2.0.3', 'current patch release'], ['release:v2.0.3', 'release:v2.0.2', 'succeeds'], ['release:v2.0.2', 'release:v2.0.0', 'succeeds'],
     ['feature:live-shield', 'feature:transcript-correction', 'feeds'], ['feature:live-shield', 'feature:ml-shadow', 'compares'],
     ['feature:live-shield', 'model:silero-vad', 'uses'], ['feature:live-shield', 'model:fastconformer', 'uses'], ['feature:transcript-correction', 'model:qolda-q4', 'can use'],
     ['feature:transcript-correction', 'dataset:kazakh-asr', 'evaluates against'], ['feature:ml-shadow', 'dataset:fraud-transfer', 'trained with'], ['model:lcnn-anti-spoof', 'dataset:asvspoof', 'trained/evaluated on'],

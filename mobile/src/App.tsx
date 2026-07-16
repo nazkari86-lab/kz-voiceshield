@@ -33,6 +33,7 @@ import { ProtectionWalkthroughView } from './components/ProtectionWalkthroughVie
 import { EmergencyView } from './components/EmergencyView'
 import { ScreenMotion } from './components/ScreenMotion'
 import { VoiceMessageView } from './components/VoiceMessageView'
+import { VoipCallView } from './components/VoipCallView'
 import { MotionPressable } from './components/MotionPressable'
 import { ShareIntentModule, shareIntentEvents } from './bridge/ShareIntentBridge'
 import { VoiceMessageModule, voiceMessageEvents } from './bridge/VoiceMessageBridge'
@@ -45,7 +46,7 @@ type Tab =
   | 'simulator' | 'emergency' | 'cases' | 'operations' | 'dataset'
   | 'playbook' | 'family' | 'verify' | 'number' | 'tools' | 'voiceMsg'
   | 'model' | 'setup' | 'stats' | 'sms' | 'history' | 'llm'
-  | 'demo'
+  | 'demo' | 'voip'
 
 const primaryTabs: Array<[Tab, string, string]> = [
   ['live', 'Shield', 'LIVE'],
@@ -53,9 +54,11 @@ const primaryTabs: Array<[Tab, string, string]> = [
   ['demo', 'Walkthrough', 'RUN'],
   ['simulator', 'Learn', 'LAB'],
   ['cases', 'Cases', 'CASE'],
+  ['voip', 'VoIP', 'CALL'],
 ]
 
 const toolTabs: Array<[Tab, string, string]> = [
+  ['voip', 'Protected VoIP', 'Private app-to-app calls with a LiveKit audio room'],
   ['demo', 'Protection walkthrough', 'Run the complete protection workflow with synthetic data'],
   ['review', 'Case review', 'Explain live risk, evidence and response steps'],
   ['evidence', 'Evidence & signals', 'Inspect matched signals and device context'],
@@ -94,6 +97,7 @@ const tabMeta: Record<Tab, { label: string; group: string }> = {
   history: { label: 'Call history', group: 'Investigate' },
   llm: { label: 'AI assistant', group: 'Investigate' },
   setup: { label: 'Setup', group: 'Workspace' },
+  voip: { label: 'Protected VoIP', group: 'Protect' },
 }
 
 const ONBOARDING_KEY = 'voiceshield.onboarding-done.v1'
@@ -226,6 +230,7 @@ function AppContent() {
       {tab === 'number' && <NumberShieldView ai={ai} autoDeleteTranscript={w.autoDeleteTranscript} onSetAutoDeleteTranscript={w.updateAutoDeleteTranscript} />}
       {tab === 'tools' && <ScamToolsView initialText={sharedText} onAnalyzeAsCall={(text) => { w.setTranscript(text); w.setFileName('manual-scam-check.txt'); selectTab('review') }} />}
       {tab === 'voiceMsg' && <VoiceMessageView modelReady={w.modelReady} pendingSharedAudio={pendingSharedAudio} onClearSharedAudio={() => setPendingSharedAudio(false)} onAnalyzeAsCall={(transcript) => { w.setTranscript(transcript); w.setFileName('voice-message.ogg'); selectTab('review') }} />}
+      {tab === 'voip' && <VoipCallView />}
       {tab === 'verify' && <VerifyView />}
       {tab === 'stats' && <StatsView cases={w.cases} />}
       {tab === 'sms' && <SmsScannerView ai={ai} onAnalyze={(text) => { w.setTranscript(text); w.setFileName('sms-message.txt'); selectTab('tools') }} />}

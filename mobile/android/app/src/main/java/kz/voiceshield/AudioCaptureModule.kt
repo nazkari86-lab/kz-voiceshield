@@ -59,6 +59,8 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
         while (recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
           val read = recorder?.read(buffer, 0, buffer.size) ?: 0
           if (read > 0) {
+            // Do not run model inference on the AudioRecord thread. WhisperModule
+            // owns a bounded worker queue and will drop stale chunks under load.
             AppRegistry.whisperModule?.pushAudio(preprocessor.process(buffer.copyOf(read)))
             val payload = Arguments.createMap()
             payload.putDouble("level", buffer.take(read).maxOf { abs(it.toInt()) } / 32768.0)

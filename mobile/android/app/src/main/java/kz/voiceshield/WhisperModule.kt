@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -18,9 +20,29 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   private var whisper: WhisperContext? = null
   private var fastConformer: FastConformerContext? = null
   private var streamJob: Job? = null
+  private val audioQueue = Channel<ShortArray>(
+    capacity = 8,
+    onBufferOverflow = BufferOverflow.DROP_OLDEST,
+  )
+  private var audioWorkerJob: Job
   private var lastTranscript = ""
 
-  init { AppRegistry.whisperModule = this }
+  init {
+    AppRegistry.whisperModule = this
+    // AudioRecord must never wait for a model inference. On slower Xiaomi
+    // devices a decode can take longer than a capture chunk; keeping this work
+    // off the recorder thread prevents buffer starvation and UI stalls.
+    audioWorkerJob = scope.launch {
+      for (chunk in audioQueue) {
+        try {
+          whisper?.process(chunk)
+          fastConformer?.process(chunk)
+        } catch (_: Throwable) {
+          // A bad model/chunk must not kill the capture worker permanently.
+        }
+      }
+    }
+  }
 
   override fun getName(): String = "WhisperModule"
 
@@ -52,8 +74,7 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   }
 
   fun pushAudio(chunk: ShortArray) {
-    whisper?.process(chunk)
-    fastConformer?.process(chunk)
+    if (chunk.isNotEmpty()) audioQueue.trySend(chunk)
   }
 
   @ReactMethod
@@ -88,6 +109,8 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   @ReactMethod fun getBufferSize(promise: Promise) { promise.resolve(whisper?.bufferSize() ?: fastConformer?.bufferSize() ?: 0) }
 
   override fun invalidate() {
+    audioQueue.close()
+    audioWorkerJob.cancel()
     streamJob?.cancel()
     streamJob = null
     whisper?.close()

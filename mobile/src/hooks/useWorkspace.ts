@@ -122,6 +122,7 @@ export function useWorkspace() {
   const signalTimestampsRef = useRef<Map<string, number>>(new Map())
   const lastAudibleAtRef = useRef(Date.now())
   const sessionStartRef = useRef(Date.now())
+  const captureTransitionRef = useRef(false)
 
   // ---- saved cases ----
   const [cases, setCases] = useState<SavedCase[]>([])
@@ -456,6 +457,8 @@ export function useWorkspace() {
   }, [modelSizePref, modelStorage, recognitionLanguage])
 
   const startListening = useCallback(async () => {
+    if (captureTransitionRef.current || isListening) return
+    captureTransitionRef.current = true
     setCaptureError(null)
     setCaptureNotice(null)
     setDeviceSignals((current) => current.filter((signal) => signal.id === 'caller_verification_failed' || signal.id === 'caller_unverified'))
@@ -502,8 +505,10 @@ export function useWorkspace() {
       await OverlayModule.hide().catch(() => undefined)
       setIsListening(false)
       setCaptureError('Protection could not start. Enable microphone, overlay and accessibility permissions in setup.')
+    } finally {
+      captureTransitionRef.current = false
     }
-  }, [modelReady, prepareWhisper, privacyConsent])
+  }, [isListening, modelReady, prepareWhisper, privacyConsent])
 
   const endActiveCall = useCallback(async () => {
     try {
@@ -542,6 +547,8 @@ export function useWorkspace() {
   }, [modelReady, prepareWhisper])
 
   const stopListening = useCallback(async () => {
+    if (captureTransitionRef.current || !isListening) return
+    captureTransitionRef.current = true
     // Record fingerprint before stopping for cross-call memory
     const snap = analyzeTranscript(analysisTranscript, { signals: deviceSignals })
     const durationSec = Math.round((Date.now() - sessionStartRef.current) / 1000)
@@ -558,20 +565,24 @@ export function useWorkspace() {
     const ftLabel = snap.risk === 'critical' || snap.risk === 'high' ? 'scam' : snap.risk === 'low' ? 'safe' : 'uncertain'
     // labelSource='auto_rules' — weight 0.2; user must confirm before gold training
     void addFineTuneExample(transcript, ftLabel, snap.schemeLabel, snap.score, 'auto_rules')
-    await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
-    await AudioCaptureModule.stopCapture().catch(() => undefined)
-    await WhisperModule.stopStreaming().catch(() => undefined)
-    await OverlayModule.hide().catch(() => undefined)
-    setIsListening(false)
-    setDeviceSignals([])
-    setCaptureNotice(null)
-    setCallStatus('No active call context')
-    if (autoDeleteTranscript) {
-      setTranscript('')
-      setFileName('manual-call.txt')
-      setSource('Manual')
+    try {
+      await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
+      await AudioCaptureModule.stopCapture().catch(() => undefined)
+      await WhisperModule.stopStreaming().catch(() => undefined)
+      await OverlayModule.hide().catch(() => undefined)
+      setIsListening(false)
+      setDeviceSignals([])
+      setCaptureNotice(null)
+      setCallStatus('No active call context')
+      if (autoDeleteTranscript) {
+        setTranscript('')
+        setFileName('manual-call.txt')
+        setSource('Manual')
+      }
+    } finally {
+      captureTransitionRef.current = false
     }
-  }, [analysisTranscript, autoDeleteTranscript, deviceSignals, transcript])
+  }, [analysisTranscript, autoDeleteTranscript, deviceSignals, isListening, transcript])
 
   useEffect(() => () => {
     void AccessibilityModule.setProtectionActive(false).catch(() => undefined)

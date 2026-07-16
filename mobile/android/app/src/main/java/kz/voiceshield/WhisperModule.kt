@@ -38,10 +38,11 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     audioWorkerJob = scope.launch {
       for (chunk in audioQueue) {
         try {
-          synchronized(modelLock) {
-            whisper?.process(chunk)
-            fastConformer?.process(chunk)
-          }
+          // Whisper JNI protects its capture buffer independently from inference;
+          // FastConformerContext serializes its own buffer. Holding modelLock here
+          // starves decode because this loop reacquires it every 100 ms.
+          whisper?.process(chunk)
+          fastConformer?.process(chunk)
         } catch (error: Throwable) {
           Log.e(TAG, "Speech capture chunk failed", error)
         }
@@ -110,23 +111,18 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
       while (true) {
         delay(3000)
         try {
-          val bufferedSamples = synchronized(modelLock) {
-            whisper?.bufferSize() ?: fastConformer?.bufferSize() ?: 0
-          }
+          val bufferedSamples = whisper?.bufferSize() ?: fastConformer?.bufferSize() ?: 0
           val status = Arguments.createMap()
           status.putInt("bufferedSamples", bufferedSamples)
-          status.putBoolean("modelReady", bufferedSamples > 0 || synchronized(modelLock) { whisper != null || fastConformer != null })
+          status.putBoolean("modelReady", bufferedSamples > 0 || whisper != null || fastConformer != null)
           AppRegistry.sendEvent("VS_WHISPER_STATUS", status)
-          // Decode after one second of PCM. Short speech segments are common in
-          // calls; waiting for two seconds and dropping an empty window made the
-          // phone appear active while silently losing the phrase.
-          if (bufferedSamples >= 16_000) {
+          // Two seconds was the stable 2.0.0 window. One-second windows trigger
+          // expensive full inference too frequently on mid-range phones.
+          if (bufferedSamples >= 32_000) {
             val startedAt = System.currentTimeMillis()
             if (!decoding.compareAndSet(false, true)) continue
             val text = try {
-              synchronized(modelLock) {
-                (whisper?.transcribe() ?: fastConformer?.transcribe().orEmpty()).trim()
-              }
+              (whisper?.transcribe() ?: fastConformer?.transcribe().orEmpty()).trim()
             } finally {
               decoding.set(false)
             }

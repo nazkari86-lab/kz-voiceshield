@@ -129,7 +129,10 @@ export function useWorkspace(ai?: OnDeviceAiRuntime) {
   const llmAutoAnalysis: string | null = null
 
   const transcriptEnhancement = useMemo(() => enhanceTranscript(transcript), [transcript])
-  const modelCorrection = useTranscriptCorrection(ai ?? null, transcript, transcriptEnhancement)
+  // Running a second local model after every partial ASR result competes for the
+  // same CPU/RAM and can freeze mid-range phones. Correct once capture is idle;
+  // deterministic normalization and fraud rules remain live during the call.
+  const modelCorrection = useTranscriptCorrection(ai ?? null, transcript, transcriptEnhancement, !isListening)
   const modelCorrectionActive = modelCorrection.status === 'ready' && !modelCorrection.rejected && modelCorrection.rawTranscript === transcript.trim()
   const analysisTranscript = modelCorrectionActive ? modelCorrection.correctedTranscript : transcriptEnhancement.normalizedTranscript
   const ksc2LanguageContext = useMemo(() => buildKsc2LanguageContext(transcriptEnhancement), [transcriptEnhancement])

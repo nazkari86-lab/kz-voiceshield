@@ -124,6 +124,11 @@ class VoiceShieldCallActivity : Activity(), VoiceShieldCallController.Listener {
     tools.addView(speakerButton, LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginStart = dp(6) })
     root.addView(tools, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
     root.addView(button("Activate Live Shield", Color.rgb(37, 99, 235)) {
+      // Android does not expose the remote call stream directly to ordinary
+      // apps. Speakerphone keeps the active call audible to the microphone
+      // capture path while the call remains connected.
+      speaker = true
+      VoiceShieldCallController.setSpeaker(true)
       startActivity(Intent(this, MainActivity::class.java).apply {
         action = MainActivity.ACTION_OPEN_LIVE_PROTECTION
         addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)

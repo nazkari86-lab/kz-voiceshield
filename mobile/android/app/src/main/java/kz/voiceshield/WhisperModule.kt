@@ -13,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
@@ -23,10 +25,29 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   private var fastConformer: FastConformerContext? = null
   private val modelLock = Any()
   private val decoding = AtomicBoolean(false)
+  private val audioQueue = Channel<ShortArray>(capacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+  private val audioWorkerJob: Job
   private var streamJob: Job? = null
   private var lastTranscript = ""
 
-  init { AppRegistry.whisperModule = this }
+  init {
+    AppRegistry.whisperModule = this
+    // AudioRecord must never wait for model inference. Slow Xiaomi devices can
+    // take longer to decode than one capture chunk; stale chunks are dropped
+    // from this bounded queue instead of blocking microphone reads.
+    audioWorkerJob = scope.launch {
+      for (chunk in audioQueue) {
+        try {
+          synchronized(modelLock) {
+            whisper?.process(chunk)
+            fastConformer?.process(chunk)
+          }
+        } catch (error: Throwable) {
+          Log.e(TAG, "Speech capture chunk failed", error)
+        }
+      }
+    }
+  }
 
   override fun getName(): String = "WhisperModule"
 
@@ -74,14 +95,7 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   }
 
   fun pushAudio(chunk: ShortArray) {
-    // Inference can take seconds on mobile. Never block AudioRecord while the
-    // native decoder owns the model; the next PCM chunk will be processed.
-    if (decoding.get()) return
-    synchronized(modelLock) {
-      if (decoding.get()) return
-      whisper?.process(chunk)
-      fastConformer?.process(chunk)
-    }
+    if (chunk.isNotEmpty()) audioQueue.trySend(chunk)
   }
 
   @ReactMethod
@@ -149,6 +163,8 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   }
 
   override fun invalidate() {
+    audioQueue.close()
+    audioWorkerJob.cancel()
     streamJob?.cancel()
     streamJob = null
     synchronized(modelLock) {

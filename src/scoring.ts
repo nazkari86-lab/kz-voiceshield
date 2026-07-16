@@ -35,6 +35,20 @@ export type RiskSignal = {
 
 export type RiskContext = {
   signals?: RiskSignal[]
+  captureCompleteness?: number  // 0–1; 1.0 = both sides heard, 0.4 = owner only
+}
+
+export type DetectedIntent = {
+  id: 'request_otp' | 'request_transfer' | 'install_remote_app' | 'isolate_victim' | 'claim_authority' | 'request_sim_swap' | 'request_card_details'
+  probability: number
+  actor: 'caller' | 'user' | 'unknown'
+}
+
+export type EvidenceFamilyResult = {
+  id: string
+  label: string
+  strength: number
+  ruleIds: string[]
 }
 
 export type ScamScheme =
@@ -70,6 +84,14 @@ export type Analysis = {
   caseId: string
   verdict: string
   nextAction: string
+  // Extended v2 fields (web parity with mobile)
+  fraudProbability: number
+  harmSeverity: number
+  schemeConfidence: number
+  captureCompleteness: number
+  intents: DetectedIntent[]
+  evidenceFamilies: EvidenceFamilyResult[]
+  protectiveContextApplied: boolean
 }
 
 export type WorkflowFlags = {
@@ -151,6 +173,12 @@ export const samples = {
     'Привет, мы познакомились на сайте знакомств. Я хочу прислать тебе подарок, но нужна предоплата за доставку. Отправь на OLX реквизиты, покупатель уже нашелся.',
   phishingLink:
     'Это служба поддержки. Перейдите по ссылке для подтверждения личного кабинета. Нажмите на ссылку в SMS и заполните форму оплаты для разблокировки.',
+  smishingBridge:
+    'Это ваш банк. Пока мы разговариваем, откройте SMS — мы отправили ссылку. Перейдите по ссылке из СМС, не кладите трубку, и введите код подтверждения прямо сейчас, иначе операция не отменится.',
+  callerIdSpoof:
+    'Проверьте номер на экране — он совпадает с официальным номером банка на карте. Это настоящий номер, мы звоним с него официально. Назовите ИИН и ПИН-код для подтверждения личности.',
+  pretexting:
+    'Ваша заявка на перевод средств за рубеж уже обработана. Мы зафиксировали операцию на 500 000 тенге. Вы подавали такую заявку? Нет? Тогда срочно сообщите код из СМС для отмены перевода.',
   safe:
     'Сәлеметсіз бе. Это оператор клиники. Мы напоминаем о записи на завтра в 10:30. Если время неудобно, можете перезаписаться через официальный номер на сайте. Никому не сообщайте SMS-коды.',
 }
@@ -167,6 +195,9 @@ export const sampleMeta = [
   ['jobScam', 'Job scam'],
   ['romanceWork', 'Romance/marketplace'],
   ['phishingLink', 'Phishing link'],
+  ['smishingBridge', 'SMS-to-call bridge'],
+  ['callerIdSpoof', 'Caller ID spoof'],
+  ['pretexting', 'Pretexting / false context'],
   ['safe', 'Safe call'],
 ] as const
 
@@ -729,6 +760,83 @@ export const threatRules: ThreatRule[] = [
     ],
     advice: 'Legitimate employers never charge upfront fees. Check the company on 2gis or hh.kz before any payment.',
   },
+  {
+    id: 'smishing-bridge',
+    title: 'SMS-to-call bridge (smishing + phone fraud combo)',
+    tactic: 'Multi-channel attack',
+    stage: 'Hook',
+    severity: 'high',
+    weight: 22,
+    minHits: 2,
+    terms: [
+      'ссылка в смс',
+      'sms со ссылкой',
+      'смс со ссылкой',
+      'код из смс по ссылке',
+      'перейдите по ссылке из смс',
+      'ссылку отправили в смс',
+      'сміске сілтеме жібердік',
+      'смс арқылы өтіңіз',
+      'открыли ссылку из смс',
+      'пока мы разговариваем откройте смс',
+      'зайдите по ссылке пока мы на линии',
+      'не кладите трубку и перейдите',
+    ],
+    advice: 'Do not open SMS links while on an unsolicited call — this is a multi-channel attack designed to force quick action.',
+  },
+  {
+    id: 'caller-id-spoof',
+    title: 'Caller ID spoofing or callback fraud',
+    tactic: 'Identity deception',
+    stage: 'Hook',
+    severity: 'high',
+    weight: 21,
+    minHits: 2,
+    terms: [
+      'номер совпадает',
+      'номер банка',
+      'официальный номер банка',
+      'перезвоните нам',
+      'мы перезвоним',
+      'позвоните по этому номеру',
+      'наш номер',
+      'номер отображается',
+      'проверьте номер на экране',
+      'банктің ресми нөмірі',
+      'нөмірді тексеріңіз',
+      'осы нөмірге қоңырау шалыңыз',
+      'это настоящий номер',
+      'номер зарегистрирован',
+    ],
+    advice: 'Caller ID can be faked — hang up and dial the official number yourself from the bank\'s website or card.',
+  },
+  {
+    id: 'pretexting',
+    title: 'Fabricated backstory or false context injection',
+    tactic: 'Social engineering',
+    stage: 'Hook',
+    severity: 'medium',
+    weight: 19,
+    minHits: 2,
+    terms: [
+      'ваша заявка',
+      'ваша заявка уже обработана',
+      'вы подавали заявку',
+      'мы зафиксировали',
+      'зафиксирована попытка',
+      'по вашему обращению',
+      'по вашему запросу',
+      'на ваше имя поступил запрос',
+      'поступила жалоба',
+      'поступило обращение',
+      'ваши данные были скомпрометированы',
+      'сіздің өтінішіңіз',
+      'өтініш түсті',
+      'өтінім берілді',
+      'сіздің атыңызға өтінім',
+    ],
+    advice: 'The attacker creates a false context to lower suspicion. You didn\'t file that request — call the official number yourself to verify.',
+  },
 ]
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -794,6 +902,9 @@ const buildResponseChecklist = (risk: Severity, evidence: Evidence[], contextSig
   if (evidence.some((item) => item.id === 'loan-rescue')) checklist.push('Do not take a new loan or move money to cancel a loan. Call your bank using the number in its official app or on the card.')
   if (evidence.some((item) => item.id === 'fake-telecom')) checklist.push('Do not open files or install APKs sent by a telecom caller. Disconnect internet if opened and contact the operator and bank independently.')
   if (evidence.some((item) => item.id === 'dropper-recruitment')) checklist.push('Do not sell or rent your card, SIM or online-banking access. Freeze the account and report the recruitment.')
+  if (evidence.some((item) => item.id === 'smishing-bridge')) checklist.push('Do not open any SMS links while on an unsolicited call — this is a multi-channel attack designed to force quick action.')
+  if (evidence.some((item) => item.id === 'caller-id-spoof')) checklist.push('Caller ID can be faked — hang up and dial the official number yourself from the bank\'s website or card.')
+  if (evidence.some((item) => item.id === 'pretexting')) checklist.push('You did not file that request — the backstory is fabricated. Verify any claim through official channels independently.')
   if (contextSignals.some((item) => item.id === 'remote_access_app_open')) checklist.push('Close the remote-access app now. Never reveal a connection code or approve screen control during a financial call.')
   if (contextSignals.some((item) => item.id === 'bank_app_open')) checklist.push('Do not approve payments or sign-in prompts in the bank app while the caller is still on the line.')
   if (contextSignals.some((item) => item.id === 'otp_notification')) checklist.push('An OTP arrived during the call. Do not read, forward, enter or approve that code for the caller.')
@@ -874,12 +985,12 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
       return { ...rule, score: Math.round((rule.weight + (rule.matches.length - 1) * 4) * severityBoost) }
     })
 
-  const protective = detectSafeContext(text) && !hasExplicitAction(text)
+  const protectiveCtx = detectSafeContext(text) && !hasExplicitAction(text)
   const actionable = initialEvidence.some((item) => ['safe-account', 'remote-access', 'urgency-isolation'].includes(item.id))
-  const evidence =
-    protective && !actionable
-      ? initialEvidence.filter((item) => !['bank-security', 'otp-code', 'messenger-takeover'].includes(item.id))
-      : initialEvidence
+  // Keep all evidence visible — protective context applies a score discount instead of
+  // silently dropping rules. Analysts can see the full picture and override.
+  const evidence = initialEvidence
+  const protectiveContextApplied = protectiveCtx && !actionable
   const matchedTerms = evidence.reduce((total, item) => total + item.matches.length, 0)
   const has = (id: string) => evidence.some((item) => item.id === id)
   const comboBonus =
@@ -904,13 +1015,26 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
                 : has('egov-benefits') && has('otp-code')
                   ? 20
                   : has('law-enforcement') && has('otp-code')
-                  ? 20
-                  : has('kaspi-qr') && (has('safe-account') || has('job-scam'))
-                    ? 18
-                    : has('job-scam') && has('kaspi-qr')
-                      ? 16
-                      : 0
-  const shortTextPenalty = wordCount < 3 ? 0.25 : wordCount < 7 ? 0.65 : 1
+                    ? 20
+                    : has('kaspi-qr') && (has('safe-account') || has('job-scam'))
+                      ? 18
+                      : has('job-scam') && has('kaspi-qr')
+                        ? 16
+                        : has('smishing-bridge') && has('otp-code')
+                          ? 20
+                          : has('caller-id-spoof') && (has('bank-security') || has('otp-code'))
+                            ? 16
+                            : has('pretexting') && has('otp-code')
+                              ? 18
+                              : has('pretexting') && has('safe-account')
+                                ? 16
+                                : 0
+  // Critical-action short text: a 3-word command ("назовите код") is unambiguous —
+  // do not discount score for it. Confidence still gets the full penalty.
+  const criticalActionIds = ['otp-code', 'safe-account', 'remote-access', 'sim-swap', 'urgency-isolation']
+  const hasCriticalAction = evidence.some((item) => criticalActionIds.includes(item.id))
+  const shortTextPenaltyFull = wordCount < 3 ? 0.25 : wordCount < 7 ? 0.65 : 1
+  const shortTextPenaltyScore = hasCriticalAction ? 1 : shortTextPenaltyFull
   const contextSignals = [...new Map((context.signals ?? []).map((item) => [item.id, item])).values()]
   // App/screen context only amplifies suspicious speech. Caller verification and
   // reputation are independent pre-answer signals and remain visible before STT.
@@ -918,12 +1042,17 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
     .filter((item) => item.id === 'caller_reputation_high' || item.id === 'caller_verification_failed')
     .reduce((maximum, item) => Math.max(maximum, item.weight), 0)
   const contextScore = evidence.length > 0 ? contextSignals.reduce((sum, item) => sum + item.weight, 0) : 0
-  const conversationScore = Math.round((evidence.reduce((sum, item) => sum + item.score, 0) + comboBonus + contextScore) * shortTextPenalty)
+  const rawConversationScore = evidence.reduce((sum, item) => sum + item.score, 0) + comboBonus + contextScore
+  // Protective context reduces score contribution for ambiguous banking phrases only
+  const protectiveDiscount = protectiveContextApplied ? 0.75 : 1
+  const conversationScore = Math.round(rawConversationScore * shortTextPenaltyScore * protectiveDiscount)
   const score = Math.min(99, Math.max(conversationScore, standaloneCallScore))
   const risk: Severity = score >= 85 ? 'critical' : score >= 65 ? 'high' : score >= 35 ? 'medium' : 'low'
+  const uniqueStages = new Set(evidence.map((item) => item.stage)).size
+  const stageSpreadBonus = uniqueStages >= 3 ? 15 : uniqueStages >= 2 ? 8 : 0
   const confidence = evidence.length === 0
     ? (standaloneCallScore > 0 ? Math.min(95, Math.max(40, standaloneCallScore)) : 0)
-    : Math.min(98, Math.round((matchedTerms * 7 + evidence.length * 9 + Math.min(wordCount, 45)) * shortTextPenalty))
+    : Math.min(98, Math.round((matchedTerms * 7 + evidence.length * 9 + Math.min(wordCount, 45) + stageSpreadBonus) * shortTextPenaltyFull))
   const verdict =
     risk === 'critical'
       ? 'Immediate scam intervention'
@@ -944,7 +1073,60 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
   const stageCoverage = buildStageCoverage(evidence)
   const scheme = classifyScheme(evidence)
 
-  return { caseId: createCaseId(text), confidence, contextSignals, escalationReasons, evidence, matchedTerms, nextAction, responseChecklist, risk, scheme, schemeLabel: schemeLabels[scheme], score, stageCoverage, verdict, wordCount }
+  // --- Extended v2 fields ---
+  // fraudProbability: calibrated sigmoid from score, inflects at 48 (mid-medium threshold)
+  const fraudProbability = Math.round(1000 / (1 + Math.exp(-0.07 * (score - 48)))) / 1000
+
+  // harmSeverity: weighted sum of detected high-impact action rules
+  const harmBase =
+    (has('safe-account') ? 40 : 0) +
+    (has('remote-access') ? 38 : 0) +
+    (has('otp-code') ? 30 : 0) +
+    (has('sim-swap') ? 35 : 0) +
+    (has('bank-security') ? 18 : 0) +
+    (has('law-enforcement') ? 20 : 0) +
+    (has('urgency-isolation') ? 12 : 0)
+  const harmSeverity = Math.min(100, harmBase)
+
+  // schemeConfidence: certainty of scheme classification, penalised by short text
+  const schemeConfidence = evidence.length === 0 ? 0
+    : Math.min(0.98, (evidence.length * 0.12 + uniqueStages * 0.08) * shortTextPenaltyFull)
+
+  const captureCompleteness = Math.min(1, Math.max(0, context.captureCompleteness ?? 1))
+
+  // intents: structured intent objects derived from matched evidence
+  const intents: DetectedIntent[] = []
+  if (has('otp-code')) intents.push({ id: 'request_otp', probability: 0.90, actor: 'caller' })
+  if (has('safe-account')) intents.push({ id: 'request_transfer', probability: 0.92, actor: 'caller' })
+  if (has('remote-access')) intents.push({ id: 'install_remote_app', probability: 0.91, actor: 'caller' })
+  if (has('urgency-isolation')) intents.push({ id: 'isolate_victim', probability: 0.82, actor: 'caller' })
+  if (has('bank-security') || has('law-enforcement') || has('egov-benefits')) intents.push({ id: 'claim_authority', probability: 0.78, actor: 'caller' })
+  if (has('sim-swap')) intents.push({ id: 'request_sim_swap', probability: 0.89, actor: 'caller' })
+
+  // evidenceFamilies: semantic groupings; strength = 1 − Π(1 − s_i/100)
+  const FAMILY_MAP: Record<string, { label: string; ids: string[] }> = {
+    credential_extraction: { label: 'Credential extraction', ids: ['otp-code', 'bank-security', 'kaspi-qr'] },
+    financial_transfer: { label: 'Financial transfer demand', ids: ['safe-account', 'kaspi-qr'] },
+    identity_impersonation: { label: 'Identity impersonation', ids: ['bank-security', 'law-enforcement', 'egov-benefits'] },
+    remote_control: { label: 'Remote control takeover', ids: ['remote-access', 'messenger-takeover'] },
+    pressure_tactics: { label: 'Pressure & urgency', ids: ['urgency-isolation', 'victim-called'] },
+    multi_channel: { label: 'Multi-channel attack', ids: ['smishing-bridge', 'caller-id-spoof', 'pretexting'] },
+    social_engineering: { label: 'Social engineering', ids: ['ai-family', 'romance-work', 'job-scam', 'delivery-customs', 'investment-crypto'] },
+  }
+  const evidenceFamilies: EvidenceFamilyResult[] = Object.entries(FAMILY_MAP)
+    .map(([id, def]) => {
+      const matched = evidence.filter((item) => def.ids.includes(item.id))
+      if (matched.length === 0) return null
+      const strength = 1 - matched.reduce((prod, item) => prod * (1 - Math.min(0.95, item.score / 100)), 1)
+      return { id, label: def.label, strength: Math.round(strength * 100) / 100, ruleIds: matched.map((item) => item.id) }
+    })
+    .filter((family): family is EvidenceFamilyResult => family !== null)
+
+  return {
+    caseId: createCaseId(text), confidence, contextSignals, escalationReasons, evidence, matchedTerms,
+    nextAction, responseChecklist, risk, scheme, schemeLabel: schemeLabels[scheme], score, stageCoverage, verdict, wordCount,
+    fraudProbability, harmSeverity, schemeConfidence, captureCompleteness, intents, evidenceFamilies, protectiveContextApplied,
+  }
 }
 
 export const sentenceTimeline = (text: string) =>

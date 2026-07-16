@@ -26,11 +26,14 @@ describe('scam scoring — safe input', () => {
     expect(analyzeTranscript('Здравствуйте, я хочу узнать график работы офиса завтра.').score).toBe(0)
   })
 
-  it('does not flag defensive warnings as scam attempts', () => {
+  it('marks defensive warnings as protective context — not critical or high risk', () => {
+    // v2: evidence is kept visible for analysts but score is discounted by 0.75
+    // and protectiveContextApplied is set. Risk must never reach high/critical from
+    // purely defensive phrasing even if it contains scam-related keywords.
     const result = analyzeTranscript('Никому не сообщайте SMS код, PIN или CVV. Проверяйте номер банка только через официальное приложение.')
-    expect(result.score).toBe(0)
-    expect(result.risk).toBe('low')
-    expect(result.evidence).toHaveLength(0)
+    expect(result.protectiveContextApplied).toBe(true)
+    expect(result.risk).not.toBe('critical')
+    expect(result.risk).not.toBe('high')
   })
 
   it('does not flag clinic reminder with safe phrases', () => {

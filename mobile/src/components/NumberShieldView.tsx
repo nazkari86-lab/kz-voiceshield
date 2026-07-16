@@ -6,6 +6,8 @@ import { checkScamNumber } from '../data/scamNumbers'
 import type { ScamEntry } from '../data/scamNumbers'
 import { colors } from '../theme'
 import { LocalizedText as Text } from './LocalizedText'
+import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
+import { AiAssistButton } from './AiAssistButton'
 
 const defaultConfig: PhoneProtectionConfig = {
   enabled: false,
@@ -43,9 +45,11 @@ const normalizePhone = (value: string) => value.replace(/[^\d+]/g, '').trim()
 export function NumberShieldView({
   autoDeleteTranscript,
   onSetAutoDeleteTranscript,
+  ai,
 }: {
   autoDeleteTranscript: boolean
   onSetAutoDeleteTranscript: (enabled: boolean) => Promise<void>
+  ai?: OnDeviceAiRuntime
 }) {
   const [number, setNumber] = useState('')
   const [assessment, setAssessment] = useState<PhoneAssessment | null>(null)
@@ -154,6 +158,7 @@ export function NumberShieldView({
           {assessment.reasons.map((reason) => <Text key={reason} style={styles.reason}>• {reason}</Text>)}
         </View>
       )}
+      {assessment && ai && <AiAssistButton ai={ai} context={`Number reputation: ${assessment.maskedNumber}. Risk ${assessment.score}/100. Category: ${assessment.category}. Action: ${assessment.action}. Reasons: ${assessment.reasons.join('; ')}`} label="Объяснить оценку номера через AI" />}
 
       <Text style={styles.section}>Private number profile</Text>
       <Text style={styles.copy}>Your label, rating and comment are encrypted with Android Keystore. They appear on the VoiceShield call screen and never enter the exported rules backup.</Text>

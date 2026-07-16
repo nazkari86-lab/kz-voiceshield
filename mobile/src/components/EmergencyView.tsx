@@ -5,10 +5,12 @@ import { colors } from '../theme'
 import { MotionPressable } from './MotionPressable'
 import { SectionHeader } from './ui'
 import { LocalizedText as Text } from './LocalizedText'
+import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
+import { AiAssistButton } from './AiAssistButton'
 
-type Props = { trustedContactName?: string; onCallTrusted: () => void; onOpenVerify: () => void }
+type Props = { trustedContactName?: string; onCallTrusted: () => void; onOpenVerify: () => void; ai?: OnDeviceAiRuntime }
 
-export function EmergencyView({ trustedContactName, onCallTrusted, onOpenVerify }: Props) {
+export function EmergencyView({ trustedContactName, onCallTrusted, onOpenVerify, ai }: Props) {
   const [selected, setSelected] = useState<ExposureType | null>(null)
   const [completed, setCompleted] = useState<number[]>([])
   const plan = recoveryPlans.find((item) => item.id === selected)
@@ -30,6 +32,7 @@ export function EmergencyView({ trustedContactName, onCallTrusted, onOpenVerify 
         return <MotionPressable key={step} style={[styles.step, done && styles.stepDone]} onPress={() => setCompleted((current) => done ? current.filter((value) => value !== index) : [...current, index])}><Text style={[styles.checkbox, done && styles.checkboxDone]}>{done ? '✓' : index + 1}</Text><View style={styles.stepBody}><Text style={styles.stepLabel}>STEP {index + 1}</Text><Text style={[styles.stepText, done && styles.stepTextDone]}>{step}</Text></View></MotionPressable>
       })}
       <View style={styles.actions}><MotionPressable style={styles.primary} onPress={onOpenVerify}><Text style={styles.primaryText}>Open official contacts</Text></MotionPressable>{trustedContactName ? <MotionPressable style={styles.secondary} onPress={onCallTrusted}><Text style={styles.secondaryText}>Call {trustedContactName}</Text></MotionPressable> : null}</View>
+      {ai && <AiAssistButton ai={ai} context={`Emergency recovery plan: ${plan.title}. Urgency: ${plan.urgency}. Official steps: ${plan.steps.join('; ')}`} label="Попросить AI объяснить план" />}
     </>}
   </View>
 }

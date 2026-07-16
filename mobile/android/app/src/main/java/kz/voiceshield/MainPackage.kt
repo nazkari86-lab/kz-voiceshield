@@ -14,6 +14,7 @@ class MainPackage : ReactPackage {
       OverlayModule(reactContext),
       WhisperModule(reactContext),
       AudioCaptureModule(reactContext),
+      ContactsModule(reactContext),
       ModelDownloader(reactContext),
       SecureStorageModule(reactContext),
       DeviceSettingsModule(reactContext),

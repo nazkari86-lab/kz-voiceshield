@@ -3,6 +3,7 @@ import { Linking, PermissionsAndroid, Platform, Share, Vibration } from 'react-n
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { accessibilityEvents, AccessibilityModule } from '@bridge/AccessibilityBridge'
 import { callEvents, CallModule } from '@bridge/CallModule'
+import { ContactsModule, type DeviceContact } from '@bridge/ContactsBridge'
 import type { SafeCallEvent } from '@bridge/CallModule'
 import { AudioCaptureModule, audioEvents, ModelDownloader, modelEvents, WhisperModule, whisperEvents } from '@bridge/WhisperBridge'
 import { OverlayModule } from '@bridge/OverlayBridge'
@@ -698,6 +699,20 @@ export function useWorkspace() {
     setTrustedContact(normalized)
   }, [])
 
+  const loadDeviceContacts = useCallback(async (): Promise<DeviceContact[]> => {
+    if (Platform.OS !== 'android') return []
+    if (await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_CONTACTS) === false) {
+      const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_CONTACTS, {
+        title: 'VoiceShield contacts access',
+        message: 'Allow access only to choose a trusted family contact for local protection. Contacts are not uploaded.',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Not now',
+      })
+      if (result !== PermissionsAndroid.RESULTS.GRANTED) return []
+    }
+    return ContactsModule.getContacts(120)
+  }, [])
+
   const clearTrustedContact = useCallback(async () => {
     await SecureStorage.removeItem(trustedContactKey)
     setTrustedContact(null)
@@ -820,6 +835,7 @@ export function useWorkspace() {
     // handlers
     loadSample, saveCurrentCase, loadCase, acceptPrivacy, declinePrivacy, deleteAllLocalData,
     saveTrustedContact, clearTrustedContact, callTrustedContact, shareTrustedAlert,
+    loadDeviceContacts,
     updateCaseLabel, updateCaseStatus, toggleCaseFlag, deleteCase, clearCases,
     exportReport, exportEvidenceBundle,
     exportJsonlCases, exportCsvCases, exportSplitCases,

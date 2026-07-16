@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { TrustedContact } from '@hooks/useWorkspace'
+import type { DeviceContact } from '../bridge/ContactsBridge'
 import { colors } from '../theme'
 import { MotionPressable } from './MotionPressable'
 import { SectionHeader } from './ui'
@@ -12,12 +13,14 @@ type Props = {
   onClear: () => Promise<void>
   onCall: () => Promise<void>
   onShareAlert: () => Promise<void>
+  onLoadContacts: () => Promise<DeviceContact[]>
 }
 
-export function FamilyView({ contact, privacyConsent, onSave, onClear, onCall, onShareAlert }: Props) {
+export function FamilyView({ contact, privacyConsent, onSave, onClear, onCall, onShareAlert, onLoadContacts }: Props) {
   const [name, setName] = useState(contact?.name ?? '')
   const [phone, setPhone] = useState(contact?.phone ?? '')
   const [status, setStatus] = useState('')
+  const [contacts, setContacts] = useState<DeviceContact[]>([])
 
   useEffect(() => {
     setName(contact?.name ?? '')
@@ -33,6 +36,16 @@ export function FamilyView({ contact, privacyConsent, onSave, onClear, onCall, o
     }
   }
 
+  const chooseContact = async () => {
+    try {
+      const next = await onLoadContacts()
+      setContacts(next)
+      setStatus(next.length ? 'Choose a contact below. Only the selected contact is saved.' : 'Contacts permission was not granted or no contacts were found.')
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Could not read contacts.')
+    }
+  }
+
   if (!privacyConsent) {
     return <View style={styles.locked}><Text style={styles.lockedEyebrow}>SETUP REQUIRED</Text><Text style={styles.lockedTitle}>Trusted contact is locked</Text><Text style={styles.lockedCopy}>Accept the privacy notice in Setup before storing a trusted contact.</Text></View>
   }
@@ -44,6 +57,8 @@ export function FamilyView({ contact, privacyConsent, onSave, onClear, onCall, o
       <SectionHeader eyebrow={contact ? 'UPDATE CONTACT' : 'ADD CONTACT'} title={contact ? 'Keep details current' : 'Choose someone you trust'} detail="This contact appears only when you decide to call or send a risk summary." />
       <Text style={styles.fieldLabel}>FULL NAME</Text><TextInput value={name} onChangeText={setName} placeholder="Name" placeholderTextColor={colors.muted} style={styles.input} />
       <Text style={styles.fieldLabel}>PHONE NUMBER</Text><TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Phone number" placeholderTextColor={colors.muted} style={styles.input} />
+      <MotionPressable style={styles.secondary} onPress={() => { void chooseContact() }}><Text style={styles.secondaryText}>Choose from device contacts</Text></MotionPressable>
+      {contacts.length > 0 && <View style={styles.contactList}>{contacts.map((item) => <Pressable key={`${item.id}-${item.phone}`} style={styles.contactRow} onPress={() => { setName(item.name); setPhone(item.phone); setContacts([]); setStatus('Contact selected. Save it to add it to Family Protection.') }}><Text style={styles.contactName}>{item.name}</Text><Text style={styles.contactPhone}>{item.phone}</Text></Pressable>)}</View>}
       <View style={styles.row}>
         <MotionPressable style={styles.primary} onPress={() => { void save() }}><Text style={styles.primaryText}>{contact ? 'Update contact' : 'Save contact'}</Text></MotionPressable>
         {contact && <MotionPressable style={styles.secondary} onPress={() => { void onCall() }}><Text style={styles.secondaryText}>Call now</Text></MotionPressable>}
@@ -66,6 +81,10 @@ const styles = StyleSheet.create({
   primaryText: { color: '#fff', fontWeight: '900' },
   secondary: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 11 },
   secondaryText: { color: colors.ink, fontWeight: '800' },
+  contactList: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, maxHeight: 240 },
+  contactRow: { borderBottomColor: colors.border, borderBottomWidth: 1, padding: 11 },
+  contactName: { color: colors.ink, fontSize: 13, fontWeight: '800' },
+  contactPhone: { color: colors.sub, fontSize: 11, marginTop: 2 },
   danger: { alignSelf: 'flex-start', paddingVertical: 8 },
   dangerText: { color: '#dc2626', fontWeight: '800' },
   status: { color: colors.sub, fontSize: 12 },

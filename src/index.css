@@ -127,6 +127,11 @@ textarea {
   font: inherit;
 }
 
+button {
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease,
+    box-shadow 150ms ease, filter 150ms ease, opacity 150ms ease;
+}
+
 button:focus-visible,
 label:focus-within,
 textarea:focus-visible {

@@ -1,16 +1,24 @@
 import React from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import type { Severity } from '@scoring'
-import { colors, riskColor, riskLabel } from '../theme'
+import { colors, riskColor } from '../theme'
+import { useI18n } from '../I18nContext'
 
 export function Card({ children, tone }: { children: React.ReactNode; tone?: Severity }) {
   return <View style={[ui.card, tone ? { borderTopColor: riskColor[tone], borderTopWidth: 4 } : null]}>{children}</View>
 }
 
 export function RiskBadge({ risk }: { risk: Severity }) {
+  const { t } = useI18n()
+  const label: Record<Severity, string> = {
+    critical: t.risk.critical,
+    high: t.risk.high,
+    medium: t.risk.medium,
+    low: t.risk.low,
+  }
   return (
     <View style={[ui.badge, { backgroundColor: riskColor[risk] }]}>
-      <Text style={ui.badgeText}>{riskLabel[risk]}</Text>
+      <Text style={ui.badgeText}>{label[risk]}</Text>
     </View>
   )
 }

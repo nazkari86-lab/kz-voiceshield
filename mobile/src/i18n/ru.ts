@@ -6,6 +6,9 @@ export type I18nKeys = {
     saveCase: string; shareReport: string; transcript: string
     waitAudio: string; hearsAudio: string; pauseTitle: string
     pauseCopy: string; startPause: string; restartPause: string
+    endCall: string; noCaptionTitle: string; noCaptionCopy: string
+    sharedData: string; recoveryPlan: string; practice: string
+    practiceDesc: string; doNow: string; pauseActive: string
   }
   risk: { critical: string; high: string; medium: string; low: string }
   setup: {
@@ -35,6 +38,15 @@ export const ru: I18nKeys = {
     pauseCopy: 'Завершите звонок. Не сообщайте коды и не подтверждайте платежи.',
     startPause: 'Начать паузу',
     restartPause: 'Перезапустить паузу',
+    endCall: 'Завершить звонок',
+    noCaptionTitle: 'Нет текста субтитров?',
+    noCaptionCopy: 'Включите громкую связь и используйте микрофон',
+    sharedData: 'Я передал данные',
+    recoveryPlan: 'Немедленный план действий',
+    practice: 'Тренировка',
+    practiceDesc: 'Изучите схемы мошенничества',
+    doNow: 'Сделайте это сейчас',
+    pauseActive: 'Пауза активна:',
   },
   risk: { critical: 'Критический', high: 'Высокий', medium: 'Средний', low: 'Низкий' },
   setup: {

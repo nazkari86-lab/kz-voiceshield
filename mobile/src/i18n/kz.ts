@@ -2,7 +2,7 @@ import type { I18nKeys } from './ru'
 
 export const kz: I18nKeys = {
   app: { name: 'KZ VoiceShield', tagline: 'Алаяқтықтан қорғау' },
-  nav: { live: 'Қорғау', scan: 'Сканер', learn: 'Оқу', cases: 'Іс', more: 'Көбірек' },
+  nav: { live: 'Қорғау', scan: 'Сканер', learn: 'Оқыту', cases: 'Іс', more: 'Көбірек' },
   live: {
     active: 'ҚОРҒАНЫС ҚОСУЛЫ',
     standby: 'КҮТУ РЕЖИМІ',
@@ -10,15 +10,26 @@ export const kz: I18nKeys = {
     stop: 'Тоқтату',
     saveCase: 'Істі сақтау',
     shareReport: 'Есеп',
-    transcript: 'ТРАНСКРИПТ',
+    transcript: 'ТІКЕЛЕЙ ТРАНСКРИПТ',
     waitAudio: 'ДЫБЫС КҮТІЛУДЕ',
     hearsAudio: 'МИКРОФОН ЕСТИДІ',
     pauseTitle: '30 секундтық үзіліс алыңыз',
     pauseCopy: 'Қоңырауды аяқтаңыз. Кодтарды жіберіп, төлемдерді растамаңыз.',
     startPause: 'Үзіліс бастау',
     restartPause: 'Үзілісті қайта бастау',
+    endCall: 'Қоңырауды аяқтау',
+    noCaptionTitle: 'Субтитр жоқ па?',
+    noCaptionCopy: 'Динамикті қосып, микрофонды пайдаланыңыз',
+    sharedData: 'Деректерімді бердім',
+    recoveryPlan: 'Жедел іс-қимыл жоспары',
+    practice: 'Жаттығу',
+    practiceDesc: 'Алаяқтық схемаларын үйрену',
+    doNow: 'Қазір осыны жасаңыз',
+    pauseActive: 'Үзіліс белсенді:',
   },
-  risk: { critical: 'Өте қауіпті', high: 'Қауіпті', medium: 'Тексеру', low: 'Қауіпсіз' },
+  // Fixed: 'Тексеру' (Verification) replaced with 'Орташа' (Medium) — correct risk level label
+  // Fixed: previous 'Қауіпсіз' kept as 'Қауіпсіз' (Safe) — correct for low
+  risk: { critical: 'Өте қауіпті', high: 'Қауіпті', medium: 'Орташа', low: 'Қауіпсіз' },
   setup: {
     title: 'Баптаулар',
     theme: 'Тақырып',
@@ -31,6 +42,6 @@ export const kz: I18nKeys = {
   },
   llm: { title: 'VoiceShield AI', notLoaded: 'Нейрожелі жүктелмеген', loadModel: 'Модельді жүктеу' },
   sms: { title: 'SMS-сканер', scan: 'Сканерлеу' },
-  history: { title: 'Қоңырау тарихы', clear: 'Тазалау', empty: 'Сақталған қоңыраулар жоқ' },
+  history: { title: 'Қоңырау тарихы', clear: 'Тазарту', empty: 'Сақталған қоңыраулар жоқ' },
   stats: { title: 'Статистика' },
 }

@@ -24,6 +24,8 @@ type Props = {
   onFileUpload: (event: ChangeEvent<HTMLInputElement>) => void
 }
 
+const wordCount = (text: string) => (text.trim() ? text.trim().split(/\s+/).length : 0)
+
 export function TranscriptInput({
   transcript,
   fileName,
@@ -78,6 +80,7 @@ export function TranscriptInput({
         value={transcript}
         onChange={(e) => onTranscriptChange(e.target.value)}
       />
+      <div className="transcript-count">{wordCount(transcript)} words · {transcript.length} chars</div>
       <div className="review-controls">
         <select value={caseLabel} onChange={(e) => onCaseLabelChange(e.target.value as CaseLabel)}>
           <option value="unreviewed">Unreviewed</option>

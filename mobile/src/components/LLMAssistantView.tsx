@@ -364,7 +364,9 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
           </TouchableOpacity>
         </View>
         {engine === 'cloud' ? (
-          <CloudProviderCatalogView
+          <>
+            <View style={styles.cloudWarning}><Text style={styles.cloudWarningTitle}>Облачный режим: данные покидают телефон</Text><Text style={styles.cloudWarningText}>Текст транскрипта может быть отправлен выбранному провайдеру. Не включайте этот режим для конфиденциальных разговоров. Проверьте тариф, политику хранения и согласие перед подключением.</Text></View>
+            <CloudProviderCatalogView
             activeConfig={ai.activeCloudConfig}
             busy={modelBusy}
             error={visibleError}
@@ -378,7 +380,8 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
               }
             }}
             onCredentialRemoved={ai.invalidateCloudCredentials}
-          />
+            />
+          </>
         ) : engine === 'local' ? (
           <LocalModelCatalogView
             installedModels={installedModels}
@@ -465,9 +468,10 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
       )}
 
       {engine === 'cloud' && (
-        <TouchableOpacity style={styles.switchModelButton} onPress={() => setShowCloudCatalog(true)} disabled={generating || ai.generating}>
-          <Text style={styles.switchModelText}>Сменить API-модель</Text>
-        </TouchableOpacity>
+        <>
+          <View style={styles.cloudWarning}><Text style={styles.cloudWarningTitle}>Облачный AI активен</Text><Text style={styles.cloudWarningText}>Транскрипт отправляется выбранному API-провайдеру после согласия. Для полной приватности переключитесь на Gemma или локальную GGUF-модель.</Text></View>
+          <TouchableOpacity style={styles.switchModelButton} onPress={() => setShowCloudCatalog(true)} disabled={generating || ai.generating}><Text style={styles.switchModelText}>Сменить API-модель</Text></TouchableOpacity>
+        </>
       )}
 
       {transcript.trim().length > 0 && (
@@ -564,6 +568,9 @@ const styles = StyleSheet.create({
   switchModelButton: { alignSelf: 'flex-start', marginBottom: 9, paddingVertical: 4 },
   switchModelText: { color: colors.brandDark, fontSize: 10, fontWeight: '900', textDecorationLine: 'underline' },
   setupText: { color: colors.sub, fontSize: 13, lineHeight: 20, marginBottom: 10 },
+  cloudWarning: { backgroundColor: '#fff7ed', borderColor: '#fdba74', borderRadius: 8, borderWidth: 1, gap: 4, marginBottom: 10, padding: 11 },
+  cloudWarningTitle: { color: '#9a3412', fontSize: 11, fontWeight: '900' },
+  cloudWarningText: { color: '#7c2d12', fontSize: 10, lineHeight: 15 },
   setupSteps: { backgroundColor: colors.chipBg, borderRadius: 8, color: colors.ink, fontSize: 12, lineHeight: 20, marginBottom: 12, padding: 10 },
   termsRow: { alignItems: 'center', flexDirection: 'row', gap: 9, marginBottom: 5 },
   checkbox: { alignItems: 'center', borderColor: colors.muted, borderRadius: 4, borderWidth: 1, height: 20, justifyContent: 'center', width: 20 },

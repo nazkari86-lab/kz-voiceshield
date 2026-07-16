@@ -28,11 +28,12 @@ class SmsScannerModule(reactContext: ReactApplicationContext) : ReactContextBase
       return
     }
     try {
+      val safeLimit = limit.coerceIn(1, 50)
       val cursor = reactApplicationContext.contentResolver.query(
         Uri.parse("content://sms/inbox"),
         arrayOf("_id", "address", "body", "date", "type"),
         null, null,
-        "date DESC LIMIT $limit",
+        "date DESC LIMIT $safeLimit",
       )
       val result = Arguments.createArray()
       cursor?.use {

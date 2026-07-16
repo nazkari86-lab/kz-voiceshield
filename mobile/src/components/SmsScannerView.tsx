@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { ActivityIndicator, Alert, Share, StyleSheet, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, PermissionsAndroid, Platform, Share, StyleSheet, TouchableOpacity, View } from 'react-native'
 import { SmsScannerModule, type SmsMessage } from '../bridge/SmsScannerBridge'
 import { checkScamNumber } from '../data/scamNumbers'
 import { colors } from '../theme'
@@ -71,13 +71,26 @@ export function SmsScannerView({ onAnalyze }: { onAnalyze?: (text: string) => vo
     }
   }, [])
 
+  const requestSmsPermission = useCallback(async () => {
+    if (Platform.OS !== 'android' || !SmsScannerModule) return
+    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_SMS, {
+      title: 'VoiceShield SMS access',
+      message: 'Allow access only to scan recent messages for scam indicators locally. Messages are not uploaded and VoiceShield does not send SMS.',
+      buttonPositive: 'Allow',
+      buttonNegative: 'Not now',
+    })
+    setHasPermission(result === PermissionsAndroid.RESULTS.GRANTED)
+  }, [])
+
   if (hasPermission === null) return <ActivityIndicator style={styles.center} />
 
   if (!hasPermission) {
     return (
       <View style={styles.center}>
         <Text style={styles.permTitle}>SMS-сканер недоступен</Text>
-        <Text style={styles.permSub}>Эта сборка не запрашивает доступ ко всем SMS. Для проверки сообщения отправьте его в VoiceShield через системное меню «Поделиться».</Text>
+        <Text style={styles.permSub}>Разрешение нужно только для ручного сканирования последних SMS. Сообщения анализируются локально, не отправляются и не изменяются.</Text>
+        <TouchableOpacity style={styles.scanBtn} onPress={() => { void requestSmsPermission() }}><Text style={styles.scanBtnText}>Разрешить SMS-сканирование</Text></TouchableOpacity>
+        <Text style={styles.permSub}>Можно также отправить отдельное сообщение в VoiceShield через системное меню «Поделиться».</Text>
       </View>
     )
   }

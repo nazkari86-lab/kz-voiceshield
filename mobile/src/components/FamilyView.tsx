@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import type { TrustedContact } from '@hooks/useWorkspace'
 import type { DeviceContact } from '../bridge/ContactsBridge'
 import { colors } from '../theme'
@@ -21,6 +21,7 @@ export function FamilyView({ contact, privacyConsent, onSave, onClear, onCall, o
   const [phone, setPhone] = useState(contact?.phone ?? '')
   const [status, setStatus] = useState('')
   const [contacts, setContacts] = useState<DeviceContact[]>([])
+  const [contactQuery, setContactQuery] = useState('')
 
   useEffect(() => {
     setName(contact?.name ?? '')
@@ -40,6 +41,7 @@ export function FamilyView({ contact, privacyConsent, onSave, onClear, onCall, o
     try {
       const next = await onLoadContacts()
       setContacts(next)
+      setContactQuery('')
       setStatus(next.length ? 'Choose a contact below. Only the selected contact is saved.' : 'Contacts permission was not granted or no contacts were found.')
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not read contacts.')
@@ -50,6 +52,11 @@ export function FamilyView({ contact, privacyConsent, onSave, onClear, onCall, o
     return <View style={styles.locked}><Text style={styles.lockedEyebrow}>SETUP REQUIRED</Text><Text style={styles.lockedTitle}>Trusted contact is locked</Text><Text style={styles.lockedCopy}>Accept the privacy notice in Setup before storing a trusted contact.</Text></View>
   }
 
+  const normalizedQuery = contactQuery.trim().toLocaleLowerCase()
+  const visibleContacts = normalizedQuery
+    ? contacts.filter((item) => `${item.name} ${item.phone}`.toLocaleLowerCase().includes(normalizedQuery))
+    : contacts
+
   return (
     <View style={styles.container}>
       <View style={styles.hero}><Text style={styles.heroEyebrow}>TRUSTED CIRCLE</Text><Text style={styles.heroTitle}>A second person for critical moments</Text><Text style={styles.heroCopy}>VoiceShield never contacts anyone automatically. Every call and warning is always under your control.</Text></View>
@@ -58,7 +65,28 @@ export function FamilyView({ contact, privacyConsent, onSave, onClear, onCall, o
       <Text style={styles.fieldLabel}>FULL NAME</Text><TextInput value={name} onChangeText={setName} placeholder="Name" placeholderTextColor={colors.muted} style={styles.input} />
       <Text style={styles.fieldLabel}>PHONE NUMBER</Text><TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Phone number" placeholderTextColor={colors.muted} style={styles.input} />
       <MotionPressable style={styles.secondary} onPress={() => { void chooseContact() }}><Text style={styles.secondaryText}>Choose from device contacts</Text></MotionPressable>
-      {contacts.length > 0 && <View style={styles.contactList}>{contacts.map((item) => <Pressable key={`${item.id}-${item.phone}`} style={styles.contactRow} onPress={() => { setName(item.name); setPhone(item.phone); setContacts([]); setStatus('Contact selected. Save it to add it to Family Protection.') }}><Text style={styles.contactName}>{item.name}</Text><Text style={styles.contactPhone}>{item.phone}</Text></Pressable>)}</View>}
+      {contacts.length > 0 && <View style={styles.contactPicker}>
+        <Text style={styles.contactPickerTitle}>SELECT A CONTACT</Text>
+        <TextInput
+          accessibilityLabel="Search device contacts"
+          autoCorrect={false}
+          onChangeText={setContactQuery}
+          placeholder="Search by name or number"
+          placeholderTextColor={colors.muted}
+          style={styles.contactSearch}
+          value={contactQuery}
+        />
+        <ScrollView
+          contentContainerStyle={styles.contactListContent}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+          style={styles.contactList}
+        >
+          {visibleContacts.length > 0
+            ? visibleContacts.map((item) => <Pressable key={`${item.id}-${item.phone}`} style={styles.contactRow} onPress={() => { setName(item.name); setPhone(item.phone); setContacts([]); setContactQuery(''); setStatus('Contact selected. Save it to add it to Family Protection.') }}><Text style={styles.contactName}>{item.name}</Text><Text style={styles.contactPhone}>{item.phone}</Text></Pressable>)
+            : <Text style={styles.emptyContacts}>No contacts match this search.</Text>}
+        </ScrollView>
+      </View>}
       <View style={styles.row}>
         <MotionPressable style={styles.primary} onPress={() => { void save() }}><Text style={styles.primaryText}>{contact ? 'Update contact' : 'Save contact'}</Text></MotionPressable>
         {contact && <MotionPressable style={styles.secondary} onPress={() => { void onCall() }}><Text style={styles.secondaryText}>Call now</Text></MotionPressable>}
@@ -81,10 +109,15 @@ const styles = StyleSheet.create({
   primaryText: { color: '#fff', fontWeight: '900' },
   secondary: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 11 },
   secondaryText: { color: colors.ink, fontWeight: '800' },
-  contactList: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, maxHeight: 240 },
+  contactPicker: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 9, overflow: 'hidden', paddingTop: 12 },
+  contactPickerTitle: { color: colors.sub, fontSize: 10, fontWeight: '900', letterSpacing: 0.8, paddingHorizontal: 12 },
+  contactSearch: { backgroundColor: colors.bg, borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, marginHorizontal: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  contactList: { flexGrow: 0, maxHeight: 240 },
+  contactListContent: { paddingBottom: 1 },
   contactRow: { borderBottomColor: colors.border, borderBottomWidth: 1, padding: 11 },
   contactName: { color: colors.ink, fontSize: 13, fontWeight: '800' },
   contactPhone: { color: colors.sub, fontSize: 11, marginTop: 2 },
+  emptyContacts: { color: colors.sub, fontSize: 12, padding: 12 },
   danger: { alignSelf: 'flex-start', paddingVertical: 8 },
   dangerText: { color: '#dc2626', fontWeight: '800' },
   status: { color: colors.sub, fontSize: 12 },

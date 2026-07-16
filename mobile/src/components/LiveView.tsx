@@ -65,7 +65,9 @@ export function LiveView({ analysis, transcript, enhancement, source, isListenin
     return () => loop.stop()
   }, [isListening, signalScale])
 
-  const needsPause = analysis.risk === 'critical' || analysis.risk === 'high'
+  // A transcript saved from a walkthrough or case review must not render an
+  // active-call intervention in the idle Live Shield screen.
+  const needsPause = isListening && (analysis.risk === 'critical' || analysis.risk === 'high')
   const confirmEndCall = () => Alert.alert(
     'End active call?',
     'This will disconnect the current call. Use this only when you are ready to stop the conversation.',

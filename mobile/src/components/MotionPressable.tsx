@@ -24,4 +24,6 @@ export function MotionPressable({ children, disabled, onPress, style, ...props }
   )
 }
 
-const styles = StyleSheet.create({ inner: { flex: 1 } })
+// Do not use flex: 1 here. In an auto-height parent it can make a compact
+// action grow to the full remaining scroll area on Android.
+const styles = StyleSheet.create({ inner: { alignSelf: 'stretch' } })

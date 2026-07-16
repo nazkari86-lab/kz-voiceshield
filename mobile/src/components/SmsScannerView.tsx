@@ -7,54 +7,26 @@ import { Card, SectionTitle } from './ui'
 import { LocalizedText as Text } from './LocalizedText'
 import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
 import { AiAssistButton } from './AiAssistButton'
-
-const SCAM_KEYWORDS = [
-  'банк', 'карта', 'заблокир', 'код подтверждени', 'код из смс',
-  'срочно', 'мошенник', 'полиция', 'штраф', 'задолженность',
-  'инвестици', 'криптовалют', 'выигрыш', 'лотере',
-  'банк', 'картаны', 'блоктал', 'кодты жіберіңіз', 'полиция',
-]
-
-function scoreSms(body: string): { score: number; reasons: string[] } {
-  const lower = body.toLowerCase()
-  let score = 0
-  const reasons: string[] = []
-  for (const kw of [...new Set(SCAM_KEYWORDS)]) {
-    if (lower.includes(kw)) {
-      score += 15
-      reasons.push(`keyword: ${kw}`)
-    }
-  }
-  // Short urgent messages with numbers
-  if (/\d{4,6}/.test(body) && body.length < 200) {
-    score += 10
-    reasons.push('short message contains a verification code or number')
-  }
-  if (/[А-ЯA-Z]/.test(body) && body === body.toUpperCase() && body.length > 8) {
-    score += 8
-    reasons.push('message uses urgent all-caps wording')
-  }
-  return { score: Math.min(score, 100), reasons }
-}
+import { scoreSms, smsRiskTier } from '../utils/smsRisk'
 
 function RiskChip({ score }: { score: number }) {
-  const level = score >= 60 ? 'critical' : score >= 30 ? 'high' : score > 0 ? 'medium' : 'safe'
-  const bg = score >= 60 ? '#fee2e2' : score >= 30 ? '#fff7ed' : score > 0 ? '#fffbeb' : '#f0fdf4'
-  const fg = score >= 60 ? '#991b1b' : score >= 30 ? '#9a3412' : score > 0 ? '#92400e' : '#15803d'
+  const level = smsRiskTier(score)
+  const bg = level === 'critical' ? '#fee2e2' : level === 'high' ? '#fff7ed' : level === 'medium' ? '#fffbeb' : '#f0fdf4'
+  const fg = level === 'critical' ? '#991b1b' : level === 'high' ? '#9a3412' : level === 'medium' ? '#92400e' : '#15803d'
   return <View style={[styles.chip, { backgroundColor: bg }]}><Text style={[styles.chipText, { color: fg }]}>{level.toUpperCase()} {score > 0 ? `·${score}` : ''}</Text></View>
 }
 
 function responseActions(score: number, hasKnownScamNumber: boolean): string[] {
-  if (hasKnownScamNumber || score >= 60) return [
+  if (hasKnownScamNumber || score >= 75) return [
     'Do not reply, open links, or share any code.',
     'Block the sender and take a screenshot for your report.',
     'If you entered data, call your bank using its official number immediately.',
   ]
-  if (score >= 30) return [
+  if (score >= 45) return [
     'Do not use links or phone numbers from this message.',
     'Verify the claim through the organisation’s official app or website.',
   ]
-  if (score > 0) return ['Treat this message cautiously and verify it through an official channel.']
+  if (score >= 20) return ['Treat this message cautiously and verify it through an official channel.']
   return ['No high-risk signal was found. Never share SMS codes with callers.']
 }
 
@@ -111,10 +83,10 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
     )
   }
 
-  const visibleMessages = suspiciousOnly ? messages.filter((message) => message.scamScore > 0) : messages
+  const visibleMessages = suspiciousOnly ? messages.filter((message) => message.scamScore >= 20) : messages
   const shareReport = async () => {
     if (messages.length === 0) return
-    const suspicious = messages.filter((message) => message.scamScore > 0)
+    const suspicious = messages.filter((message) => message.scamScore >= 20)
     const body = [
       'VoiceShield SMS report',
       `Scanned: ${messages.length}`,
@@ -144,13 +116,13 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
       {messages.length === 0 && !loading && (
         <Text style={styles.empty}>Нажмите «Сканировать» для анализа последних 50 SMS.</Text>
       )}
-      {messages.length > 0 && <Text style={styles.summary}>Найдено: {messages.length} · подозрительных: {messages.filter((message) => message.scamScore > 0).length}</Text>}
+      {messages.length > 0 && <Text style={styles.summary}>Найдено: {messages.length} · подозрительных: {messages.filter((message) => message.scamScore >= 20).length}</Text>}
 
       {visibleMessages.map(msg => {
         const scamEntry = checkScamNumber(msg.address)
         const actions = responseActions(msg.scamScore, Boolean(scamEntry))
         return (
-          <Card key={msg.id} tone={msg.scamScore >= 60 ? 'critical' : msg.scamScore >= 30 ? 'high' : 'low'}>
+          <Card key={msg.id} tone={msg.scamScore >= 75 ? 'critical' : msg.scamScore >= 45 ? 'high' : 'low'}>
             <View style={styles.msgHeader}>
               <Text style={styles.sender} numberOfLines={1}>{msg.address}</Text>
               <RiskChip score={msg.scamScore} />

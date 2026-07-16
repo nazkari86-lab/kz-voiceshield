@@ -9,6 +9,7 @@ jest.mock('../src/bridge/SecureStorageBridge', () => ({
 }))
 
 import {
+  CLOUD_OUTPUT_TOKEN_BUDGET,
   generateCloudResponse,
   listCloudModels,
   prepareCloudUserMessage,
@@ -150,5 +151,27 @@ describe('cloud AI client', () => {
     expect(sent).not.toContain('test@example.com')
     expect(sent).not.toContain('t.me/private-user')
     expect(prepareCloudUserMessage('код 1234')).toContain('[REDACTED]')
+  })
+
+  it('continues a cloud answer when the provider reports an output length limit', async () => {
+    mockSecureValues.set(providerKeyStorageKey('openai'), 'openai-secret')
+    mockSecureValues.set(providerDataConsentStorageKey('openai'), 'accepted')
+    ;(global.fetch as jest.Mock)
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: 'Первый законченный фрагмент.' }, finish_reason: 'length' }] }))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: 'Второй фрагмент с итогом.' }, finish_reason: 'stop' }] }))
+
+    const result = await generateCloudResponse(
+      { providerId: 'openai', modelId: 'gpt-test', modelName: 'Test' },
+      'system',
+      'user',
+    )
+
+    expect(result).toContain('Первый законченный фрагмент.')
+    expect(result).toContain('Второй фрагмент с итогом.')
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+    const firstBody = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)
+    const continuationBody = JSON.parse((global.fetch as jest.Mock).mock.calls[1][1].body)
+    expect(firstBody.max_tokens).toBe(CLOUD_OUTPUT_TOKEN_BUDGET)
+    expect(continuationBody.messages.at(-1).content).toContain('Continue exactly')
   })
 })

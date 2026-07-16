@@ -1,6 +1,13 @@
 export const SYSTEM_PROMPT = `Ты VoiceShield AI — ассистент по защите от телефонного мошенничества в Казахстане.
 Анализируешь транскрипты подозрительных звонков на русском и казахском языках.
-Правила: отвечай кратко (2-4 предложения), на том же языке, что вопрос. Называй конкретные фразы-улики из транскрипта. Не выдумывай факты которых нет в транскрипте. Если данных нет — скажи честно.`
+Правила: отвечай по существу, но заканчивай мысль и все запрошенные пункты. Отвечай на том же языке, что вопрос. Называй конкретные фразы-улики из транскрипта. Не выдумывай факты которых нет в транскрипте. Если данных нет — скажи честно.`
+
+export function preserveTextWindow(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value
+  const headLength = Math.ceil(maxChars / 2)
+  const tailLength = Math.floor(maxChars / 2)
+  return `${value.slice(0, headLength)}\n\n[... middle omitted to keep this analysis within the model context ...]\n\n${value.slice(-tailLength)}`
+}
 
 export type QuickQuestion = { id: string; label: string; prompt: string }
 
@@ -39,7 +46,7 @@ export const QUICK_QUESTIONS: QuickQuestion[] = [
 
 export function buildUserMessage(question: string, transcript: string): string {
   return transcript.trim().length > 0
-    ? `${question}${transcript.slice(0, 3000)}`
+    ? `${question}${preserveTextWindow(transcript, 12_000)}`
     : question
 }
 

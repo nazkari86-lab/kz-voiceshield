@@ -12,7 +12,10 @@ import { redactSensitiveText } from '../scoring'
 const KEY_PREFIX = 'voiceshield.cloud-api-key.'
 const DATA_CONSENT_PREFIX = 'voiceshield.cloud-data-consent.v1.'
 const LIVE_CONSENT_PREFIX = 'voiceshield.cloud-live-consent.v1.'
-const REQUEST_TIMEOUT_MS = 60_000
+const REQUEST_TIMEOUT_MS = 90_000
+const REQUEST_TIMEOUT_SECONDS = REQUEST_TIMEOUT_MS / 1_000
+export const CLOUD_OUTPUT_TOKEN_BUDGET = 1_600
+const MAX_CLOUD_CONTINUATIONS = 2
 export const ACTIVE_CLOUD_SPEECH_MODEL_KEY = 'voiceshield.cloud-speech-model.v1'
 
 type JsonRecord = Record<string, unknown>
@@ -136,7 +139,7 @@ async function requestJson(url: string, provider: CloudProvider, apiKey: string,
   } catch (error) {
     if ((error as Error).name === 'AbortError') {
       if (!timedOut && init?.signal?.aborted) throw new Error('AI generation cancelled.')
-      throw new Error('AI API не ответил за 60 секунд.')
+      throw new Error(`AI API не ответил за ${REQUEST_TIMEOUT_SECONDS} секунд.`)
     }
     throw error
   } finally {
@@ -188,7 +191,7 @@ export async function transcribeCloudAudio(
       : segments.length > 0 ? 90 : null
     return { transcript, confidence }
   } catch (error) {
-    if ((error as Error).name === 'AbortError') throw new Error('Speech API не ответил за 60 секунд.')
+    if ((error as Error).name === 'AbortError') throw new Error(`Speech API не ответил за ${REQUEST_TIMEOUT_SECONDS} секунд.`)
     throw error
   } finally {
     clearTimeout(timeout)
@@ -268,6 +271,27 @@ function extractGeminiText(payload: unknown): string {
   return asArray(asRecord(candidate.content).parts).map((part) => asString(asRecord(part).text)).filter(Boolean).join('\n').trim()
 }
 
+function outputWasTruncated(provider: CloudProvider, payload: unknown): boolean {
+  const root = asRecord(payload)
+  if (provider.apiStyle === 'anthropic') return asString(root.stop_reason) === 'max_tokens'
+  if (provider.apiStyle === 'gemini') {
+    const candidate = asRecord(asArray(root.candidates)[0])
+    return /max.?tokens?/iu.test(asString(candidate.finishReason))
+  }
+  const choice = asRecord(asArray(root.choices)[0])
+  const finishDetails = asRecord(choice.finish_details)
+  return asString(choice.finish_reason) === 'length' || asString(finishDetails.type) === 'length'
+}
+
+function appendContinuation(previous: string, next: string): string {
+  if (!next || previous.includes(next)) return previous
+  const longestPossibleOverlap = Math.min(previous.length, next.length, 1_200)
+  for (let length = longestPossibleOverlap; length >= 24; length -= 1) {
+    if (previous.slice(-length) === next.slice(0, length)) return `${previous}${next.slice(length)}`
+  }
+  return `${previous}\n\n${next}`
+}
+
 export async function generateCloudResponse(
   config: CloudModelConfig,
   systemPrompt: string,
@@ -280,35 +304,48 @@ export async function generateCloudResponse(
   }
   const apiKey = await readProviderApiKey(config.providerId)
   const safeUserMessage = prepareCloudUserMessage(userMessage)
-  let url: string
-  let body: JsonRecord
-  let extract: (payload: unknown) => string
-
-  if (provider.apiStyle === 'anthropic') {
-    url = `${provider.baseUrl}/messages`
-    body = { model: config.modelId, max_tokens: 700, system: systemPrompt, messages: [{ role: 'user', content: safeUserMessage }] }
-    extract = extractAnthropicText
-  } else if (provider.apiStyle === 'gemini') {
-    url = `${provider.baseUrl}/models/${encodeURIComponent(config.modelId)}:generateContent`
-    body = {
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ role: 'user', parts: [{ text: safeUserMessage }] }],
-      generationConfig: { maxOutputTokens: 700, temperature: 0.2 },
+  const continuationInstruction = 'Continue exactly where your previous answer ended. Do not repeat it. Finish the requested answer completely.'
+  const buildRequest = (previousResponse = ''): { url: string; body: JsonRecord; extract: (payload: unknown) => string } => {
+    if (provider.apiStyle === 'anthropic') {
+      const messages = previousResponse
+        ? [{ role: 'user', content: safeUserMessage }, { role: 'assistant', content: previousResponse }, { role: 'user', content: continuationInstruction }]
+        : [{ role: 'user', content: safeUserMessage }]
+      return { url: `${provider.baseUrl}/messages`, body: { model: config.modelId, max_tokens: CLOUD_OUTPUT_TOKEN_BUDGET, system: systemPrompt, messages }, extract: extractAnthropicText }
     }
-    extract = extractGeminiText
-  } else {
-    url = `${provider.baseUrl}/chat/completions`
+    if (provider.apiStyle === 'gemini') {
+      const contents = previousResponse
+        ? [{ role: 'user', parts: [{ text: safeUserMessage }] }, { role: 'model', parts: [{ text: previousResponse }] }, { role: 'user', parts: [{ text: continuationInstruction }] }]
+        : [{ role: 'user', parts: [{ text: safeUserMessage }] }]
+      return {
+        url: `${provider.baseUrl}/models/${encodeURIComponent(config.modelId)}:generateContent`,
+        body: { systemInstruction: { parts: [{ text: systemPrompt }] }, contents, generationConfig: { maxOutputTokens: CLOUD_OUTPUT_TOKEN_BUDGET, temperature: 0.2 } },
+        extract: extractGeminiText,
+      }
+    }
     const openAiReasoningModel = provider.id === 'openai' && /^(gpt-5|o[1345](?:-|$))/iu.test(config.modelId)
-    body = {
-      model: config.modelId,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: safeUserMessage }],
-      ...(openAiReasoningModel ? { max_completion_tokens: 700 } : { max_tokens: 700, temperature: 0.2 }),
-      stream: false,
+    const messages = previousResponse
+      ? [{ role: 'system', content: systemPrompt }, { role: 'user', content: safeUserMessage }, { role: 'assistant', content: previousResponse }, { role: 'user', content: continuationInstruction }]
+      : [{ role: 'system', content: systemPrompt }, { role: 'user', content: safeUserMessage }]
+    return {
+      url: `${provider.baseUrl}/chat/completions`,
+      body: { model: config.modelId, messages, ...(openAiReasoningModel ? { max_completion_tokens: CLOUD_OUTPUT_TOKEN_BUDGET } : { max_tokens: CLOUD_OUTPUT_TOKEN_BUDGET, temperature: 0.2 }), stream: false },
+      extract: extractOpenAiText,
     }
-    extract = extractOpenAiText
   }
 
-  const result = extract(await requestJson(url, provider, apiKey, { method: 'POST', body: JSON.stringify(body), signal }))
+  let request = buildRequest()
+  let payload = await requestJson(request.url, provider, apiKey, { method: 'POST', body: JSON.stringify(request.body), signal })
+  let result = request.extract(payload)
   if (!result) throw new Error('AI API вернул пустой ответ.')
+  for (let attempt = 0; outputWasTruncated(provider, payload) && attempt < MAX_CLOUD_CONTINUATIONS; attempt += 1) {
+    request = buildRequest(result)
+    payload = await requestJson(request.url, provider, apiKey, { method: 'POST', body: JSON.stringify(request.body), signal })
+    const continuation = request.extract(payload)
+    if (!continuation) break
+    result = appendContinuation(result, continuation)
+  }
+  if (outputWasTruncated(provider, payload)) {
+    result = `${result}\n\n[AI reached the provider output limit. Ask it to continue for the remaining analysis.]`
+  }
   return result
 }

@@ -16,7 +16,7 @@ import {
 } from '../bridge/LocalLlmBridge'
 import type { GgufVariant, PublicGgufModel } from '../data/huggingFaceCatalog'
 import type { ModelStorageInfo } from '../data/whisperModels'
-import { buildPrompt, buildUserMessage, QUICK_QUESTIONS, SYSTEM_PROMPT } from '../utils/llmPrompts'
+import { buildPrompt, buildUserMessage, preserveTextWindow, QUICK_QUESTIONS, SYSTEM_PROMPT } from '../utils/llmPrompts'
 import { colors } from '../theme'
 import { LocalModelCatalogView } from './LocalModelCatalogView'
 import { CloudProviderCatalogView } from './CloudProviderCatalogView'
@@ -294,7 +294,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
     try {
       const contextualQuestion = [
         text.trim(),
-        languageContext ? `Производный KSC2-языковой контекст (не доказательство): ${languageContext.slice(0, 700)}` : '',
+        languageContext ? `Контекст знаний VoiceShield и KSC2 (не доказательство): ${preserveTextWindow(languageContext, 8_000)}` : '',
         `Казахский semantic runtime: ${modelKazakhContext.slice(0, 1000)}`,
         '',
       ].filter(Boolean).join('\n\n')

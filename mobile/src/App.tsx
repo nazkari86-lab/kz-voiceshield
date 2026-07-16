@@ -133,6 +133,9 @@ function AppContent() {
     ruleRisk: w.analysis.risk,
     ruleScore: w.analysis.score,
     ruleEvidence: w.analysis.evidence.map((item) => item.title).join('; '),
+    captureCompleteness: w.captureCompleteness,
+    autoDisconnectCritical: w.autoDisconnectCritical,
+    onAutoDisconnect: w.endActiveCall,
     ramBytes: w.modelStorage?.ramBytes ?? 0,
   })
   const selectTab = (next: Tab) => { setHubOpen(false); setTab(next) }
@@ -234,7 +237,7 @@ function AppContent() {
         onOpenEmergency={() => selectTab('emergency')}
       />}
       {tab === 'model' && <ModelView />}
-      {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} modelSizePref={w.modelSizePref} recognitionLanguage={w.recognitionLanguage} modelStorage={w.modelStorage} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onSetModelSize={w.updateModelSize} onSetRecognitionLanguage={w.updateRecognitionLanguage} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
+      {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} modelSizePref={w.modelSizePref} recognitionLanguage={w.recognitionLanguage} autoDisconnectCritical={w.autoDisconnectCritical} modelStorage={w.modelStorage} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onSetModelSize={w.updateModelSize} onSetRecognitionLanguage={w.updateRecognitionLanguage} onSetAutoDisconnectCritical={w.updateAutoDisconnectCritical} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
     </>
   )
 

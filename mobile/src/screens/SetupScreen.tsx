@@ -27,6 +27,8 @@ type Props = {
   onPrepareWhisper: () => void
   onSetModelSize: (size: WhisperModelChoice) => Promise<void>
   onSetRecognitionLanguage: (language: 'auto' | 'ru' | 'kk') => Promise<void>
+  autoDisconnectCritical: boolean
+  onSetAutoDisconnectCritical: (enabled: boolean) => Promise<void>
   onAcceptPrivacy: () => Promise<void>
   onDeclinePrivacy: () => Promise<void>
   onDeleteAllData: () => Promise<void>
@@ -55,6 +57,8 @@ export function SetupScreen({
   onPrepareWhisper,
   onSetModelSize,
   onSetRecognitionLanguage,
+  autoDisconnectCritical,
+  onSetAutoDisconnectCritical,
   onAcceptPrivacy,
   onDeclinePrivacy,
   onDeleteAllData,
@@ -180,6 +184,10 @@ export function SetupScreen({
           </Pressable>
         ))}
       </View>
+      <View style={styles.safetyOption}>
+        <View style={styles.safetyCopy}><Text style={styles.noticeTitle}>Automatic critical-call protection</Text><Text style={styles.copy}>When enabled, VoiceShield may end a call only after local rules score at least 95/100, the local LLM returns critical, and audio capture is at least 85%. This is off by default.</Text></View>
+        <Pressable accessibilityRole="switch" accessibilityState={{ checked: autoDisconnectCritical }} onPress={() => { void onSetAutoDisconnectCritical(!autoDisconnectCritical) }} style={[styles.toggleChip, autoDisconnectCritical && styles.toggleChipActive]}><Text style={[styles.toggleText, autoDisconnectCritical && styles.toggleTextActive]}>{autoDisconnectCritical ? 'ON' : 'OFF'}</Text></Pressable>
+      </View>
       <Text style={styles.copy}>All recognition remains on this device. The recommendation accounts for free storage, temporary download space and RAM. Downloads resume after a network interruption and every completed model is verified before use. Large models may not keep up with a live call.</Text>
       <View style={styles.recommendation}>
         <Text style={styles.recommendationTitle}>Recommended: {automaticModel.title}</Text>
@@ -281,4 +289,6 @@ const styles = StyleSheet.create({
   toggleChipActive: { backgroundColor: colors.softBrand, borderColor: colors.brand },
   toggleText: { color: colors.ink, fontSize: 13, fontWeight: '700', textAlign: 'center' },
   toggleTextActive: { color: colors.brandDark, fontWeight: '900' },
+  safetyOption: { alignItems: 'center', backgroundColor: '#fff7ed', borderColor: '#fdba74', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 10, padding: 11 },
+  safetyCopy: { flex: 1, gap: 3 },
 })

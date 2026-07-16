@@ -13,6 +13,7 @@ import {
   liveAiDisagreement,
   parseLiveAiResponse,
   shouldAnalyzeLiveTranscript,
+  shouldAutoDisconnectCritical,
   type LiveAiResult,
 } from '../utils/liveAiAnalysis'
 
@@ -25,13 +26,16 @@ type Options = {
   ruleRisk: string
   ruleScore: number
   ruleEvidence: string
+  captureCompleteness: number
+  autoDisconnectCritical: boolean
+  onAutoDisconnect: () => Promise<boolean>
   ramBytes: number
   languageContext?: string
 }
 
 const LIVE_AI_ENABLED_KEY = 'voiceshield.live-ai.enabled.v1'
 
-export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleScore, ruleEvidence, ramBytes, languageContext = '' }: Options) {
+export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleScore, ruleEvidence, captureCompleteness, autoDisconnectCritical, onAutoDisconnect, ramBytes, languageContext = '' }: Options) {
   const [enabled, setEnabledState] = useState(true)
   const [cloudLiveConsent, setCloudLiveConsent] = useState(false)
   const [cloudConsentHydrated, setCloudConsentHydrated] = useState(false)
@@ -62,6 +66,7 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
   const isCloud = cloudProviderId !== null
   const canRun = enabled && (!isCloud || (cloudConsentHydrated && cloudLiveConsent))
   const previousModelIdentityRef = useRef(modelIdentity)
+  const autoDisconnectTranscriptRef = useRef('')
 
   latestTranscriptRef.current = transcript
   languageContextRef.current = languageContext
@@ -142,7 +147,23 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
       const full = await ai.generate({ ...request, owner: 'live', onToken: appendToken })
       tokenBufferRef.current = full
       flushDraft()
-      setResult(parseLiveAiResponse(full))
+      const parsed = parseLiveAiResponse(full)
+      setResult(parsed)
+      const canAutoDisconnect = shouldAutoDisconnectCritical({
+        enabled: autoDisconnectCritical,
+        localModel: ai.engine !== 'cloud',
+        aiRisk: parsed.risk,
+        ruleRisk,
+        ruleScore,
+        captureCompleteness,
+        uncertainty: parsed.uncertainty,
+      })
+      if (canAutoDisconnect && autoDisconnectTranscriptRef.current !== currentTranscript) {
+        autoDisconnectTranscriptRef.current = currentTranscript
+        setTimeout(() => {
+          if (listeningRef.current && latestTranscriptRef.current === currentTranscript && enabledRef.current) void onAutoDisconnect()
+        }, 1800)
+      }
       lastAnalyzedRef.current = currentTranscript
       setAnalyzedAt(Date.now())
       setStatus('ready')
@@ -167,7 +188,7 @@ export function useLiveAiAnalysis({ ai, transcript, isListening, ruleRisk, ruleS
         schedule(Math.max(1600, throttle))
       }
     }
-  }, [ai, appendToken, flushDraft, ramBytes, result, ruleEvidence, ruleRisk, ruleScore, schedule])
+  }, [ai, appendToken, autoDisconnectCritical, captureCompleteness, flushDraft, onAutoDisconnect, ramBytes, result, ruleEvidence, ruleRisk, ruleScore, schedule])
 
   runRef.current = runAnalysis
 

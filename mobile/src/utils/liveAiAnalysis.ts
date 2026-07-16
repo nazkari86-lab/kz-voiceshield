@@ -141,3 +141,21 @@ export function liveAiDisagreement(ruleRisk: string, aiRisk: LiveAiRisk): string
   if (ruleIndex < 0 || aiIndex < 0 || Math.abs(ruleIndex - aiIndex) < 2) return null
   return ruleIndex > aiIndex ? 'Rules high, AI low' : 'AI high, rules low'
 }
+
+export function shouldAutoDisconnectCritical(input: {
+  enabled: boolean
+  localModel: boolean
+  aiRisk: LiveAiRisk
+  ruleRisk: string
+  ruleScore: number
+  captureCompleteness: number
+  uncertainty: string
+}): boolean {
+  return input.enabled
+    && input.localModel
+    && input.aiRisk === 'critical'
+    && input.ruleRisk === 'critical'
+    && input.ruleScore >= 95
+    && input.captureCompleteness >= 0.85
+    && !/неизвест|недостат|искаж|одн(а|ой) сторон|uncertain|unknown/iu.test(input.uncertainty)
+}

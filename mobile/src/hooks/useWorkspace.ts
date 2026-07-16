@@ -48,6 +48,7 @@ const privacyConsentKey = 'voiceshield.privacy-consent.v1'
 const donationConsentKey = 'voiceshield.donation-consent.v1'
 const trustedContactKey = 'voiceshield.trusted-contact.v1'
 const autoDeleteTranscriptKey = 'voiceshield.auto-delete-transcript.v1'
+const autoDisconnectKey = 'voiceshield.auto-disconnect-critical.v1'
 
 const ensureMicrophonePermission = async (): Promise<boolean> => {
   if (Platform.OS !== 'android') return true
@@ -108,6 +109,7 @@ export function useWorkspace() {
   const [callStatus, setCallStatus] = useState('No active call context')
   const [trustedContact, setTrustedContact] = useState<TrustedContact | null>(null)
   const [autoDeleteTranscript, setAutoDeleteTranscript] = useState(true)
+  const [autoDisconnectCritical, setAutoDisconnectCritical] = useState(false)
   const [captureCompleteness, setCaptureCompleteness] = useState(1.0)
   // Hysteresis: track displayed risk to avoid bouncing alerts
   const lastAlertedRiskRef = useRef<string>('low')
@@ -183,10 +185,11 @@ export function useWorkspace() {
       SecureStorage.getItem(trustedContactKey).catch(() => null),
       SecureStorage.getItem(donationConsentKey).catch(() => null),
       SecureStorage.getItem(autoDeleteTranscriptKey).catch(() => null),
+      SecureStorage.getItem(autoDisconnectKey).catch(() => null),
       AsyncStorage.getItem(modelSizeKey).catch(() => null),
       AsyncStorage.getItem(recognitionLanguageKey).catch(() => null),
     ])
-      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete, storedModelSize, storedRecognitionLanguage]) => {
+      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete, autoDisconnect, storedModelSize, storedRecognitionLanguage]) => {
         if (storedModelSize === 'auto' || whisperModels.some((model) => model.id === storedModelSize)) {
           setModelSizePref(storedModelSize as WhisperModelChoice)
         }
@@ -212,6 +215,7 @@ export function useWorkspace() {
         if (consent === 'accepted') void CallModule.updateProtectionConfig({ enabled: true }).catch(() => undefined)
         setDonationConsent(donation === 'accepted')
         setAutoDeleteTranscript(autoDelete !== 'disabled')
+        setAutoDisconnectCritical(autoDisconnect === 'enabled')
         if (storedTrustedContact) {
           try {
             const parsed = JSON.parse(storedTrustedContact) as TrustedContact
@@ -658,6 +662,12 @@ export function useWorkspace() {
     setAutoDeleteTranscript(enabled)
   }, [])
 
+  const updateAutoDisconnectCritical = useCallback(async (enabled: boolean) => {
+    if (enabled && !privacyConsent) return
+    setAutoDisconnectCritical(enabled)
+    await SecureStorage.setItem(autoDisconnectKey, enabled ? 'enabled' : 'disabled')
+  }, [privacyConsent])
+
   const deleteAllLocalData = useCallback(async () => {
     await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
     await AudioCaptureModule.stopCapture().catch(() => undefined)
@@ -798,10 +808,11 @@ export function useWorkspace() {
     reviewerName, setReviewerName,
     source,
     // capture
-    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript, modelStorage,
+    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript, autoDisconnectCritical, modelStorage,
     startListening, stopListening, prepareWhisper, switchToMicrophoneFallback,
     endActiveCall,
     modelSizePref, updateModelSize, recognitionLanguage, updateRecognitionLanguage,
+    updateAutoDisconnectCritical,
     repeatBonusData, llmAutoAnalysis, captureCompleteness,
     // computed
     analysis, pressureAnalysis, semanticMatches, callbackInfo,

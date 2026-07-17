@@ -45,6 +45,40 @@ transfer/pretraining material only and cannot enter the trusted RU/KZ held-out
 evaluation set. Telegram spam is especially weak for phone fraud because its
 labels/domain are not a call-level fraud annotation.
 
+## Quality lab (does not touch Live Shield)
+
+The quality lab consumes **local prediction JSONL** and produces reproducible
+WER/CER reports. It does not download data, call a cloud model, ship raw audio,
+or change the detector. Start with the checked-in smoke fixture:
+
+```bash
+python ml/quality_lab.py asr ml/fixtures/asr_quality_smoke.jsonl \
+  --model-id fastconformer-kk-ru \
+  --out ml/artifacts/asr-quality-smoke.json
+```
+
+For a real evaluation, create a JSONL with `id`, `language` (`kk`, `ru`, or
+`mixed`), `reference`, and `hypothesis`. The external registry documents
+Mozilla Common Voice RU/KZ and ASVspoof as offline evaluation sources. Download
+them only after confirming their current licence and available disk space; they
+remain transfer/evaluation data and never become evidence of live-call quality.
+
+`ml/model_registry.py` is a candidate ledger for Silero VAD, ASVspoof LCNN and
+sherpa-onnx. Candidates have no automatic downloader and cannot enter Live
+Shield. Promotion requires an exact checksum, licence check, offline report and
+physical Xiaomi benchmark.
+
+For physical-device timings, capture only metadata rows (`device`, `modelId`,
+`audioMs`, `wallMs`, `peakRssMb`) and summarise them without uploading audio:
+
+```bash
+python ml/device_benchmark.py my-xiaomi-runs.jsonl \
+  --out ml/artifacts/xiaomi-benchmark.json
+```
+
+The report includes p50/p95 latency, real-time factor and memory. A model is a
+candidate for further review only when p95 real-time factor is at most `1.0`.
+
 Training is blocked below 30 unique trusted cases or below five examples in any label. Those limits only prevent meaningless smoke runs; production release requires a substantially larger independent RU/KZ dataset, documented labeling instructions, held-out evaluation, calibration, and bias/error review.
 
 Generated artifacts are intentionally git-ignored. Treat imported cases as untrusted until a reviewer confirms the label in VoiceShield.

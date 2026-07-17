@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
-import type { DatasetQuality } from '@scoring'
+import { datasetSplitAudit, type DatasetQuality, type SavedCase } from '@scoring'
 import { colors } from '../theme'
 import { Card, Metric, SectionTitle, ui } from './ui'
 import { LocalizedText as Text } from './LocalizedText'
 
 type Props = {
+  cases: SavedCase[]
   quality: DatasetQuality
   caseCount: number
   labelledCount: number
@@ -19,10 +20,17 @@ type Props = {
   onClear: () => void
 }
 
-export function DatasetView({ quality, caseCount, labelledCount, datasetStageTotals, donationConsent, onSetDonation, onDonate, onExportJsonl, onExportCsv, onExportSplit, onClear }: Props) {
+export function DatasetView({ cases, quality, caseCount, labelledCount, datasetStageTotals, donationConsent, onSetDonation, onDonate, onExportJsonl, onExportCsv, onExportSplit, onClear }: Props) {
   const disabled = caseCount === 0
   const canDonate = donationConsent && labelledCount > 0
   const [confirmClear, setConfirmClear] = useState(false)
+  const splitAudit = datasetSplitAudit(cases)
+  const readiness = [
+    splitAudit.eligibleCaseCount < 30 ? 'Need at least 30 trusted, labelled cases before using a split for experimentation.' : '',
+    quality.labelBalance.true_positive === 0 ? 'No reviewer-confirmed fraud examples yet.' : '',
+    quality.labelBalance.false_positive === 0 ? 'No false-positive examples yet; safe-message coverage is incomplete.' : '',
+    quality.duplicateGroups.length > 0 ? `${quality.duplicateGroups.length} duplicate group(s) should be reviewed before training.` : '',
+  ].filter(Boolean)
   return (
     <View>
       <SectionTitle>Improve protection (opt-in)</SectionTitle>
@@ -74,6 +82,14 @@ export function DatasetView({ quality, caseCount, labelledCount, datasetStageTot
         <Metric value={quality.averageWords} label="avg words" />
       </View>
 
+      <SectionTitle>Dataset readiness</SectionTitle>
+      <Card tone={readiness.length ? 'medium' : 'low'}>
+        <Text style={styles.schema}>Frozen split · {splitAudit.strategy}</Text>
+        <Text style={styles.muted}>Eligible: {splitAudit.eligibleCaseCount} · train {splitAudit.counts.train} · dev {splitAudit.counts.dev} · test {splitAudit.counts.test}</Text>
+        <Text style={styles.muted}>Split fingerprint: {splitAudit.fingerprint}. The same eligible case IDs and versions always produce the same split.</Text>
+        {readiness.length > 0 ? readiness.map((item) => <Text key={item} style={styles.warning}>• {item}</Text>) : <Text style={styles.ready}>Quality checks passed for an experimental export. This is not proof of production model accuracy.</Text>}
+      </Card>
+
       <SectionTitle>Stage coverage</SectionTitle>
       {datasetStageTotals.length === 0 ? (
         <Text style={styles.muted}>No stage coverage yet.</Text>
@@ -114,6 +130,8 @@ const styles = StyleSheet.create({
   toggleText: { color: colors.sub, fontSize: 12, fontWeight: '800' },
   toggleTextOn: { color: '#fff' },
   muted: { color: colors.sub, fontSize: 12, lineHeight: 18 },
+  warning: { color: '#92400e', fontSize: 12, lineHeight: 18 },
+  ready: { color: '#166534', fontSize: 12, lineHeight: 18 },
   schema: { color: colors.ink, fontSize: 13, fontWeight: '800' },
   stageRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
   stageName: { color: colors.ink, fontSize: 13, fontWeight: '700' },

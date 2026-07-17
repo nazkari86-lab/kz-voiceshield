@@ -16,6 +16,8 @@ REGISTRY = {
     "difraud_job_scams": {"path": "fraud/difraud_job_scams_train.jsonl", "role": "text_transfer", "license": "MIT", "trusted": False},
     "trilingual_fraud": {"path": "fraud/trilingual_fraud_consumer_protection_v2.csv", "role": "text_transfer", "license": "MIT", "trusted": False},
     "kazakh_speech": {"path": "asr/kazakh_speech_train.csv", "role": "asr_evaluation", "license": "CC BY 4.0", "trusted": False},
+    "common_voice_kk": {"path": "asr/common_voice_kk.tsv", "role": "asr_evaluation", "license": "CC0-1.0", "trusted": False},
+    "common_voice_ru": {"path": "asr/common_voice_ru.tsv", "role": "asr_evaluation", "license": "CC0-1.0", "trusted": False},
     "asvspoof2021_df_labels": {"path": "deepfake/asvspoof2021_df_labels.parquet", "role": "deepfake_evaluation", "license": "ODbL", "trusted": False},
     "asvspoof2021_df_audio_sample": {"path": "deepfake/asvspoof2021_df_test-00000-of-00080.parquet", "role": "deepfake_evaluation", "license": "ODbL", "trusted": False},
     "lcnn_asvspoof2019": {"path": "deepfake/lcnn_best.pt", "role": "checkpoint_candidate", "license": "MIT", "trusted": False},
@@ -48,7 +50,11 @@ def build_report(root: Path) -> dict:
             "externalTrusted": False,
             "shipRawAudio": False,
             "liveDecisionUse": False,
-            "recommendedUse": "offline evaluation, transfer training, and model-card reporting",
+        "recommendedUse": "offline evaluation, transfer training, and model-card reporting",
+        "sources": {
+            "commonVoice": "https://commonvoice.mozilla.org/cv/datasets",
+            "asvSpoof": "https://www.asvspoof.org/index2021.html",
+        },
         },
     }
 

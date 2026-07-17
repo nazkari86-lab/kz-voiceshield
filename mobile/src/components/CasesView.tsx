@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Pressable, StyleSheet, View } from 'react-native'
+import { Pressable, StyleSheet, TextInput, View } from 'react-native'
 import type { CaseLabel, CaseStatus, SavedCase, WorkflowFlags } from '@scoring'
 import { labelText, statusText } from '@scoring'
 import { colors, riskColor } from '../theme'
@@ -24,10 +24,14 @@ type Props = {
 export function CasesView({ cases, onSaveCurrent, onLoadCase, onUpdateLabel, onUpdateStatus, onToggleFlag, onExportBundle, onDeleteCase }: Props) {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [assigneeFilter, setAssigneeFilter] = useState<'all' | 'mine' | 'unassigned'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | CaseStatus>('all')
+  const [query, setQuery] = useState('')
+  const normalizedQuery = query.trim().toLocaleLowerCase()
   const visibleCases = cases.filter((item) => {
-    if (assigneeFilter === 'mine') return item.assignedTo === 'Fraud reviewer'
-    if (assigneeFilter === 'unassigned') return !item.assignedTo || item.assignedTo === 'Unassigned' || item.assignedTo === 'Triage queue'
-    return true
+    if (assigneeFilter === 'mine' && item.assignedTo !== 'Fraud reviewer') return false
+    if (assigneeFilter === 'unassigned' && item.assignedTo && item.assignedTo !== 'Unassigned' && item.assignedTo !== 'Triage queue') return false
+    if (statusFilter !== 'all' && item.status !== statusFilter) return false
+    return !normalizedQuery || [item.id, item.transcript, item.assignedTo, item.analysis.schemeLabel, item.analysis.verdict].join(' ').toLocaleLowerCase().includes(normalizedQuery)
   })
 
   return (
@@ -40,6 +44,14 @@ export function CasesView({ cases, onSaveCurrent, onLoadCase, onUpdateLabel, onU
         {(['all', 'mine', 'unassigned'] as const).map((filter) => (
           <Pressable key={filter} onPress={() => setAssigneeFilter(filter)} style={[styles.filter, assigneeFilter === filter && styles.filterActive]}>
             <Text style={[styles.filterText, assigneeFilter === filter && styles.filterTextActive]}>{filter === 'all' ? 'All' : filter === 'mine' ? 'Mine' : 'Unassigned'}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <TextInput accessibilityLabel="Search saved cases" autoCapitalize="none" autoCorrect={false} onChangeText={setQuery} placeholder="Search case, transcript or assignee" placeholderTextColor={colors.muted} style={styles.search} value={query} />
+      <View style={styles.toolRow}>
+        {(['all', ...STATUSES] as const).map((filter) => (
+          <Pressable key={filter} onPress={() => setStatusFilter(filter)} style={[styles.filter, statusFilter === filter && styles.filterActive]}>
+            <Text style={[styles.filterText, statusFilter === filter && styles.filterTextActive]}>{filter === 'all' ? 'All statuses' : statusText(filter)}</Text>
           </Pressable>
         ))}
       </View>
@@ -88,6 +100,7 @@ export function CasesView({ cases, onSaveCurrent, onLoadCase, onUpdateLabel, onU
             </View>
 
             <Text style={styles.audit}>{item.auditLog.length} audit events · updated {new Date(item.updatedAt).toLocaleString()}</Text>
+            {item.decisionHistory.length > 0 ? <Text style={styles.decision}>Latest decision: {item.decisionHistory.at(-1)?.detail}</Text> : null}
           </Card>
         ))
       )}
@@ -104,6 +117,7 @@ const styles = StyleSheet.create({
   meta: { color: colors.sub, fontSize: 12 },
   trust: { color: colors.muted, fontSize: 11, marginTop: 2 },
   snippet: { color: colors.sub, fontSize: 12, lineHeight: 17, marginTop: 4 },
+  search: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, fontSize: 13, minHeight: 44, paddingHorizontal: 12 },
   toolRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   tool: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
   toolText: { color: colors.ink, fontSize: 12, fontWeight: '700' },
@@ -124,4 +138,5 @@ const styles = StyleSheet.create({
   cancel: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
   cancelText: { color: colors.sub, fontSize: 12, fontWeight: '800' },
   audit: { color: colors.muted, fontSize: 11 },
+  decision: { color: colors.sub, fontSize: 11, lineHeight: 16 },
 })

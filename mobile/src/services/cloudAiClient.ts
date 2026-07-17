@@ -7,7 +7,7 @@ import {
   type CloudProviderId,
   type CloudSpeechModelConfig,
 } from '../data/cloudAiProviders'
-import { redactSensitiveText } from '../scoring'
+import { redactForCloud } from '../utils/privacyGateway'
 
 const KEY_PREFIX = 'voiceshield.cloud-api-key.'
 const DATA_CONSENT_PREFIX = 'voiceshield.cloud-data-consent.v1.'
@@ -51,9 +51,7 @@ export async function setProviderLiveConsent(providerId: CloudProviderId, accept
 }
 
 export function prepareCloudUserMessage(message: string): string {
-  return redactSensitiveText(message)
-    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/giu, '[REDACTED EMAIL]')
-    .replace(/(?:https?:\/\/)?(?:t\.me|wa\.me)\/[^\s]+/giu, '[REDACTED LINK]')
+  return redactForCloud(message).text
 }
 
 export async function hasProviderApiKey(providerId: CloudProviderId): Promise<boolean> {

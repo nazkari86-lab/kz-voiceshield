@@ -46,13 +46,18 @@ function ActiveCallPanel({ session, status, onEnd }: { session: VoipSession; sta
   const [audioOutputs, setAudioOutputs] = useState<string[]>([])
   const [audioError, setAudioError] = useState('')
 
-  useEffect(() => {
-    let mounted = true
-    void AudioSession.getAudioOutputs()
-      .then((outputs) => { if (mounted) setAudioOutputs(outputs) })
-      .catch(() => { if (mounted) setAudioError(copy.errorAudioDevices) })
-    return () => { mounted = false }
+  const refreshAudioOutputs = useCallback(async () => {
+    setAudioError('')
+    try {
+      setAudioOutputs(await AudioSession.getAudioOutputs())
+    } catch {
+      setAudioError(copy.errorAudioDevices)
+    }
   }, [copy.errorAudioDevices])
+
+  useEffect(() => {
+    void refreshAudioOutputs()
+  }, [refreshAudioOutputs, status])
 
   const toggleMicrophone = useCallback(async () => {
     setIsUpdatingMicrophone(true)
@@ -102,7 +107,12 @@ function ActiveCallPanel({ session, status, onEnd }: { session: VoipSession; sta
             ))}
           </View>
         </View>
-      ) : null}
+      ) : (
+        <View style={styles.outputs}>
+          <Text style={[styles.muted, { color: colors.sub }]}>{copy.audioUnavailable}</Text>
+          <MotionPressable onPress={() => { void refreshAudioOutputs() }} style={[styles.refreshButton, { borderColor: colors.brandDark }]}><Text style={[styles.refreshText, { color: colors.brandDark }]}>{copy.refreshAudio}</Text></MotionPressable>
+        </View>
+      )}
       {lastMicrophoneError ? <Text style={styles.error}>{copy.errorMicrophone}: {lastMicrophoneError.message}</Text> : null}
       {audioError ? <Text style={styles.error}>{audioError}</Text> : null}
       <Text style={[styles.muted, { color: colors.sub }]}>{copy.analysisBoundary}</Text>
@@ -203,6 +213,8 @@ const styles = StyleSheet.create({
   outputRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   outputButton: { borderRadius: 7, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 9 },
   outputText: { fontSize: 12, fontWeight: '800' },
+  refreshButton: { alignSelf: 'flex-start', borderRadius: 7, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 8 },
+  refreshText: { fontSize: 12, fontWeight: '800' },
   button: { alignItems: 'center', borderRadius: 7, marginTop: 5, padding: 14 },
   buttonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   input: { borderRadius: 7, borderWidth: 1, fontSize: 13, minHeight: 46, paddingHorizontal: 12 },

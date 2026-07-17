@@ -156,6 +156,14 @@ export type DatasetQuality = {
   untrustedCount: number
 }
 
+export type DatasetSplitAudit = {
+  eligibleCaseCount: number
+  fingerprint: string
+  strategy: 'stable-id-sort-70-15-15'
+  frozen: boolean
+  counts: { train: number; dev: number; test: number }
+}
+
 export const datasetSchemaVersion = 'voiceshield.dataset.v2'
 
 export const samples = {
@@ -1339,21 +1347,40 @@ export const datasetQuality = (cases: SavedCase[]): DatasetQuality => {
   }
 }
 
-export const exportSplitJson = (cases: SavedCase[]) => {
+export const datasetSplitAudit = (cases: SavedCase[]): DatasetSplitAudit => {
   const sorted = cases
     .filter((item) => item.provenance.trusted && item.label !== 'unreviewed')
     .sort((left, right) => left.id.localeCompare(right.id))
   const trainEnd = Math.ceil(sorted.length * 0.7)
   const devEnd = trainEnd + Math.ceil(sorted.length * 0.15)
+  const fingerprint = sorted.reduce((hash, item) => {
+    const source = `${item.id}:${item.label}:${item.updatedAt}`
+    let next = hash
+    for (let index = 0; index < source.length; index += 1) next = Math.imul(next ^ source.charCodeAt(index), 16777619)
+    return next >>> 0
+  }, 2166136261).toString(16).padStart(8, '0')
+  return {
+    eligibleCaseCount: sorted.length,
+    fingerprint: `fnv1a-${fingerprint}`,
+    strategy: 'stable-id-sort-70-15-15',
+    frozen: true,
+    counts: { train: trainEnd, dev: devEnd - trainEnd, test: sorted.length - devEnd },
+  }
+}
+
+export const exportSplitJson = (cases: SavedCase[]) => {
+  const sorted = cases
+    .filter((item) => item.provenance.trusted && item.label !== 'unreviewed')
+    .sort((left, right) => left.id.localeCompare(right.id))
+  const audit = datasetSplitAudit(cases)
+  const trainEnd = audit.counts.train
+  const devEnd = trainEnd + audit.counts.dev
   return JSON.stringify(
     {
       schemaVersion: datasetSchemaVersion,
       generatedAt: new Date().toISOString(),
-      counts: {
-        dev: sorted.slice(trainEnd, devEnd).length,
-        test: sorted.slice(devEnd).length,
-        train: sorted.slice(0, trainEnd).length,
-      },
+      counts: audit.counts,
+      splitAudit: audit,
       train: sorted.slice(0, trainEnd).map(serializeCase),
       dev: sorted.slice(trainEnd, devEnd).map(serializeCase),
       test: sorted.slice(devEnd).map(serializeCase),

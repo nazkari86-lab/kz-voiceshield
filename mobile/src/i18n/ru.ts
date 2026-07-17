@@ -23,7 +23,7 @@ export type I18nKeys = {
     eyebrow: string; title: string; description: string; ready: string; readyCopy: string
     create: string; creating: string; callId: string; callIdPlaceholder: string; join: string
     joining: string; connected: string; connecting: string; participants: string; waiting: string
-    participantConnected: string; microphoneOn: string; microphoneOff: string; audioOutput: string
+    participantConnected: string; microphoneOn: string; microphoneOff: string; audioOutput: string; refreshAudio: string; audioUnavailable: string
     shareCallId: string; ending: string; end: string; analysisBoundary: string
     errorNetwork: string; errorAuthorization: string; errorUnavailable: string; errorNotFound: string
     errorFallback: string; errorAudioOutput: string; errorAudioDevices: string; errorMicrophone: string
@@ -80,7 +80,7 @@ export const ru: I18nKeys = {
     readyCopy: 'Создайте временную комнату и передайте Call ID собеседнику. Для подключения обоим участникам нужен настроенный сервер VoiceShield.',
     create: 'Создать звонок', creating: 'Создаём комнату…', callId: 'Call ID', callIdPlaceholder: 'Введите Call ID для подключения', join: 'Подключиться к звонку',
     joining: 'Подключаемся…', connected: 'Звонок подключён', connecting: 'Подключение к защищённой комнате…', participants: 'Участников в звонке', waiting: 'Ожидание собеседника. Передайте ему Call ID.',
-    participantConnected: 'Собеседник подключён. Аудио передаётся напрямую через LiveKit.', microphoneOn: 'Микрофон включён', microphoneOff: 'Микрофон выключен', audioOutput: 'Вывод звука',
+    participantConnected: 'Собеседник подключён. Аудио передаётся напрямую через LiveKit.', microphoneOn: 'Микрофон включён', microphoneOff: 'Микрофон выключен', audioOutput: 'Вывод звука', refreshAudio: 'Обновить аудиоустройства', audioUnavailable: 'Аудиоустройства ещё не готовы. Обновите список после подключения к комнате.',
     shareCallId: 'Передать Call ID', ending: 'Завершаем звонок…', end: 'Завершить звонок', analysisBoundary: 'Live Shield работает отдельно и не создаёт фиктивную расшифровку звонка.',
     errorNetwork: 'Нет связи с сервером. Проверьте URL, сеть Wi-Fi и работу backend.', errorAuthorization: 'Сервер отклонил доступ. Проверьте API-токен в настройках.', errorUnavailable: 'Голосовой сервис недоступен: LiveKit не настроен на сервере.', errorNotFound: 'Комната не найдена или уже завершена.',
     errorFallback: 'Не удалось подключиться к защищённому звонку.', errorAudioOutput: 'Не удалось переключить вывод звука.', errorAudioDevices: 'Не удалось получить доступные аудиоустройства.', errorMicrophone: 'Микрофон недоступен',

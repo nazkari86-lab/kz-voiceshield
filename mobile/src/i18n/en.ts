@@ -29,7 +29,7 @@ export const en: I18nKeys = {
     readyCopy: 'Create a temporary room and share its Call ID. Both participants need a configured VoiceShield server to connect.',
     create: 'Create call', creating: 'Creating room…', callId: 'Call ID', callIdPlaceholder: 'Enter a Call ID to join', join: 'Join call',
     joining: 'Joining…', connected: 'Call connected', connecting: 'Connecting to protected room…', participants: 'Participants in call', waiting: 'Waiting for the other participant. Share the Call ID.',
-    participantConnected: 'Participant connected. Audio is sent directly through LiveKit.', microphoneOn: 'Microphone on', microphoneOff: 'Microphone off', audioOutput: 'Audio output',
+    participantConnected: 'Participant connected. Audio is sent directly through LiveKit.', microphoneOn: 'Microphone on', microphoneOff: 'Microphone off', audioOutput: 'Audio output', refreshAudio: 'Refresh audio devices', audioUnavailable: 'Audio devices are not ready yet. Refresh after the room connects.',
     shareCallId: 'Share Call ID', ending: 'Ending call…', end: 'End call', analysisBoundary: 'Live Shield runs separately and does not create a synthetic call transcript.',
     errorNetwork: 'The server cannot be reached. Check the URL, Wi-Fi network, and backend status.', errorAuthorization: 'The server rejected access. Check the API token in Setup.', errorUnavailable: 'Voice service is unavailable because LiveKit is not configured on the server.', errorNotFound: 'The room was not found or has already ended.',
     errorFallback: 'Could not connect to the protected call.', errorAudioOutput: 'Could not switch the audio output.', errorAudioDevices: 'Could not read available audio devices.', errorMicrophone: 'Microphone unavailable',

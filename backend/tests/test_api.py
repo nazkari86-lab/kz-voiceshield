@@ -78,6 +78,7 @@ def test_health_is_public_and_auth_is_required(api):
     assert client.get("/health").json() == {
         "ok": True,
         "version": "2.1.0",
+        "apiVersion": "v1",
         "mlAvailable": True,
     }
     readiness = client.get("/readyz")
@@ -85,6 +86,7 @@ def test_health_is_public_and_auth_is_required(api):
     assert readiness.json() == {
         "ok": True,
         "version": "2.1.0",
+        "apiVersion": "v1",
         "database": "ok",
         "mlAvailable": True,
         "serverSttConfigured": True,
@@ -106,6 +108,18 @@ def test_health_is_public_and_auth_is_required(api):
         ).status_code
         == 401
     )
+
+
+def test_diagnostics_is_authenticated_and_never_returns_secrets(api):
+    client, _ = api
+    assert client.get("/diagnostics").status_code == 401
+    response = client.get("/diagnostics", headers=auth("analyst-token"))
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["apiVersion"] == "v1"
+    assert payload["capabilities"]["serverPiiRedaction"] is True
+    assert "token" not in str(payload).lower()
+    assert "secret" not in str(payload).lower()
 
 
 def test_livekit_is_explicitly_disabled_without_server_secrets(api):

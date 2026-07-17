@@ -13,7 +13,7 @@ import type { Language } from '../I18nContext'
 import { colors } from '../theme'
 import { fitsDevice, recommendedModel, requiredStorageBytes, whisperModels } from '../data/whisperModels'
 import type { ModelStorageInfo, WhisperModelChoice } from '../data/whisperModels'
-import { getBackendConfig, saveBackendConfig, testBackendConnection } from '../services/backendConfig'
+import { getBackendConfig, inspectBackendTransport, saveBackendConfig, testBackendConnection, type BackendDiagnostics } from '../services/backendConfig'
 
 type Props = {
   modelReady: boolean
@@ -46,24 +46,32 @@ const Step = ({ label, status, statusLabel, disabled, onPress }: { label: string
 )
 
 function BackendConnectionPanel() {
+  const { lang } = useI18n()
+  const copy = lang === 'kz'
+    ? { title: 'Қосымша сервер және VoIP', detail: 'Сервер URL мен токен Android Keystore арқылы қауіпсіз сақталады және экспортталған істерге кірмейді.', save: 'Серверді сақтау', test: 'Қосылымды тексеру', version: 'Сервер нұсқасы', capabilities: 'Мүмкіндіктер', configured: 'Бапталмаған', secure: 'Android Keystore-де қауіпсіз сақталды', optional: 'Сервер URL сақталды; API token сервер талап еткенге дейін міндетті емес' }
+    : lang === 'ru'
+      ? { title: 'Дополнительный сервер и VoIP', detail: 'URL сервера и токен безопасно хранятся через Android Keystore и не попадают в экспортированные дела.', save: 'Сохранить сервер', test: 'Проверить подключение', version: 'Версия сервера', capabilities: 'Возможности', configured: 'Не настроено', secure: 'Безопасно сохранено в Android Keystore', optional: 'URL сервера сохранён; API token не обязателен, пока его не требует сервер' }
+      : { title: 'Optional backend and VoIP', detail: 'The server URL and token are stored through Android Keystore and never enter exported case files.', save: 'Save server', test: 'Test connection', version: 'Server version', capabilities: 'Capabilities', configured: 'Not configured', secure: 'Saved securely in Android Keystore', optional: 'Server URL saved; the API token is optional until your server requires it' }
   const [baseUrl, setBaseUrl] = useState('')
   const [token, setToken] = useState('')
-  const [status, setStatus] = useState('Not configured')
+  const [status, setStatus] = useState(copy.configured)
+  const [diagnostics, setDiagnostics] = useState<BackendDiagnostics | null>(null)
 
   useEffect(() => {
     void getBackendConfig().then((config) => {
       setBaseUrl(config.baseUrl)
       setToken(config.token)
-      setStatus(config.token ? 'Saved securely in Android Keystore' : 'Server URL saved; API token is optional until your server requires it')
+      setStatus(config.token ? copy.secure : copy.optional)
     }).catch(() => setStatus('Secure backend configuration is unavailable on this build'))
-  }, [])
+  }, [copy.optional, copy.secure])
 
   const save = async () => {
     try {
       const config = await saveBackendConfig({ baseUrl, token })
       setBaseUrl(config.baseUrl)
       setToken(config.token)
-      setStatus('Backend configuration saved securely')
+      const transport = inspectBackendTransport(config.baseUrl)
+      setStatus(transport.warning ?? copy.secure)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not save backend configuration')
     }
@@ -73,7 +81,9 @@ function BackendConnectionPanel() {
     try {
       const config = await saveBackendConfig({ baseUrl, token })
       setBaseUrl(config.baseUrl)
-      setStatus((await testBackendConnection(config)).detail)
+      const result = await testBackendConnection(config)
+      setDiagnostics(result)
+      setStatus(result.warning ?? result.detail)
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Connection test failed')
     }
@@ -81,15 +91,20 @@ function BackendConnectionPanel() {
 
   return (
     <View style={styles.backendPanel}>
-      <Text style={styles.noticeTitle}>Optional backend and VoIP</Text>
-      <Text style={styles.copy}>The server URL and token are stored through SecureStorage, backed by Android Keystore. They never enter exported case files.</Text>
+      <Text style={styles.noticeTitle}>{copy.title}</Text>
+      <Text style={styles.copy}>{copy.detail}</Text>
       <TextInput accessibilityLabel="VoiceShield backend URL" autoCapitalize="none" autoCorrect={false} keyboardType="url" onChangeText={setBaseUrl} placeholder="https://api.example.kz" placeholderTextColor={colors.muted} style={styles.backendInput} value={baseUrl} />
       <TextInput accessibilityLabel="VoiceShield backend token" autoCapitalize="none" autoCorrect={false} onChangeText={setToken} placeholder="API token (optional)" placeholderTextColor={colors.muted} secureTextEntry style={styles.backendInput} value={token} />
       <View style={styles.row}>
-        <Pressable style={styles.secondary} onPress={() => { void save() }}><Text style={styles.secondaryText}>Save server</Text></Pressable>
-        <Pressable style={styles.primary} onPress={() => { void test() }}><Text style={styles.primaryText}>Test connection</Text></Pressable>
+        <Pressable style={styles.secondary} onPress={() => { void save() }}><Text style={styles.secondaryText}>{copy.save}</Text></Pressable>
+        <Pressable style={styles.primary} onPress={() => { void test() }}><Text style={styles.primaryText}>{copy.test}</Text></Pressable>
       </View>
       <Text style={styles.backendStatus}>{status}</Text>
+      {diagnostics ? <View style={styles.diagnosticPanel}>
+        <Text style={styles.diagnosticTitle}>{copy.version}: {diagnostics.version ?? 'unknown'} · API {diagnostics.apiVersion ?? 'unknown'}</Text>
+        <Text style={styles.diagnosticTitle}>{copy.capabilities}</Text>
+        <Text style={styles.diagnosticCopy}>{Object.entries(diagnostics.capabilities).map(([name, enabled]) => `${name}: ${enabled ? 'ready' : 'unavailable'}`).join(' · ') || 'No capability metadata returned'}</Text>
+      </View> : null}
     </View>
   )
 }
@@ -346,4 +361,7 @@ const styles = StyleSheet.create({
   backendPanel: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 9, marginTop: 12, padding: 14 },
   backendInput: { backgroundColor: '#fff', borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, minHeight: 44, paddingHorizontal: 11 },
   backendStatus: { color: colors.sub, fontSize: 12, lineHeight: 17 },
+  diagnosticPanel: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 7, borderWidth: 1, gap: 4, padding: 10 },
+  diagnosticTitle: { color: colors.ink, fontSize: 12, fontWeight: '900' },
+  diagnosticCopy: { color: colors.sub, fontSize: 11, lineHeight: 16 },
 })

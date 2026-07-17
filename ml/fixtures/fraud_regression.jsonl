@@ -1,0 +1,3 @@
+{"id":"bank-otp","text":"Срочно назовите код из SMS и переведите деньги на безопасный счет","expectedRisk":"critical","expectedMinimumScore":70}
+{"id":"safe-clinic","text":"Напоминаем о записи в клинику. Проверьте дату через официальный сайт, код никому не сообщайте.","expectedRisk":"low","expectedMinimumScore":0}
+{"id":"kz-investment","text":"Біз инвестициялық платформа өкіліміз. Бүгін ғана депозит салсаңыз, табыс 30 пайыз болады. Қазір Kaspi арқылы ақша аударыңыз, менеджер Telegram ботқа сілтеме жібереді. Ұсыныс құпия.","expectedRisk":"high","expectedMinimumScore":50}

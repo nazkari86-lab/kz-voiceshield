@@ -37,10 +37,14 @@ const featureCatalog: KnowledgeNode[] = [
   { id: 'feature:voip', type: 'feature', title: 'VoiceShield VoIP', summary: 'Создаёт защищённую VoIP-комнату только при настроенном LiveKit-compatible backend. Обычные мобильные звонки не переводятся в VoIP автоматически.', tags: ['voip', 'livekit', 'backend'], status: 'available' },
   { id: 'feature:verify', type: 'feature', title: 'Official verification', summary: 'Направляет пользователя к независимой проверке банка, организации или номера через официальные каналы, а не по реквизитам из подозрительного сообщения.', tags: ['verify', 'bank', 'safe-action'], status: 'active' },
   { id: 'feature:ml-shadow', type: 'feature', title: 'ML shadow score', summary: 'Сравнивает экспериментальный ML-score с rules и показывает disagreement. Он не заменяет rule engine и не принимает live решения.', tags: ['ml', 'disagreement', 'safety'], status: 'experimental' },
+  { id: 'feature:quality-lab', type: 'feature', title: 'Offline quality lab', summary: 'Создаёт воспроизводимые WER/CER, fraud-regression и device-benchmark отчёты из локальных данных. Это не меняет Live Shield и не доказывает качество обычного телефонного звонка без Xiaomi-теста.', tags: ['quality', 'asr', 'benchmark', 'offline'], status: 'active' },
   { id: 'feature:privacy', type: 'feature', title: 'Privacy controls', summary: 'Хранит ключи и доверенный контакт через Android Keystore, удаляет локальные данные по запросу и требует отдельного согласия на облако, SMS и donation.', tags: ['privacy', 'keystore', 'consent'], status: 'active' },
 ]
 
 const releaseCatalog: KnowledgeNode[] = [
+  { id: 'release:v2.0.6', type: 'release', title: 'v2.0.6 quality lab patch', summary: 'Добавляет offline ASR quality lab, fraud-regression fixtures, candidate ledger для VAD/deepfake, Number Shield phone-format validation и усиленную маскировку PII для облачного AI. Live Shield и native аудиопайплайн не менялись.', tags: ['release', 'quality', 'privacy', 'benchmark'], version: '2.0.6', status: 'active' },
+  { id: 'release:v2.0.5', type: 'release', title: 'v2.0.5 safe product workflow patch', summary: 'Добавляет backend diagnostics, обновление VoIP audio outputs, поиск и фильтры дел, dataset split audit и расширенную локализацию SMS. Live Shield и native аудиопайплайн не менялись.', tags: ['release', 'workflow', 'i18n', 'diagnostics'], version: '2.0.5', status: 'active' },
+  { id: 'release:v2.0.4', type: 'release', title: 'v2.0.4 local backend patch', summary: 'Разрешает подключение к локальному backend по HTTP только для доверенной LAN-сети. Это не делает публичный HTTP безопасным: для внешнего сервера необходим HTTPS.', tags: ['release', 'backend', 'lan', 'security'], version: '2.0.4', status: 'active' },
   { id: 'release:v2.0.3', type: 'release', title: 'v2.0.3 patch release', summary: 'Исправляет переполнение Family contacts, обрывы облачных AI-ответов, SMS false positives, каталог функций knowledge graph и idle walkthrough UI. Нужна отдельная проверка на физическом Xiaomi.', tags: ['release', 'patch', 'fixes'], version: '2.0.3', status: 'active' },
   { id: 'release:v2.0.2', type: 'release', title: 'v2.0.2 verified baseline', summary: 'Подтверждённая пользователем Xiaomi baseline, сохранённая для отката и сравнения с patch-релизами.', tags: ['release', 'baseline', 'xiaomi'], version: '2.0.2', status: 'available' },
   { id: 'release:v2.0.0', type: 'release', title: 'v2.0.0 historical baseline', summary: 'Историческая private-beta baseline. Репозиторий не содержит полного машинно-проверенного списка различий между каждым старым релизом; ассистент обязан сообщать это вместо догадок.', tags: ['release', 'history', 'private-beta'], version: '2.0.0', status: 'available' },
@@ -59,8 +63,8 @@ export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null, run
   modelNodes.push(
     { id: 'model:qolda-q4', type: 'model', title: 'Qolda Q4_K_M', summary: 'Локальный казахско-русский semantic coprocessor.', tags: ['llm', 'kz', 'ru', 'semantic'], status: 'downloadable', bytes: qoldaVariants.balanced.size },
     { id: 'model:qolda-q5', type: 'model', title: 'Qolda Q5_K_M', summary: 'Более точный локальный разбор казахского текста.', tags: ['llm', 'kz', 'ru', 'semantic'], status: 'downloadable', bytes: qoldaVariants.maximum.size },
-    { id: 'model:silero-vad', type: 'model', title: 'Silero VAD', summary: 'ONNX-детектор речи в аудиопотоке.', tags: ['vad', 'audio', 'onnx'], status: 'active', bytes: 2_327_524 },
-    { id: 'model:lcnn-anti-spoof', type: 'model', title: 'LCNN anti-spoof', summary: 'Исследовательский checkpoint для bona-fide/spoof аудио.', tags: ['deepfake', 'audio', 'asvspoof'], status: 'experimental', bytes: 3_610_050 },
+    { id: 'model:silero-vad', type: 'model', title: 'Silero VAD', summary: 'Кандидат ONNX для offline оценки наличия речи и качества аудио. Не bundled, не запущен и не подключён к Live Shield.', tags: ['vad', 'audio', 'onnx'], status: 'blocked', bytes: 2_327_524 },
+    { id: 'model:lcnn-anti-spoof', type: 'model', title: 'LCNN anti-spoof', summary: 'Кандидат checkpoint для offline bona-fide/spoof оценки. Нужны checksum, конверсия и RU/KZ telephony evaluation до любого использования.', tags: ['deepfake', 'audio', 'asvspoof'], status: 'blocked', bytes: 3_610_050 },
   )
 
   const runtimeAdvice: KnowledgeNode[] = []
@@ -73,6 +77,7 @@ export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null, run
     { id: 'dataset:fraud-transfer', type: 'dataset', title: 'Fraud transfer corpora', summary: 'DiFraud и multilingual fraud data; transfer-only, не RU/KZ gold labels.', tags: ['fraud', 'text', 'transfer'], status: 'experimental' },
     { id: 'dataset:asvspoof', type: 'dataset', title: 'ASVspoof2021 DF', summary: 'Bona-fide/deepfake audio labels for anti-spoof evaluation.', tags: ['deepfake', 'audio', 'benchmark'], status: 'available' },
     { id: 'dataset:kazakh-asr', type: 'dataset', title: 'Kazakh Speech Dataset', summary: 'Казахская речь и транскрипты для ASR quality evaluation.', tags: ['kz', 'asr', 'speech'], status: 'available' },
+    { id: 'dataset:common-voice', type: 'dataset', title: 'Mozilla Common Voice RU/KZ', summary: 'Публичные CC0 speech corpora для offline WER/CER evaluation. Не скачиваются в APK и не являются fraud labels.', tags: ['ru', 'kz', 'asr', 'benchmark'], status: 'available' },
     { id: 'advice:phone-audio', type: 'advice', title: 'Для звонка включите громкую связь', summary: 'Android обычно не отдаёт стороннему приложению внутренний downlink call audio.', tags: ['call', 'xiaomi', 'audio'], status: 'active' },
     { id: 'advice:auto-model', type: 'advice', title: 'Автовыбор модели', summary: 'Учитывает RAM, свободное место, размер загрузки и reserve space.', tags: ['model', 'storage', 'ram'], status: 'active' },
     { id: 'diagnostic:real-xiaomi', type: 'diagnostic', title: 'Реальный Xiaomi call test', summary: 'Нужен физический телефон: эмулятор не проверяет Telecom audio route.', tags: ['qa', 'xiaomi', 'call'], status: 'blocked' },
@@ -82,10 +87,10 @@ export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null, run
 
   const edges: KnowledgeEdge[] = ([
     ...featureCatalog.map((feature) => ['app:voiceshield', feature.id, 'provides'] as [string, string, string]),
-    ['app:voiceshield', 'release:v2.0.3', 'current patch release'], ['release:v2.0.3', 'release:v2.0.2', 'succeeds'], ['release:v2.0.2', 'release:v2.0.0', 'succeeds'],
+    ['app:voiceshield', 'release:v2.0.6', 'current patch release'], ['release:v2.0.6', 'release:v2.0.5', 'succeeds'], ['release:v2.0.5', 'release:v2.0.4', 'succeeds'], ['release:v2.0.4', 'release:v2.0.3', 'succeeds'], ['release:v2.0.3', 'release:v2.0.2', 'succeeds'], ['release:v2.0.2', 'release:v2.0.0', 'succeeds'],
     ['feature:live-shield', 'feature:transcript-correction', 'feeds'], ['feature:live-shield', 'feature:ml-shadow', 'compares'],
-    ['feature:live-shield', 'model:silero-vad', 'uses'], ['feature:live-shield', 'model:fastconformer', 'uses'], ['feature:transcript-correction', 'model:qolda-q4', 'can use'],
-    ['feature:transcript-correction', 'dataset:kazakh-asr', 'evaluates against'], ['feature:ml-shadow', 'dataset:fraud-transfer', 'trained with'], ['model:lcnn-anti-spoof', 'dataset:asvspoof', 'trained/evaluated on'],
+    ['feature:live-shield', 'model:fastconformer', 'uses'], ['feature:transcript-correction', 'model:qolda-q4', 'can use'],
+    ['feature:quality-lab', 'dataset:kazakh-asr', 'evaluates against'], ['feature:quality-lab', 'dataset:common-voice', 'evaluates against'], ['feature:quality-lab', 'model:silero-vad', 'candidate evaluation'], ['feature:quality-lab', 'model:lcnn-anti-spoof', 'candidate evaluation'], ['feature:ml-shadow', 'dataset:fraud-transfer', 'trained with'], ['model:lcnn-anti-spoof', 'dataset:asvspoof', 'trained/evaluated on'],
     ['feature:cases', 'feature:ml-shadow', 'reviews'], ['feature:live-shield', 'advice:phone-audio', 'requires'], ['app:voiceshield', 'advice:auto-model', 'uses'],
     ['diagnostic:real-xiaomi', 'feature:live-shield', 'validates'],
   ] as Array<[string, string, string]>).map(([from, to, relation]) => ({ from, to, relation }))

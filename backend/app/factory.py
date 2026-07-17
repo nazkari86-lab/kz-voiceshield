@@ -77,7 +77,20 @@ def create_app(
         return {
             "ok": True,
             "version": app.version,
+            "apiVersion": "v1",
             "mlAvailable": resolved_model.available,
+        }
+
+    def service_capabilities() -> dict[str, bool]:
+        return {
+            "serverStt": resolved_transcriber.__class__.__name__
+            != "DisabledTranscriber",
+            "serverVad": resolved_transcriber.__class__.__name__
+            == "FasterWhisperTranscriber",
+            "liveKitVoip": livekit_configured(),
+            "serverPiiRedaction": True,
+            "trainedKazakhStreamingAsr": False,
+            "deepfakeModel": False,
         }
 
     @app.get("/readyz")
@@ -86,6 +99,7 @@ def create_app(
         return {
             "ok": database_ok,
             "version": app.version,
+            "apiVersion": "v1",
             "database": "ok" if database_ok else "failed",
             "mlAvailable": resolved_model.available,
             "serverSttConfigured": resolved_transcriber.__class__.__name__
@@ -99,16 +113,7 @@ def create_app(
                     resolved_settings.livekit_api_secret,
                 )
             ),
-            "capabilities": {
-                "serverStt": resolved_transcriber.__class__.__name__
-                != "DisabledTranscriber",
-                "serverVad": resolved_transcriber.__class__.__name__
-                == "FasterWhisperTranscriber",
-                "liveKitVoip": livekit_configured(),
-                "serverPiiRedaction": True,
-                "trainedKazakhStreamingAsr": False,
-                "deepfakeModel": False,
-            },
+            "capabilities": service_capabilities(),
         }
 
     def livekit_configured() -> bool:
@@ -119,6 +124,20 @@ def create_app(
                 resolved_settings.livekit_api_secret,
             )
         )
+
+    @app.get("/diagnostics")
+    def diagnostics(principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        """Authenticated operational metadata; never returns tokens, keys, or case data."""
+        database_ok = repository.health_check()
+        repository.audit(principal.user_id, "backend_diagnostics_read", {})
+        return {
+            "ok": database_ok,
+            "apiVersion": "v1",
+            "serviceVersion": app.version,
+            "capabilities": service_capabilities(),
+            "limits": {"maxAudioBytes": resolved_settings.max_audio_bytes},
+            "privacy": {"retainAudio": resolved_settings.retain_audio, "serverPiiRedaction": True},
+        }
 
     def livekit_token(room: str, identity: str, name: str) -> str:
         try:

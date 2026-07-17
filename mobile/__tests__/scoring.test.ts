@@ -1,4 +1,4 @@
-import { analyzeTranscript, callSignalsFromVerification, deviceSignalsFromPackage, notificationSignalsFromId, phoneReputationSignals, redactSensitiveText, serializeCase, type SavedCase } from '../src/scoring'
+import { analyzeTranscript, callSignalsFromVerification, datasetSplitAudit, deviceSignalsFromPackage, exportSplitJson, notificationSignalsFromId, phoneReputationSignals, redactSensitiveText, serializeCase, type SavedCase } from '../src/scoring'
 
 describe('mobile scoring', () => {
   it('flags bank OTP transfer scripts as critical', () => {
@@ -81,5 +81,35 @@ describe('mobile scoring', () => {
     const exported = JSON.stringify(serializeCase(item))
     expect(exported).not.toContain('123456')
     expect(exported).toContain('[REDACTED]')
+  })
+
+  it('creates a deterministic, auditable split from trusted reviewed cases only', () => {
+    const analysis = analyzeTranscript('Переведите деньги на безопасный счёт и назовите код.')
+    const makeCase = (id: string, trusted: boolean, label: SavedCase['label']): SavedCase => ({
+      id,
+      createdAt: '2026-07-17T00:00:00Z',
+      updatedAt: '2026-07-17T00:00:00Z',
+      fileName: 'case.txt',
+      transcript: 'Тестовая расшифровка',
+      provenance: { origin: 'manual', trusted },
+      label,
+      status: 'new',
+      assignedTo: 'Triage queue',
+      flags: { bankContactNeeded: false, customerCallbackNeeded: false, evidenceBundleReady: false },
+      analystNote: '',
+      decisionHistory: [],
+      auditLog: [],
+      incidentTimeline: [],
+      analysis,
+    })
+    const cases = [makeCase('case-b', true, 'true_positive'), makeCase('case-a', true, 'false_positive'), makeCase('case-c', false, 'needs_review'), makeCase('case-d', true, 'unreviewed')]
+    const first = datasetSplitAudit(cases)
+    const second = datasetSplitAudit([...cases].reverse())
+    const exported = JSON.parse(exportSplitJson(cases)) as { splitAudit: typeof first; train: unknown[]; dev: unknown[]; test: unknown[] }
+
+    expect(first).toEqual(second)
+    expect(first).toMatchObject({ eligibleCaseCount: 2, frozen: true, strategy: 'stable-id-sort-70-15-15' })
+    expect(exported.splitAudit).toEqual(first)
+    expect(exported.train.length + exported.dev.length + exported.test.length).toBe(2)
   })
 })

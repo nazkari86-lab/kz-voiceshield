@@ -36,8 +36,10 @@ SSO and exchange the user session for short-lived API tokens.
 - Uploads are allowlisted by media type and size-limited.
 - The service refuses to start without an encryption key and token map.
 - The experimental transfer model returns `503` when no valid model bundle is configured.
-- `GET /readyz` reports database reachability, model availability, STT configuration,
-  audio retention, and max upload size for container/load-balancer health checks.
+- `GET /readyz` reports database reachability, API version, model availability, STT configuration,
+  audio retention, max upload size, and capability flags for container/load-balancer health checks.
+- Authenticated `GET /diagnostics` exposes operational metadata for the mobile setup
+  screen without returning tokens, encryption keys, case data, or audio.
 - Reviewer workflow updates can include `expectedUpdatedAt`; stale versions return
   `409` instead of silently overwriting another reviewer.
 
@@ -59,7 +61,9 @@ configure `backend/.env` with a LAN address such as `ws://192.168.1.10:7880`, th
 run `scripts/run-mac-voip-server.sh` and `scripts/run-mac-backend.sh` in separate
 terminals. The Android app stores the backend URL and API token in Android Keystore.
 The Mac firewall must allow TCP 7880/7881 and UDP 7882 on the same Wi-Fi network.
-Use TLS, a domain and TURN before exposing it outside the local network.
+`http://<private-LAN-IP>:8000` is acceptable only for a trusted private Wi-Fi test.
+Use TLS, a domain and TURN before exposing it outside the local network; never use
+plain HTTP on public Wi-Fi or for production personal data.
 
 ## Audio transcription
 

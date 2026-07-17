@@ -9,6 +9,7 @@ import { buildKnowledgeGraph, type KnowledgeGraph } from '../data/knowledgeGraph
 import { whisperModels } from '../data/whisperModels'
 import { loadKnowledgeNotes, saveKnowledgeNote, type KnowledgeNote } from '../utils/knowledgeNotes'
 import { useI18n } from '../I18nContext'
+import { qualityLabManifest, qualityLabPolicy } from '../data/qualityLabManifest'
 
 function KnowledgeNotesPanel({ graph }: { graph: KnowledgeGraph }) {
   const { lang } = useI18n()
@@ -118,6 +119,18 @@ export function ModelView() {
         <Text style={styles.body}>Large ASR and GGUF files are downloaded only after consent and verified by size and SHA-256; they are not silently embedded into the APK.</Text>
       </Card>
 
+      <SectionTitle>Offline quality lab</SectionTitle>
+      <Card tone="medium">
+        <Text style={styles.body}>Runs reproducible ASR and fraud-regression reports outside Live Shield. Candidate models cannot download themselves, enter the APK, or affect a call.</Text>
+        <Text style={styles.policy}>Promotion: {qualityLabPolicy.promotionRule}</Text>
+        {qualityLabManifest.map((asset) => (
+          <View key={asset.id} style={styles.labRow}>
+            <View style={styles.packCopy}><Text style={styles.rowKey}>{asset.title}</Text><Text style={styles.packPurpose}>{asset.role} · {asset.detail}</Text></View>
+            <Text style={[styles.statusChip, asset.status === 'ready' ? styles.bundled : asset.status === 'candidate' ? styles.downloadable : styles.external]}>{asset.status.toUpperCase()}</Text>
+          </View>
+        ))}
+      </Card>
+
       <SectionTitle>Experimental ML model</SectionTitle>
       <Card>
         <Text style={styles.title}>Baseline {ml.version}</Text>
@@ -203,6 +216,8 @@ const styles = StyleSheet.create({
   period: { color: colors.brandDark, fontSize: 11, fontWeight: '900' },
   packCopy: { flex: 1, gap: 2 },
   packPurpose: { color: colors.muted, fontSize: 11 },
+  labRow: { flexDirection: 'row', gap: 10, paddingTop: 9 },
+  policy: { color: colors.sub, fontSize: 11, lineHeight: 16, marginTop: 8 },
   statusChip: { borderRadius: 6, borderWidth: 1, fontSize: 9, fontWeight: '900', paddingHorizontal: 7, paddingVertical: 5 },
   bundled: { backgroundColor: '#dcfce7', borderColor: '#86efac', color: '#166534' },
   downloadable: { backgroundColor: '#dbeafe', borderColor: '#93c5fd', color: '#1d4ed8' },

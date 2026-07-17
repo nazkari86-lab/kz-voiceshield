@@ -1,0 +1,3 @@
+{"id":"kk-clean-1","language":"kk","reference":"Қауіпсіздік кодын ешкімге айтпаңыз","hypothesis":"Қауіпсіздік кодын ешкімге айтпаңыз","domain":"clean"}
+{"id":"ru-bank-1","language":"ru","reference":"Назовите код из СМС для отмены операции","hypothesis":"Назовите код из SMS для отмены операции","domain":"banking"}
+{"id":"mixed-1","language":"mixed","reference":"Kaspi кодын айтпаңыз это мошенники","hypothesis":"Kaspi кодын айтпаңыз это мошенники","domain":"mixed"}

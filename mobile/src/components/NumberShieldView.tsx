@@ -8,6 +8,7 @@ import { colors } from '../theme'
 import { LocalizedText as Text } from './LocalizedText'
 import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
 import { AiAssistButton } from './AiAssistButton'
+import { inspectPhoneIdentity } from '../utils/phoneIdentity'
 
 const defaultConfig: PhoneProtectionConfig = {
   enabled: false,
@@ -40,8 +41,6 @@ const relationships: { id: PhoneRelationship; label: string }[] = [
   { id: 'government', label: 'Government' }, { id: 'unknown', label: 'Other' },
 ]
 
-const normalizePhone = (value: string) => value.replace(/[^\d+]/g, '').trim()
-
 export function NumberShieldView({
   autoDeleteTranscript,
   onSetAutoDeleteTranscript,
@@ -62,14 +61,15 @@ export function NumberShieldView({
   const [label, setLabel] = useState('')
   const [relationship, setRelationship] = useState<PhoneRelationship>('unknown')
   const [familyProtected, setFamilyProtected] = useState(false)
+  const phoneIdentity = inspectPhoneIdentity(number)
 
   useEffect(() => {
     void CallModule.getProtectionConfig().then(setConfig).catch(() => setStatus('Call screening is not available on this build'))
   }, [])
 
   const run = async (operation: (normalized: string) => Promise<PhoneAssessment>, message: string) => {
-    const normalized = normalizePhone(number)
-    if (normalized.replace(/\D/g, '').length < 7) {
+    const normalized = phoneIdentity.canonical
+    if (!phoneIdentity.possible || normalized.replace(/\D/g, '').length < 3) {
       setStatus('Введите полный номер телефона перед выполнением действия')
       return
     }
@@ -129,13 +129,17 @@ export function NumberShieldView({
           value={number}
         />
         <View style={styles.row}>
-          <Action label="Check" tone="primary" onPress={() => { const normalized = normalizePhone(number); setScamMatch(checkScamNumber(normalized)); void run((value) => CallModule.evaluateNumber(value), 'Number checked locally') }} />
+          <Action label="Check" tone="primary" onPress={() => { setScamMatch(checkScamNumber(phoneIdentity.canonical)); void run((value) => CallModule.evaluateNumber(value), 'Number checked locally') }} />
           <Action label="Trust" onPress={() => { void run((value) => CallModule.setNumberDisposition(value, 'trusted'), 'Added to trusted list') }} />
           <Action label="Block" tone="danger" onPress={() => { void run((value) => CallModule.setNumberDisposition(value, 'blocked'), 'Added to block list') }} />
           <Action label="Neutral" onPress={() => { void run((value) => CallModule.setNumberDisposition(value, 'neutral'), 'Local disposition removed') }} />
           <Action label="Report spam" tone="danger" onPress={() => { void run((value) => CallModule.reportNumber(value, 'user_reported_spam'), 'Local complaint recorded') }} />
         </View>
       </View>
+      {number.trim() ? <View style={styles.formatNotice}>
+        <Text style={styles.formatTitle}>{phoneIdentity.kind === 'short-code' ? 'Short code' : phoneIdentity.valid ? 'Validated format' : 'Check number format'}</Text>
+        <Text style={styles.formatCopy}>{phoneIdentity.display} · {phoneIdentity.note}</Text>
+      </View> : null}
 
       {scamMatch && (
         <View style={[styles.panel, styles.scamAlert]}>
@@ -249,6 +253,9 @@ const styles = StyleSheet.create({
   confidenceTrack: { backgroundColor: '#dbeafe', borderRadius: 99, height: 7, overflow: 'hidden' },
   confidenceFill: { backgroundColor: colors.brand, borderRadius: 99, height: '100%' },
   confidenceCopy: { color: colors.sub, fontSize: 11, lineHeight: 16 },
+  formatNotice: { backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderRadius: 7, borderWidth: 1, gap: 3, padding: 10 },
+  formatTitle: { color: '#1d4ed8', fontSize: 11, fontWeight: '900' },
+  formatCopy: { color: '#334155', fontSize: 11, lineHeight: 16 },
   annotationTitle: { color: colors.ink, fontSize: 13, fontWeight: '900' },
   annotationComment: { backgroundColor: '#f8fafc', borderRadius: 6, color: colors.sub, fontSize: 13, lineHeight: 19, padding: 10 },
   reason: { color: '#334155', fontSize: 12, lineHeight: 18 },

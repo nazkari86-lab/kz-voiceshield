@@ -3,12 +3,15 @@ import { StyleSheet, Text, TextInput, View } from 'react-native'
 import { analyzeScamContent } from '../scamTools'
 import { colors, riskColor, riskLabel } from '../theme'
 import { ImageScanModule } from '../bridge/ImageScanBridge'
+import { ApkInspectorModule, assessApkRisk, type ApkInspection } from '../bridge/ApkInspectorBridge'
 import { MotionPressable } from './MotionPressable'
 
 export function ScamToolsView({ initialText, onAnalyzeAsCall }: { initialText?: string; onAnalyzeAsCall: (text: string) => void }) {
   const [text, setText] = useState(initialText ?? '')
   const [checked, setChecked] = useState(false)
   const [scanStatus, setScanStatus] = useState('')
+  const [apk, setApk] = useState<ApkInspection | null>(null)
+  const [apkStatus, setApkStatus] = useState('')
   const result = useMemo(() => analyzeScamContent(checked ? text : ''), [checked, text])
 
   useEffect(() => {
@@ -33,6 +36,18 @@ export function ScamToolsView({ initialText, onAnalyzeAsCall }: { initialText?: 
     } catch (error) {
       const code = error instanceof Error ? error.message : ''
       if (!code.includes('CANCELLED')) setScanStatus('Could not scan this image. Try a clearer screenshot.')
+    }
+  }
+
+  const inspectApk = async () => {
+    if (!ApkInspectorModule) { setApkStatus('APK inspection is available in the Android application.'); return }
+    setApkStatus('Reading APK metadata locally…')
+    try {
+      const inspection = await ApkInspectorModule.pickAndInspect()
+      setApk(inspection)
+      setApkStatus('APK metadata and requested permissions were checked locally. The file was not installed or uploaded.')
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('CANCELLED')) setApkStatus('Could not inspect this APK. Choose a valid Android APK file.')
     }
   }
 
@@ -62,6 +77,17 @@ export function ScamToolsView({ initialText, onAnalyzeAsCall }: { initialText?: 
       <MotionPressable onPress={() => { void scanImage() }} style={styles.imageButton}><Text style={styles.imageButtonText}>Scan QR or screenshot</Text><Text style={styles.imageButtonSub}>Local OCR + QR extraction</Text></MotionPressable>
       {scanStatus ? <Text style={styles.scanStatus}>{scanStatus}</Text> : null}
 
+      <View style={styles.apkPanel}>
+        <Text style={styles.apkTitle}>APK safety inspection</Text>
+        <Text style={styles.apkCopy}>Read package name, version, SHA-256 and requested permissions before installation. VoiceShield does not install, open or upload the APK.</Text>
+        <MotionPressable onPress={() => { void inspectApk() }} style={styles.apkButton}><Text style={styles.apkButtonText}>Choose APK to inspect</Text></MotionPressable>
+        {apkStatus ? <Text style={styles.scanStatus}>{apkStatus}</Text> : null}
+        {apk ? (() => {
+          const risk = assessApkRisk(apk)
+          return <View style={[styles.apkResult, risk.level === 'high' && styles.apkHigh]}><Text style={styles.apkName}>{apk.fileName}</Text><Text style={styles.apkMeta}>{apk.packageName || 'Unknown package'} · v{apk.versionName} ({apk.versionCode})</Text><Text style={styles.apkMeta}>SHA-256: {apk.sha256}</Text><Text style={styles.apkMeta}>Requested permissions: {apk.requestedPermissions.length}</Text><Text style={styles.apkRisk}>Permission review: {risk.level.toUpperCase()} {risk.score}/100</Text>{risk.findings.length ? risk.findings.map((finding) => <Text key={finding} style={styles.reason}>• {finding}</Text>) : <Text style={styles.safe}>No high-impact permission from the local review list was found. Verify the developer and source before installing.</Text>}</View>
+        })() : null}
+      </View>
+
       {checked && (
         <View style={[styles.result, { borderTopColor: riskColor[result.risk] }]}>
           <View style={styles.heading}>
@@ -77,7 +103,7 @@ export function ScamToolsView({ initialText, onAnalyzeAsCall }: { initialText?: 
 
       <View style={styles.limitations}>
         <Text style={styles.limitTitle}>Local image scanning</Text>
-        <Text style={styles.limitText}>QR codes and visible Latin/Cyrillic text are extracted on-device. APK reputation still needs a signed malware-intelligence provider.</Text>
+        <Text style={styles.limitText}>QR codes and visible Latin/Cyrillic text are extracted on-device. APK inspection reads declared metadata and permissions; it is not a malware verdict.</Text>
       </View>
     </View>
   )
@@ -102,6 +128,10 @@ const styles = StyleSheet.create({
   imageButtonText: { color: colors.brandDark, fontWeight: '900' },
   imageButtonSub: { color: colors.sub, fontSize: 11 },
   scanStatus: { color: colors.sub, fontSize: 12, lineHeight: 18 },
+  apkPanel: { backgroundColor: '#eef7f2', borderColor: '#a7d8be', borderRadius: 8, borderWidth: 1, gap: 7, padding: 13 },
+  apkTitle: { color: colors.ink, fontSize: 14, fontWeight: '900' }, apkCopy: { color: colors.sub, fontSize: 12, lineHeight: 18 },
+  apkButton: { alignSelf: 'flex-start', backgroundColor: '#fff', borderColor: colors.brand, borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 }, apkButtonText: { color: colors.brandDark, fontSize: 12, fontWeight: '900' },
+  apkResult: { backgroundColor: '#fff', borderColor: '#a7d8be', borderRadius: 7, borderWidth: 1, gap: 4, padding: 10 }, apkHigh: { borderColor: '#f87171', borderLeftWidth: 4 }, apkName: { color: colors.ink, fontSize: 13, fontWeight: '900' }, apkMeta: { color: colors.sub, fontSize: 10, lineHeight: 15 }, apkRisk: { color: '#9a3412', fontSize: 12, fontWeight: '900', marginTop: 3 },
   result: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderTopWidth: 4, borderWidth: 1, gap: 8, padding: 14 },
   heading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   resultTitle: { color: colors.ink, fontSize: 17, fontWeight: '900' },

@@ -20,6 +20,8 @@ class MainPackage : ReactPackage {
       DeviceSettingsModule(reactContext),
       NotificationAccessModule(reactContext),
       ShareIntentModule(reactContext),
+      ChatAttachmentModule(reactContext),
+      ApkInspectorModule(reactContext),
       ImageScanModule(reactContext),
       TrainingVoiceModule(reactContext),
       VoiceMessageModule(reactContext),

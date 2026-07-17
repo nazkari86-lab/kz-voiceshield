@@ -14,8 +14,8 @@ const DATA_CONSENT_PREFIX = 'voiceshield.cloud-data-consent.v1.'
 const LIVE_CONSENT_PREFIX = 'voiceshield.cloud-live-consent.v1.'
 const REQUEST_TIMEOUT_MS = 90_000
 const REQUEST_TIMEOUT_SECONDS = REQUEST_TIMEOUT_MS / 1_000
-export const CLOUD_OUTPUT_TOKEN_BUDGET = 1_600
-const MAX_CLOUD_CONTINUATIONS = 2
+export const CLOUD_OUTPUT_TOKEN_BUDGET = 2_400
+const MAX_CLOUD_CONTINUATIONS = 3
 export const ACTIVE_CLOUD_SPEECH_MODEL_KEY = 'voiceshield.cloud-speech-model.v1'
 
 type JsonRecord = Record<string, unknown>

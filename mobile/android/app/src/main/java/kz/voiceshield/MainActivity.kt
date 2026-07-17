@@ -45,6 +45,9 @@ class MainActivity : ReactActivity() {
     when {
       mimeType == "text/plain" -> receiveSharedText(intent)
       mimeType.startsWith("audio/") || mimeType == "application/ogg" -> receiveSharedAudio(intent)
+      mimeType.startsWith("image/") || mimeType == "application/pdf" || mimeType == "application/json" ||
+        mimeType == "application/csv" || mimeType == "application/zip" || mimeType == "application/x-zip-compressed" ||
+        mimeType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> receiveSharedChatAttachment(intent)
     }
   }
 
@@ -67,6 +70,18 @@ class MainActivity : ReactActivity() {
     uri ?: return
     VoiceMessageModule.pendingAudioUri = uri
     AppRegistry.sendEvent("VS_SHARED_AUDIO", Arguments.createMap())
+  }
+
+  private fun receiveSharedChatAttachment(intent: Intent) {
+    val uri: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+    } else {
+      @Suppress("DEPRECATION")
+      intent.getParcelableExtra(Intent.EXTRA_STREAM)
+    }
+    uri ?: return
+    ChatAttachmentModule.queueSharedAttachment(uri, intent.flags)
+    AppRegistry.sendEvent("VS_SHARED_CHAT_ATTACHMENT", Arguments.createMap())
   }
 
   companion object {

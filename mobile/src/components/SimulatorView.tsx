@@ -6,6 +6,9 @@ import { dailyTrainingScenario, examScenarios, scenarioSkill, trainingScenarios,
 import type { TrainingSkill } from '../training'
 import { TrainingVoiceModule } from '../bridge/TrainingVoiceBridge'
 
+type TrainingProgress = { bestScore: number; completedCount: number; skillMistakes: Partial<Record<TrainingSkill, number>>; lastCompletedAt?: string }
+const TRAINING_KEY = 'voiceshield.training.v2'
+
 export function SimulatorView() {
   const [scenarioId, setScenarioId] = useState<string | null>(null)
   const [stepIndex, setStepIndex] = useState(0)
@@ -19,16 +22,18 @@ export function SimulatorView() {
   const [examIndex, setExamIndex] = useState(0)
   const [examScores, setExamScores] = useState<number[]>([])
   const [examResult, setExamResult] = useState<number | null>(null)
+  const [skillMistakes, setSkillMistakes] = useState<Partial<Record<TrainingSkill, number>>>({})
   const reveal = useRef(new Animated.Value(0)).current
   const scenario = trainingScenarios.find((item) => item.id === scenarioId)
   const step = scenario?.steps[stepIndex]
 
   useEffect(() => {
-    void AsyncStorage.getItem('voiceshield.training.v1').then((stored) => {
+    void AsyncStorage.getItem(TRAINING_KEY).then((stored) => {
       if (!stored) return
-      const data = JSON.parse(stored) as { bestScore?: number; completedCount?: number }
+      const data = JSON.parse(stored) as Partial<TrainingProgress>
       setBestScore(data.bestScore ?? 0)
       setCompletedCount(data.completedCount ?? 0)
+      setSkillMistakes(data.skillMistakes ?? {})
     }).catch(() => undefined)
   }, [])
 
@@ -58,10 +63,13 @@ export function SimulatorView() {
     else {
       const score = trainingScore(answers)
       const nextBest = Math.max(bestScore, score)
+      const unsafeAnswers = answers.filter((answer) => !answer).length
+      const nextMistakes = unsafeAnswers > 0 ? { ...skillMistakes, [scenarioSkill(scenario)]: (skillMistakes[scenarioSkill(scenario)] ?? 0) + unsafeAnswers } : skillMistakes
       setBestScore(nextBest)
+      setSkillMistakes(nextMistakes)
       setCompletedCount((current) => {
         const nextCount = current + 1
-        void AsyncStorage.setItem('voiceshield.training.v1', JSON.stringify({ bestScore: nextBest, completedCount: nextCount }))
+        void AsyncStorage.setItem(TRAINING_KEY, JSON.stringify({ bestScore: nextBest, completedCount: nextCount, skillMistakes: nextMistakes, lastCompletedAt: new Date().toISOString() } satisfies TrainingProgress))
         return nextCount
       })
       if (examQueue.length > 0) {
@@ -126,11 +134,12 @@ export function SimulatorView() {
     return <View style={styles.result}><Text style={styles.kicker}>EXAM COMPLETE</Text><Text style={styles.title}>Fraud recognition score</Text><Text style={styles.score}>{examResult}<Text style={styles.outOf}>/100</Text></Text><Text style={styles.copy}>{examResult >= 80 ? 'You recognised the main pressure patterns. Review any unsafe answers before a real call.' : 'Review the weak skill cards, then take another exam.'}</Text><Pressable style={styles.primary} onPress={startExam}><Text style={styles.primaryText}>New exam</Text></Pressable><Pressable style={styles.secondary} onPress={() => setExamResult(null)}><Text style={styles.secondaryText}>Back to training</Text></Pressable></View>
   }
 
-  const daily = dailyTrainingScenario()
+  const weakSkill = (Object.entries(skillMistakes) as Array<[TrainingSkill, number]>).sort((left, right) => right[1] - left[1])[0]?.[0]
+  const daily = weakSkill ? trainingScenarios.find((item) => scenarioSkill(item) === weakSkill) ?? dailyTrainingScenario() : dailyTrainingScenario()
   const visibleScenarios = selectedSkill === 'all' ? trainingScenarios : trainingScenarios.filter((item) => scenarioSkill(item) === selectedSkill)
   return (
     <View>
-      <View style={styles.trainingHero}><Text style={styles.kicker}>VOICE LAB</Text><Text style={styles.trainingHeroTitle}>Scam call training</Text><Text style={styles.heroHint}>Practice decisions under pressure. No real call or personal data is used.</Text><View style={styles.stats}><Text style={styles.stat}>{completedCount} sessions</Text><Text style={styles.stat}>{bestScore} best score</Text><Text style={styles.stat}>{trainingScenarios.length} scenarios</Text></View></View>
+      <View style={styles.trainingHero}><Text style={styles.kicker}>VOICE LAB</Text><Text style={styles.trainingHeroTitle}>Scam call training</Text><Text style={styles.heroHint}>Practice decisions under pressure. No real call or personal data is used.</Text><View style={styles.stats}><Text style={styles.stat}>{completedCount} sessions</Text><Text style={styles.stat}>{bestScore} best score</Text><Text style={styles.stat}>{trainingScenarios.length} scenarios</Text></View>{weakSkill ? <Text style={styles.adaptive}>Recommended focus: {trainingSkillLabels[weakSkill]}. This is based only on your local training mistakes.</Text> : null}</View>
       <View style={styles.modeRow}><Pressable style={styles.daily} onPress={() => start(daily.id)}><Text style={styles.modeKicker}>TODAY</Text><Text style={styles.modeTitle}>{daily.title}</Text><Text style={styles.modeCopy}>Daily practice</Text></Pressable><Pressable style={styles.exam} onPress={startExam}><Text style={styles.modeKicker}>EXAM</Text><Text style={styles.modeTitle}>5-case challenge</Text><Text style={styles.modeCopy}>Measure your skills</Text></Pressable></View>
       <Text style={styles.filterTitle}>Practice by skill</Text>
       <View style={styles.filters}><Pressable style={[styles.filter, selectedSkill === 'all' && styles.filterActive]} onPress={() => setSelectedSkill('all')}><Text style={[styles.filterText, selectedSkill === 'all' && styles.filterTextActive]}>All</Text></Pressable>{(Object.keys(trainingSkillLabels) as TrainingSkill[]).map((skill) => <Pressable key={skill} style={[styles.filter, selectedSkill === skill && styles.filterActive]} onPress={() => setSelectedSkill(skill)}><Text style={[styles.filterText, selectedSkill === skill && styles.filterTextActive]}>{trainingSkillLabels[skill]}</Text></Pressable>)}</View>
@@ -153,6 +162,7 @@ const styles = StyleSheet.create({
   copy: { color: colors.sub, fontSize: 13, lineHeight: 19 },
   hint: { color: colors.sub, fontSize: 12, lineHeight: 18, marginBottom: 4 },
   heroHint: { color: '#d8ebe1', fontSize: 12, lineHeight: 18, marginBottom: 4 },
+  adaptive: { color: '#d8ebe1', fontSize: 11, lineHeight: 16, marginTop: 2 },
   stats: { flexDirection: 'row', gap: 8 }, stat: { backgroundColor: '#1e5948', borderRadius: 5, color: '#e8f7ef', fontSize: 11, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 5 },
   modeRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   daily: { backgroundColor: '#e8f7ef', borderColor: '#88c5ad', borderRadius: 8, borderWidth: 1, flex: 1, gap: 4, padding: 13 },

@@ -38,6 +38,10 @@ object CaptionSourcePolicy {
     "closedcaption",
     "closed_caption",
     "accessibility_caption",
+    "automatic_caption",
+    "speech_caption",
+    "live_transcribe",
+    "transcription_text",
   )
 
   private val blockedTextFragments = listOf(
@@ -49,12 +53,33 @@ object CaptionSourcePolicy {
     "downloaded apk",
     "notification shade",
     "quick settings",
+    "silent notifications",
+    "manage notifications",
+    "clear all",
+    "android system",
+    "mobile data",
+    "wi-fi",
+    "wifi",
+    "bluetooth",
     "панель уведомлений",
     "шторка уведомлений",
     "скачивание завершено",
     "загрузка завершена",
     "уведомление",
+    "быстрые настройки",
+    "очистить все",
+    "управление уведомлениями",
     "tiktok",
+  )
+
+  private val blockedClassFragments = listOf(
+    "notification",
+    "statusbar",
+    "status_bar",
+    "shade",
+    "qs",
+    "quicksettings",
+    "recents",
   )
 
   fun allowsText(packageName: String?): Boolean = packageName != null && packageName in allowedPackages
@@ -84,6 +109,7 @@ object CaptionSourcePolicy {
       .filterNotNull()
       .joinToString(" ")
       .lowercase()
+    if (blockedClassFragments.any(sourceFingerprint::contains)) return CaptionDecision(false, "notification_or_system_panel")
     val hasCaptionMarker = captionMarkers.any(sourceFingerprint::contains)
 
     if (pkg in systemUiPackages && !enhancedInspection) {
@@ -94,6 +120,17 @@ object CaptionSourcePolicy {
     }
 
     return CaptionDecision(true, "caption")
+  }
+
+  fun looksLikeCaptionUtterance(text: String): Boolean {
+    val normalized = text.trim()
+    if (normalized.length < 2 || normalized.length > 320) return false
+    if (looksLikeBlockedUiText(normalized)) return false
+    val letters = normalized.count { it.isLetter() }
+    val digits = normalized.count { it.isDigit() }
+    if (letters < 2) return false
+    if (digits > letters * 2 && digits > 8) return false
+    return true
   }
 
   private fun looksLikeBlockedUiText(text: String): Boolean {

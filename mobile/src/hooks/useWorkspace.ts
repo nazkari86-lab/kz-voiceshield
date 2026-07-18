@@ -121,6 +121,7 @@ export function useWorkspace() {
   // Dedup: last N chars from each source to prevent double-counting
   const lastLiveCaptionRef = useRef('')
   const lastWhisperRef = useRef('')
+  const lastCaptionTextAtRef = useRef(Date.now())
   // Temporal signals: track when each signal was received for decay
   const signalTimestampsRef = useRef<Map<string, number>>(new Map())
   const lastAudibleAtRef = useRef(Date.now())
@@ -316,7 +317,7 @@ export function useWorkspace() {
         }
       }
       if (event.captureStatus === 'rejected' && !event.text) {
-        setCaptureNotice('Live Caption text was not accepted because the visible source looked like notifications or another app. Keep the notification shade closed or use microphone fallback.')
+        setCaptureNotice(`Live Caption source was rejected (${event.captureReason ?? 'unknown source'}). Keep the notification shade closed, keep Live Caption visible, or use microphone fallback.`)
         return
       }
       if (event.text) {
@@ -324,6 +325,7 @@ export function useWorkspace() {
         // Dedup: skip if Whisper recently produced the same text
         if (lastWhisperRef.current && incoming && lastWhisperRef.current.includes(incoming)) return
         lastLiveCaptionRef.current = incoming
+        lastCaptionTextAtRef.current = Date.now()
         updateSource('Live Caption')
         setCaptureNotice(null)
         setTranscript((current) => `${current} ${event.text}`.trim())
@@ -431,6 +433,17 @@ export function useWorkspace() {
   }, [isListening, source])
 
   useEffect(() => {
+    if (!isListening || source !== 'Live Caption') return undefined
+    lastCaptionTextAtRef.current = Date.now()
+    const timer = setInterval(() => {
+      if (Date.now() - lastCaptionTextAtRef.current > 8000) {
+        setCaptureNotice('Live Caption is enabled, but VoiceShield is not receiving caption text yet. Keep the call screen visible, close the notification shade, and enable enhanced Live Caption filtering in Setup. Use microphone fallback if captions still do not appear.')
+      }
+    }, 2000)
+    return () => clearInterval(timer)
+  }, [isListening, source])
+
+  useEffect(() => {
     void OverlayModule.updateRisk(analysis.score, analysis.risk, source).catch(() => undefined)
   }, [analysis.risk, analysis.score, source])
 
@@ -509,6 +522,7 @@ export function useWorkspace() {
     setDeviceSignals((current) => current.filter((signal) => signal.id === 'caller_verification_failed' || signal.id === 'caller_unverified'))
     if (!privacyConsent) {
       setCaptureError('Review and accept the privacy notice in Setup before starting protection.')
+      captureTransitionRef.current = false
       return
     }
     try {
@@ -562,6 +576,17 @@ export function useWorkspace() {
     try {
       return await CallModule.endActiveCall()
     } catch {
+      return false
+    }
+  }, [])
+
+  const openActiveCallControls = useCallback(async () => {
+    try {
+      const opened = await CallModule.openActiveCallControls()
+      if (!opened) setCaptureNotice('No active VoiceShield call controls are available. Open the phone call from the system call notification.')
+      return opened
+    } catch {
+      setCaptureNotice('Could not open call controls. Use the Android call notification to return to the active call.')
       return false
     }
   }, [])
@@ -902,7 +927,7 @@ export function useWorkspace() {
     // capture
     isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript, autoDisconnectCritical, enhancedCaptionFiltering, modelStorage,
     startListening, stopListening, prepareWhisper, switchToMicrophoneFallback,
-    endActiveCall,
+    endActiveCall, openActiveCallControls,
     modelSizePref, updateModelSize, recognitionLanguage, updateRecognitionLanguage,
     updateAutoDisconnectCritical, updateEnhancedCaptionFiltering,
     repeatBonusData, llmAutoAnalysis, captureCompleteness,

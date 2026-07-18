@@ -149,6 +149,23 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
   }
 
   @ReactMethod
+  fun openActiveCallControls(promise: Promise) {
+    val active = VoiceShieldCallController.call
+    if (active == null) {
+      promise.resolve(false)
+      return
+    }
+    runCatching {
+      context.startActivity(
+        Intent(context, VoiceShieldCallActivity::class.java)
+          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+      )
+    }
+      .onSuccess { promise.resolve(true) }
+      .onFailure { promise.reject("CALL_CONTROLS_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
   fun evaluateNumber(number: String, promise: Promise) {
     runCatching {
       require(PhoneNumberUtils.normalizeNumber(number).length >= 3) { "Enter a visible phone number" }

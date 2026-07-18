@@ -32,11 +32,12 @@ type Props = {
   onOpenEmergency: () => void
   onOpenSimulator: () => void
   onOpenAi: () => void
+  onOpenCallControls: () => void
   onUseMicrophoneFallback: () => void
   onEndCall: () => Promise<boolean>
 }
 
-export function LiveView({ analysis, transcript, enhancement, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, liveAi, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onOpenAi, onUseMicrophoneFallback, onEndCall }: Props) {
+export function LiveView({ analysis, transcript, enhancement, source, isListening, audioLevel, error, notice, callStatus, storageError, trustedContactName, callbackWarning, liveAi, onChangeTranscript, onToggleListening, onSave, onExportReport, onCallTrusted, onOpenEmergency, onOpenSimulator, onOpenAi, onOpenCallControls, onUseMicrophoneFallback, onEndCall }: Props) {
   const { t } = useI18n()
   const [pauseRemaining, setPauseRemaining] = useState(0)
   const signalScale = useRef(new Animated.Value(1)).current
@@ -109,6 +110,12 @@ export function LiveView({ analysis, transcript, enhancement, source, isListenin
         <MotionPressable style={styles.fallbackButton} onPress={onUseMicrophoneFallback}>
           <Text style={styles.fallbackTitle}>{t.live.noCaptionTitle}</Text>
           <Text style={styles.fallbackCopy}>{t.live.noCaptionCopy}</Text>
+        </MotionPressable>
+      )}
+      {isListening && (
+        <MotionPressable style={styles.callControlsButton} onPress={onOpenCallControls}>
+          <Text style={styles.callControlsTitle}>Return to call controls</Text>
+          <Text style={styles.callControlsCopy}>Open End call, mute and speaker controls without stopping Live Shield.</Text>
         </MotionPressable>
       )}
       {storageError && <Text style={styles.error}>{storageError}</Text>}
@@ -223,6 +230,9 @@ const styles = StyleSheet.create({
   fallbackButton: { backgroundColor: colors.softBrand, borderColor: colors.brand, borderRadius: 8, borderWidth: 1, marginBottom: 12, padding: 12 },
   fallbackTitle: { color: colors.brandDark, fontSize: 13, fontWeight: '900' },
   fallbackCopy: { color: colors.sub, fontSize: 12, marginTop: 2 },
+  callControlsButton: { backgroundColor: '#ecfeff', borderColor: '#67e8f9', borderRadius: 8, borderWidth: 1, marginBottom: 12, padding: 12 },
+  callControlsTitle: { color: '#155e75', fontSize: 13, fontWeight: '900' },
+  callControlsCopy: { color: colors.sub, fontSize: 12, marginTop: 2 },
   signalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   signal: { backgroundColor: '#fff7ed', borderColor: '#fed7aa', borderRadius: 999, borderWidth: 1, color: '#9a3412', fontSize: 12, fontWeight: '800', paddingHorizontal: 10, paddingVertical: 6 },
   pauseCard: { backgroundColor: '#fff7ed', borderColor: '#fb923c', borderRadius: 14, borderWidth: 1, gap: 7, marginBottom: 12, padding: 14 },

@@ -2,12 +2,14 @@ package kz.voiceshield
 
 import android.accessibilityservice.AccessibilityService
 import android.util.Log
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityEvent
 import com.facebook.react.bridge.Arguments
 
 class AccessibilityReaderService : AccessibilityService() {
   private var lastRejectedAt = 0L
   private var lastRejectedReason = ""
+  private var lastAcceptedText = ""
 
   override fun onAccessibilityEvent(event: AccessibilityEvent?) {
     if (!ProtectionSessionState.isActive()) return
@@ -33,8 +35,16 @@ class AccessibilityReaderService : AccessibilityService() {
     )
 
     val payload = Arguments.createMap()
-    if (decision.accepted && text.isNotBlank()) {
-      payload.putString("text", text)
+    val fallback = if (!decision.accepted && ProtectionSessionState.enhancedCaptionFiltering()) findCaptionTextInTree(event) else null
+    val acceptedText = when {
+      decision.accepted && text.isNotBlank() -> text
+      fallback != null -> fallback
+      else -> null
+    }
+    if (!acceptedText.isNullOrBlank()) {
+      if (acceptedText == lastAcceptedText) return
+      lastAcceptedText = acceptedText
+      payload.putString("text", acceptedText)
       payload.putString("captureStatus", "caption")
     } else {
       maybeLogRejected(event, text, contentDescription, decision.reason)
@@ -53,6 +63,37 @@ class AccessibilityReaderService : AccessibilityService() {
   override fun onDestroy() {
     ProtectionSessionState.setActive(false)
     super.onDestroy()
+  }
+
+  private fun findCaptionTextInTree(event: AccessibilityEvent): String? {
+    val root = rootInActiveWindow ?: return null
+    val queue = ArrayDeque<AccessibilityNodeInfo>()
+    queue.add(root)
+    var inspected = 0
+    while (queue.isNotEmpty() && inspected < MAX_TREE_NODES) {
+      val node = queue.removeFirst()
+      inspected += 1
+      val nodeText = node.text?.toString()?.trim().orEmpty()
+      val nodeDescription = node.contentDescription?.toString()?.trim()
+      val candidate = nodeText.ifBlank { nodeDescription.orEmpty() }
+      if (candidate.isNotBlank()) {
+        val decision = CaptionSourcePolicy.evaluateText(
+          packageName = node.packageName?.toString() ?: event.packageName?.toString(),
+          eventType = event.eventType,
+          eventClassName = event.className?.toString(),
+          sourceClassName = node.className?.toString(),
+          sourceViewId = node.viewIdResourceName,
+          text = nodeText,
+          contentDescription = nodeDescription,
+          enhancedInspection = true,
+        )
+        if (decision.accepted && CaptionSourcePolicy.looksLikeCaptionUtterance(candidate)) return candidate
+      }
+      for (index in 0 until node.childCount) {
+        node.getChild(index)?.let(queue::add)
+      }
+    }
+    return null
   }
 
   private fun maybeAttachRejectedStatus(payload: com.facebook.react.bridge.WritableMap, reason: String) {
@@ -79,5 +120,9 @@ class AccessibilityReaderService : AccessibilityService() {
         "type=${event.eventType} window=${event.windowId} sourceClass=${source?.className} " +
         "viewId=${source?.viewIdResourceName} text=${text.take(120)} content=${contentDescription?.take(120)}",
     )
+  }
+
+  companion object {
+    private const val MAX_TREE_NODES = 160
   }
 }

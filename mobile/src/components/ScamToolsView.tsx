@@ -84,7 +84,17 @@ export function ScamToolsView({ initialText, onAnalyzeAsCall }: { initialText?: 
         {apkStatus ? <Text style={styles.scanStatus}>{apkStatus}</Text> : null}
         {apk ? (() => {
           const risk = assessApkRisk(apk)
-          return <View style={[styles.apkResult, risk.level === 'high' && styles.apkHigh]}><Text style={styles.apkName}>{apk.fileName}</Text><Text style={styles.apkMeta}>{apk.packageName || 'Unknown package'} · v{apk.versionName} ({apk.versionCode})</Text><Text style={styles.apkMeta}>SHA-256: {apk.sha256}</Text><Text style={styles.apkMeta}>Requested permissions: {apk.requestedPermissions.length}</Text><Text style={styles.apkRisk}>Permission review: {risk.level.toUpperCase()} {risk.score}/100</Text>{risk.findings.length ? risk.findings.map((finding) => <Text key={finding} style={styles.reason}>• {finding}</Text>) : <Text style={styles.safe}>No high-impact permission from the local review list was found. Verify the developer and source before installing.</Text>}</View>
+          return <View style={[styles.apkResult, risk.level === 'high' && styles.apkHigh]}>
+            <Text style={styles.apkName}>{apk.fileName}</Text>
+            <Text style={styles.apkMeta}>{apk.packageName || 'Unknown package'} · v{apk.versionName} ({apk.versionCode})</Text>
+            <Text style={styles.apkMeta}>SDK: min {apk.minSdkVersion || 'unknown'} · target {apk.targetSdkVersion || 'unknown'}</Text>
+            <Text style={styles.apkMeta}>Components: {apk.activityCount} activities · {apk.serviceCount} services · {apk.receiverCount} receivers</Text>
+            <Text style={styles.apkMeta}>APK SHA-256: {apk.sha256}</Text>
+            {apk.signingCertificateSha256.slice(0, 2).map((cert) => <Text key={cert} style={styles.apkMeta}>Signer SHA-256: {cert}</Text>)}
+            <Text style={styles.apkMeta}>Requested permissions: {apk.requestedPermissions.length}</Text>
+            <Text style={styles.apkRisk}>Permission review: {risk.level.toUpperCase()} {risk.score}/100</Text>
+            {risk.findings.length ? risk.findings.map((finding) => <Text key={finding} style={styles.reason}>• {finding}</Text>) : <Text style={styles.safe}>No high-impact permission from the local review list was found. Verify the developer and source before installing.</Text>}
+          </View>
         })() : null}
       </View>
 

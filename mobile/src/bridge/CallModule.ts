@@ -39,6 +39,7 @@ export type PhoneProtectionConfig = {
   blockUnknownNotContacts: boolean
   blockRepeated: boolean
   blockUnknownAtNight: boolean
+  repeatedMinIntervalSeconds: number
   nightStartHour: number
   nightEndHour: number
 }

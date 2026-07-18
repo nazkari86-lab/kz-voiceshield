@@ -26,6 +26,7 @@ data class PhoneProtectionConfig(
   val blockUnknownNotContacts: Boolean = false,
   val blockRepeated: Boolean = true,
   val blockUnknownAtNight: Boolean = false,
+  val repeatedMinIntervalSeconds: Int = 5,
   val nightStartHour: Int = 22,
   val nightEndHour: Int = 7,
 )
@@ -177,6 +178,7 @@ object PhoneReputationStore {
       blockUnknownNotContacts = prefs.getBoolean("blockUnknownNotContacts", false),
       blockRepeated = prefs.getBoolean("blockRepeated", true),
       blockUnknownAtNight = prefs.getBoolean("blockUnknownAtNight", false),
+      repeatedMinIntervalSeconds = prefs.getInt("repeatedMinIntervalSeconds", 5).coerceIn(1, 300),
       nightStartHour = prefs.getInt("nightStartHour", 22).coerceIn(0, 23),
       nightEndHour = prefs.getInt("nightEndHour", 7).coerceIn(0, 23),
     )
@@ -187,6 +189,7 @@ object PhoneReputationStore {
     listOf("enabled", "autoBlockCritical", "blockHidden", "blockInternational", "blockUnknownNotContacts", "blockRepeated", "blockUnknownAtNight").forEach { key ->
       (values[key] as? Boolean)?.let { editor.putBoolean(key, it) }
     }
+    (values["repeatedMinIntervalSeconds"] as? Number)?.toInt()?.coerceIn(1, 300)?.let { editor.putInt("repeatedMinIntervalSeconds", it) }
     (values["nightStartHour"] as? Number)?.toInt()?.coerceIn(0, 23)?.let { editor.putInt("nightStartHour", it) }
     (values["nightEndHour"] as? Number)?.toInt()?.coerceIn(0, 23)?.let { editor.putInt("nightEndHour", it) }
     editor.apply()
@@ -250,6 +253,7 @@ object PhoneReputationStore {
         international = normalized.startsWith("+") && !normalized.startsWith("+7"),
         complaintCount = complaint?.optInt("count", 0) ?: 0,
         recentCallCount = recent.count { it > now - WINDOW_MS },
+        rapidRepeatCount = recent.count { it in (now - cfg.repeatedMinIntervalSeconds * 1000L) until now },
         distinctRecentCallers = distinctRecentCallers,
         knownContact = knownContact,
         customRuleScore = when (customRuleMatch?.action) {
@@ -428,6 +432,7 @@ object PhoneReputationStore {
         put("blockUnknownNotContacts", cfg.blockUnknownNotContacts)
         put("blockRepeated", cfg.blockRepeated)
         put("blockUnknownAtNight", cfg.blockUnknownAtNight)
+        put("repeatedMinIntervalSeconds", cfg.repeatedMinIntervalSeconds)
         put("nightStartHour", cfg.nightStartHour)
         put("nightEndHour", cfg.nightEndHour)
       })

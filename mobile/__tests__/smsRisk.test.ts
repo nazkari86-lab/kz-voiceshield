@@ -21,4 +21,19 @@ describe('SMS risk scoring', () => {
 
     expect(result.score).toBeGreaterThanOrEqual(75)
   })
+
+  it('flags shortened links combined with urgent refund bait', () => {
+    const result = scoreSms('Срочно получите компенсацию сегодня: https://bit.ly/kaspi-refund')
+
+    expect(result.score).toBeGreaterThanOrEqual(20)
+    expect(result.reasons).toContain('uses a shortened link')
+    expect(result.reasons).toContain('uses prize, refund, or compensation bait')
+  })
+
+  it('flags direct APK downloads in messages', () => {
+    const result = scoreSms('Установите обновление банка сейчас: https://secure-example.kz/update.apk')
+
+    expect(result.score).toBeGreaterThanOrEqual(45)
+    expect(result.reasons).toContain('links directly to an installable or executable file')
+  })
 })

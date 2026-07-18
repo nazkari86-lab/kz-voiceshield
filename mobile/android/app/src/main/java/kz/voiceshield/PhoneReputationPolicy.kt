@@ -10,6 +10,7 @@ data class PhoneRiskInput(
   val international: Boolean = false,
   val complaintCount: Int = 0,
   val recentCallCount: Int = 1,
+  val rapidRepeatCount: Int = 0,
   val distinctRecentCallers: Int = 1,
   val knownContact: Boolean = false,
   val customRuleScore: Int = 0,
@@ -77,6 +78,10 @@ object PhoneReputationPolicy {
     if (input.recentCallCount >= 4) {
       score += if (input.blockRepeated && input.recentCallCount >= 7) 55 else 25
       reasons += "Repeated calls in a short period"
+    }
+    if (input.rapidRepeatCount > 0 && input.blockRepeated) {
+      score += minOf(45, input.rapidRepeatCount * 18)
+      reasons += "Rapid callback after a previous call"
     }
     if (input.distinctRecentCallers >= 8) {
       score += 30

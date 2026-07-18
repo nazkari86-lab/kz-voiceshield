@@ -244,6 +244,7 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
       putBoolean("blockUnknownNotContacts", config.blockUnknownNotContacts)
       putBoolean("blockRepeated", config.blockRepeated)
       putBoolean("blockUnknownAtNight", config.blockUnknownAtNight)
+      putInt("repeatedMinIntervalSeconds", config.repeatedMinIntervalSeconds)
       putInt("nightStartHour", config.nightStartHour)
       putInt("nightEndHour", config.nightEndHour)
     })

@@ -1,4 +1,5 @@
 import { analyzeScamContent } from '../src/scamTools'
+import { assessApkRisk, type ApkInspection } from '../src/bridge/ApkInspectorBridge'
 
 describe('scam tools', () => {
   it('flags a fake bank domain and APK download', () => {
@@ -18,5 +19,28 @@ describe('scam tools', () => {
     const result = analyzeScamContent('Kaspi guide https://guide.kaspi.kz/client')
     expect(result.reasons).not.toContain('Domain is not an official kaspi domain')
   })
-})
 
+  it('adds APK risk for old SDK and background-heavy packages', () => {
+    const inspection: ApkInspection = {
+      activityCount: 3,
+      fileName: 'sample.apk',
+      minSdkVersion: 21,
+      packageName: 'example.app',
+      receiverCount: 14,
+      requestedPermissions: ['android.permission.READ_SMS', 'android.permission.SYSTEM_ALERT_WINDOW'],
+      serviceCount: 9,
+      sha256: 'a'.repeat(64),
+      signingCertificateSha256: [],
+      sizeBytes: 42,
+      targetSdkVersion: 23,
+      versionCode: 1,
+      versionName: '1.0',
+    }
+
+    const risk = assessApkRisk(inspection)
+
+    expect(risk.level).toBe('high')
+    expect(risk.findings).toContain('target SDK is very old, which can bypass modern Android safety expectations')
+    expect(risk.findings).toContain('declares an unusually large number of background components')
+  })
+})

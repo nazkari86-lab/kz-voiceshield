@@ -7,7 +7,13 @@ export type ApkInspection = {
   versionCode: number
   sizeBytes: number
   sha256: string
+  targetSdkVersion: number
+  minSdkVersion: number
+  activityCount: number
+  serviceCount: number
+  receiverCount: number
   requestedPermissions: string[]
+  signingCertificateSha256: string[]
 }
 
 type ApkInspectorNativeModule = {
@@ -33,6 +39,9 @@ export function assessApkRisk(inspection: ApkInspection): ApkRisk {
   const findings = sensitivePermissions
     .filter(([permission]) => inspection.requestedPermissions.includes(permission))
     .map(([, reason]) => reason)
+  if (inspection.targetSdkVersion > 0 && inspection.targetSdkVersion < 26) findings.push('target SDK is very old, which can bypass modern Android safety expectations')
+  if (inspection.serviceCount + inspection.receiverCount > 20) findings.push('declares an unusually large number of background components')
+  if (inspection.signingCertificateSha256.length === 0) findings.push('signing certificate metadata was not available from the archive parser')
   const score = Math.min(95, findings.length * 18 + (inspection.packageName ? 0 : 30))
   return { score, level: score >= 55 ? 'high' : score >= 18 ? 'medium' : 'low', findings }
 }

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.provider.OpenableColumns
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.BaseActivityEventListener
@@ -67,19 +68,28 @@ class ApkInspectorModule(private val context: ReactApplicationContext) : ReactCo
           }
         }
       } ?: throw IllegalStateException("Could not open the APK")
-      val flags = if (android.os.Build.VERSION.SDK_INT >= 33) PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong()) else null
-      val archiveInfo = if (flags != null) context.packageManager.getPackageArchiveInfo(copy.absolutePath, flags) else @Suppress("DEPRECATION") context.packageManager.getPackageArchiveInfo(copy.absolutePath, PackageManager.GET_PERMISSIONS)
+      val inspectionFlags = PackageManager.GET_PERMISSIONS or PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or PackageManager.GET_RECEIVERS or signatureFlag()
+      val flags = if (Build.VERSION.SDK_INT >= 33) PackageManager.PackageInfoFlags.of(inspectionFlags.toLong()) else null
+      val archiveInfo = if (flags != null) context.packageManager.getPackageArchiveInfo(copy.absolutePath, flags) else @Suppress("DEPRECATION") context.packageManager.getPackageArchiveInfo(copy.absolutePath, inspectionFlags)
       val info = archiveInfo ?: throw IllegalArgumentException("Android could not read this APK")
       val result = Arguments.createMap().apply {
         putString("fileName", name)
         putString("packageName", info.packageName ?: "")
         putString("versionName", info.versionName ?: "unknown")
-        putDouble("versionCode", if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode.toDouble() else @Suppress("DEPRECATION") info.versionCode.toDouble())
+        putDouble("versionCode", if (Build.VERSION.SDK_INT >= 28) info.longVersionCode.toDouble() else @Suppress("DEPRECATION") info.versionCode.toDouble())
         putDouble("sizeBytes", size.toDouble())
         putString("sha256", digest.digest().joinToString("") { "%02x".format(it) })
+        putInt("targetSdkVersion", info.applicationInfo?.targetSdkVersion ?: 0)
+        putInt("minSdkVersion", if (Build.VERSION.SDK_INT >= 24) info.applicationInfo?.minSdkVersion ?: 0 else 0)
+        putInt("activityCount", info.activities?.size ?: 0)
+        putInt("serviceCount", info.services?.size ?: 0)
+        putInt("receiverCount", info.receivers?.size ?: 0)
         val permissions = Arguments.createArray()
         (info.requestedPermissions ?: emptyArray()).sorted().forEach { permissions.pushString(it) }
         putArray("requestedPermissions", permissions)
+        val signatures = Arguments.createArray()
+        signatureDigests(info).forEach { signatures.pushString(it) }
+        putArray("signingCertificateSha256", signatures)
       }
       promise.resolve(result)
     } catch (error: Exception) {
@@ -92,6 +102,20 @@ class ApkInspectorModule(private val context: ReactApplicationContext) : ReactCo
   }
 
   override fun invalidate() { context.removeActivityEventListener(activityListener); executor.shutdownNow(); super.invalidate() }
+
+  private fun signatureFlag(): Int = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else @Suppress("DEPRECATION") PackageManager.GET_SIGNATURES
+
+  private fun signatureDigests(info: android.content.pm.PackageInfo): List<String> {
+    val signatures = if (Build.VERSION.SDK_INT >= 28) {
+      val signingInfo = info.signingInfo ?: return emptyList()
+      if (signingInfo.hasMultipleSigners()) signingInfo.apkContentsSigners else signingInfo.signingCertificateHistory
+    } else {
+      @Suppress("DEPRECATION") info.signatures
+    } ?: return emptyList()
+    return signatures.map { signature ->
+      MessageDigest.getInstance("SHA-256").digest(signature.toByteArray()).joinToString("") { "%02x".format(it) }
+    }.distinct().take(8)
+  }
 
   companion object { const val REQUEST_INSPECT_APK = 4111; const val MAX_APK_BYTES = 512L * 1024 * 1024 }
 }

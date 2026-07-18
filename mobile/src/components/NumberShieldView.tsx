@@ -18,6 +18,7 @@ const defaultConfig: PhoneProtectionConfig = {
   blockUnknownNotContacts: false,
   blockRepeated: true,
   blockUnknownAtNight: false,
+  repeatedMinIntervalSeconds: 5,
   nightStartHour: 22,
   nightEndHour: 7,
 }
@@ -231,6 +232,21 @@ export function NumberShieldView({
       <Setting label="Treat international numbers as high risk" value={config.blockInternational} onChange={(value) => { void updateConfig({ blockInternational: value }) }} />
       <Setting label="Warn when number is not in contacts" value={config.blockUnknownNotContacts} onChange={(value) => { void updateConfig({ blockUnknownNotContacts: value }) }} />
       <Setting label="Escalate repeated calls" value={config.blockRepeated} onChange={(value) => { void updateConfig({ blockRepeated: value }) }} />
+      <View style={styles.setting}>
+        <Text style={styles.settingLabel}>Rapid callback window</Text>
+        <TextInput
+          accessibilityLabel="Rapid callback interval in seconds"
+          keyboardType="number-pad"
+          onChangeText={(value) => {
+            const next = Number(value.replace(/\D/gu, ''))
+            if (Number.isFinite(next) && next > 0) void updateConfig({ repeatedMinIntervalSeconds: Math.min(300, next) })
+          }}
+          placeholder="5"
+          placeholderTextColor={colors.muted}
+          style={styles.intervalInput}
+          value={String(config.repeatedMinIntervalSeconds)}
+        />
+      </View>
       <Setting label="Block unknown callers 22:00–07:00" value={config.blockUnknownAtNight} onChange={(value) => { void updateConfig({ blockUnknownAtNight: value }) }} />
       <Setting label="Delete transcript when protection stops" value={autoDeleteTranscript} onChange={(value) => { void onSetAutoDeleteTranscript(value) }} />
 
@@ -317,6 +333,7 @@ const styles = StyleSheet.create({
   section: { color: colors.ink, fontSize: 15, fontWeight: '900', marginTop: 5 },
   setting: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 52, paddingHorizontal: 13 },
   settingLabel: { color: colors.ink, flex: 1, fontSize: 13, fontWeight: '800', paddingRight: 8 },
+  intervalInput: { backgroundColor: '#fff', borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, fontSize: 13, fontWeight: '900', minWidth: 70, paddingHorizontal: 10, paddingVertical: 8, textAlign: 'center' },
   status: { color: colors.sub, fontSize: 12, lineHeight: 18 },
   scamAlert: { borderColor: '#dc2626', borderLeftWidth: 4, borderWidth: 1 },
   scamTitle: { color: '#991b1b', fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },

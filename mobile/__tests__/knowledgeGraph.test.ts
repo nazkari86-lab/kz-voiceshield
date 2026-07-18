@@ -17,10 +17,11 @@ describe('knowledge graph runtime state', () => {
   it('creates bounded, truthful product context for the assistant', () => {
     const graph = buildKnowledgeGraph()
     const context = buildAssistantKnowledgeContext(graph, 32)
-    expect(context).toContain('Version: 2.0.7')
+    expect(context).toContain('Version: 2.0.8')
     expect(context).toContain('Live Shield')
     expect(context).toContain('SMS Scanner')
     expect(context).toContain('Number Shield')
+    expect(context).toContain('v2.0.8 caption-source hardening')
     expect(context).toContain('v2.0.3 patch release')
     expect(context).toContain('v2.0.4 local backend patch')
     expect(context).toContain('v2.0.6 quality lab patch')

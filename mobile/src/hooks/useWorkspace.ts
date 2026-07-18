@@ -17,6 +17,7 @@ import { getRepeatRiskBonus, recordCall } from '../utils/callMemory'
 import { saveTranscriptEntry } from '../utils/transcriptHistory'
 import { addFineTuneExample } from '../utils/fineTuneDataCollector'
 import { assessTranscriptQuality } from '../utils/transcriptQuality'
+import { buildDonationReadiness, exportDonationJsonl } from '../utils/donationLab'
 import { modelFor, recommendedModel, whisperModels } from '../data/whisperModels'
 import type { ModelStorageInfo, WhisperModelChoice } from '../data/whisperModels'
 import {
@@ -152,6 +153,7 @@ export function useWorkspace() {
   const callbackInfo = useMemo(() => detectCallbackNumber(analysisTranscript), [analysisTranscript])
   const timeline = useMemo(() => sentenceTimeline(analysisTranscript), [analysisTranscript])
   const quality = useMemo(() => datasetQuality(cases), [cases])
+  const donationReadiness = useMemo(() => buildDonationReadiness(cases), [cases])
   const highSignals = analysis.evidence.filter((item) => item.severity === 'critical' || item.severity === 'high').length
 
   const datasetStageTotals = useMemo<[string, number][]>(
@@ -875,15 +877,13 @@ export function useWorkspace() {
     setDonationConsent(accepted)
   }, [])
 
-  // Shares the reviewer-labelled cases as a redacted training-schema JSONL. Rows
-  // are already redacted (codes/PIN/CVV/long numbers stripped) by serializeCase
-  // and carry provenance.trusted=false, so they stay untrusted until a reviewer
-  // confirms them. No upload happens unless the user picks a target in the sheet.
+  // Shares reviewer-labelled cases as an opt-in donation schema. Rows are
+  // redacted, quarantined, and never uploaded unless the user picks a target.
   const donateDataset = useCallback(() => {
     if (!donationConsent) return
-    const labelled = cases.filter((item) => item.label !== 'unreviewed')
-    if (labelled.length === 0) return
-    return share('VoiceShield donation (redacted, opt-in)', exportJsonl(labelled))
+    const payload = exportDonationJsonl(cases)
+    if (!payload) return
+    return share('VoiceShield donation lab (redacted, opt-in)', payload)
   }, [cases, donationConsent])
 
   const donateCase = useCallback((item: SavedCase) => {
@@ -908,7 +908,7 @@ export function useWorkspace() {
     repeatBonusData, llmAutoAnalysis, captureCompleteness,
     // computed
     analysis, pressureAnalysis, semanticMatches, callbackInfo,
-    timeline, quality, datasetStageTotals, operations, highSignals, cases, hydrated,
+    timeline, quality, donationReadiness, datasetStageTotals, operations, highSignals, cases, hydrated,
     // handlers
     loadSample, saveCurrentCase, loadCase, acceptPrivacy, declinePrivacy, deleteAllLocalData,
     saveTrustedContact, clearTrustedContact, callTrustedContact, shareTrustedAlert,

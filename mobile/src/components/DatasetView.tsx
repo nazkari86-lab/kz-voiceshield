@@ -4,12 +4,13 @@ import { datasetSplitAudit, type DatasetQuality, type SavedCase } from '@scoring
 import { colors } from '../theme'
 import { Card, Metric, SectionTitle, ui } from './ui'
 import { LocalizedText as Text } from './LocalizedText'
+import type { DonationReadiness } from '../utils/donationLab'
 
 type Props = {
   cases: SavedCase[]
   quality: DatasetQuality
   caseCount: number
-  labelledCount: number
+  donationReadiness: DonationReadiness
   datasetStageTotals: [string, number][]
   donationConsent: boolean
   onSetDonation: (accepted: boolean) => void
@@ -20,9 +21,9 @@ type Props = {
   onClear: () => void
 }
 
-export function DatasetView({ cases, quality, caseCount, labelledCount, datasetStageTotals, donationConsent, onSetDonation, onDonate, onExportJsonl, onExportCsv, onExportSplit, onClear }: Props) {
+export function DatasetView({ cases, quality, caseCount, donationReadiness, datasetStageTotals, donationConsent, onSetDonation, onDonate, onExportJsonl, onExportCsv, onExportSplit, onClear }: Props) {
   const disabled = caseCount === 0
-  const canDonate = donationConsent && labelledCount > 0
+  const canDonate = donationConsent && donationReadiness.eligibleCases > 0
   const [confirmClear, setConfirmClear] = useState(false)
   const splitAudit = datasetSplitAudit(cases)
   const readiness = [
@@ -36,10 +37,22 @@ export function DatasetView({ cases, quality, caseCount, labelledCount, datasetS
       <SectionTitle>Improve protection (opt-in)</SectionTitle>
       <Card tone={donationConsent ? 'low' : undefined}>
         <Text style={styles.donateBody}>
-          Donate your reviewed cases to help improve RU/KZ fraud detection. Transcripts are redacted
-          (codes, PIN/CVV and long numbers removed) and never leave the device until you pick a target
-          in the share sheet. You can turn this off anytime.
+          Donate reviewed cases to improve RU/KZ fraud detection. Nothing is uploaded automatically:
+          VoiceShield builds a redacted quarantine JSONL and Android shows the share sheet. Raw audio,
+          raw phone numbers, SMS codes, PIN/CVV and long numbers are excluded.
         </Text>
+        <View style={ui.row}>
+          <Metric value={donationReadiness.eligibleCases} label="donation-ready" />
+          <Metric value={donationReadiness.trustedEligibleCases} label="review-trusted" />
+          <Metric value={donationReadiness.labelBalance.fraud} label="fraud" />
+          <Metric value={donationReadiness.labelBalance.safe} label="safe" />
+          <Metric value={donationReadiness.labelBalance.needs_review} label="needs review" />
+        </View>
+        <View style={styles.redactionBox}>
+          <Text style={styles.schema}>Redaction preview</Text>
+          <Text style={styles.muted}>Long numbers/cards: {donationReadiness.redactionTotals.cardOrLongNumber} · code/IIN context: {donationReadiness.redactionTotals.codeOrIdentity} · other numbers: {donationReadiness.redactionTotals.genericNumber}</Text>
+        </View>
+        {donationReadiness.warnings.map((warning) => <Text key={warning} style={styles.warning}>• {warning}</Text>)}
         <View style={styles.actions}>
           <Pressable
             style={[styles.toggle, donationConsent && styles.toggleOn]}
@@ -50,7 +63,7 @@ export function DatasetView({ cases, quality, caseCount, labelledCount, datasetS
             </Text>
           </Pressable>
           <Pressable style={[styles.ghost, !canDonate && styles.off]} disabled={!canDonate} onPress={onDonate}>
-            <Text style={styles.ghostText}>Donate {labelledCount} reviewed (redacted)</Text>
+            <Text style={styles.ghostText}>Share {donationReadiness.eligibleCases} quarantine row(s)</Text>
           </Pressable>
         </View>
       </Card>
@@ -125,6 +138,7 @@ const styles = StyleSheet.create({
   cancelText: { color: colors.sub, fontSize: 12, fontWeight: '800' },
   off: { opacity: 0.4 },
   donateBody: { color: '#334155', fontSize: 13, lineHeight: 19, marginBottom: 4 },
+  redactionBox: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 4, marginBottom: 8, padding: 10 },
   toggle: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7 },
   toggleOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   toggleText: { color: colors.sub, fontSize: 12, fontWeight: '800' },

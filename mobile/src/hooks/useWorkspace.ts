@@ -299,7 +299,7 @@ export function useWorkspace() {
   // gap at session start where the first Whisper segment would be silently dropped.
   // Internal isListening guards handle whether to process the event.
   useEffect(() => {
-    const liveCaptionSub = accessibilityEvents.addListener('VS_ACCESSIBILITY_TEXT', (event: { appSignalId?: string; text?: string }) => {
+    const liveCaptionSub = accessibilityEvents.addListener('VS_ACCESSIBILITY_TEXT', (event: { appSignalId?: string; captureReason?: string; captureStatus?: 'caption' | 'rejected'; text?: string }) => {
       if (!isListeningRef.current || sourceRef.current !== 'Live Caption') return
       if (event.appSignalId) {
         const nextSignals = deviceSignalsFromId(event.appSignalId)
@@ -307,12 +307,17 @@ export function useWorkspace() {
           setDeviceSignals((current) => [...new Map([...current, ...nextSignals].map((item) => [item.id, item])).values()])
         }
       }
+      if (event.captureStatus === 'rejected' && !event.text) {
+        setCaptureNotice('Live Caption text was not accepted because the visible source looked like notifications or another app. Keep the notification shade closed or use microphone fallback.')
+        return
+      }
       if (event.text) {
         const incoming = event.text.trim().toLowerCase().slice(-60)
         // Dedup: skip if Whisper recently produced the same text
         if (lastWhisperRef.current && incoming && lastWhisperRef.current.includes(incoming)) return
         lastLiveCaptionRef.current = incoming
         updateSource('Live Caption')
+        setCaptureNotice(null)
         setTranscript((current) => `${current} ${event.text}`.trim())
       }
     })

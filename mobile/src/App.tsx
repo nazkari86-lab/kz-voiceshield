@@ -253,7 +253,7 @@ function AppContent() {
       />}
       {tab === 'model' && <ModelView />}
       {tab === 'health' && <PrivacyHealthView modelReady={w.modelReady} privacyConsent={w.privacyConsent} modelStorage={w.modelStorage} callStatus={w.callStatus} />}
-      {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} modelSizePref={w.modelSizePref} recognitionLanguage={w.recognitionLanguage} autoDisconnectCritical={w.autoDisconnectCritical} modelStorage={w.modelStorage} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onSetModelSize={w.updateModelSize} onSetRecognitionLanguage={w.updateRecognitionLanguage} onSetAutoDisconnectCritical={w.updateAutoDisconnectCritical} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
+      {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} modelSizePref={w.modelSizePref} recognitionLanguage={w.recognitionLanguage} autoDisconnectCritical={w.autoDisconnectCritical} enhancedCaptionFiltering={w.enhancedCaptionFiltering} modelStorage={w.modelStorage} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onSetModelSize={w.updateModelSize} onSetRecognitionLanguage={w.updateRecognitionLanguage} onSetAutoDisconnectCritical={w.updateAutoDisconnectCritical} onSetEnhancedCaptionFiltering={w.updateEnhancedCaptionFiltering} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
     </>
   )
 

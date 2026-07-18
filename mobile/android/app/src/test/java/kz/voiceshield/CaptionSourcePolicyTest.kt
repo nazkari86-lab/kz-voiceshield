@@ -53,7 +53,7 @@ class CaptionSourcePolicyTest {
   }
 
   @Test fun acceptsSystemUiTextOnlyFromCaptionLikeNode() {
-    val decision = CaptionSourcePolicy.evaluateText(
+    val disabled = CaptionSourcePolicy.evaluateText(
       packageName = "com.android.systemui",
       eventType = CaptionSourcePolicy.TYPE_WINDOW_CONTENT_CHANGED,
       eventClassName = "com.android.systemui.accessibility.LiveCaptionOverlay",
@@ -61,9 +61,21 @@ class CaptionSourcePolicyTest {
       sourceViewId = "com.android.systemui:id/live_caption_text",
       text = "Здравствуйте, это служба безопасности банка.",
       contentDescription = null,
+      enhancedInspection = false,
+    )
+    val enabled = CaptionSourcePolicy.evaluateText(
+      packageName = "com.android.systemui",
+      eventType = CaptionSourcePolicy.TYPE_WINDOW_CONTENT_CHANGED,
+      eventClassName = "com.android.systemui.accessibility.LiveCaptionOverlay",
+      sourceClassName = "android.widget.TextView",
+      sourceViewId = "com.android.systemui:id/live_caption_text",
+      text = "Здравствуйте, это служба безопасности банка.",
+      contentDescription = null,
+      enhancedInspection = true,
     )
 
-    assertTrue(decision.accepted)
+    assertFalse(disabled.accepted)
+    assertTrue(enabled.accepted)
   }
 
   @Test fun acceptsGoogleSpeechCaptionProviderText() {

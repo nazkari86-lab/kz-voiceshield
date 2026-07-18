@@ -1,9 +1,11 @@
 import { NativeEventEmitter, NativeModules } from 'react-native'
 
 type AccessibilityNativeModule = {
+  isEnhancedCaptionFilteringEnabled(): Promise<boolean>
   isEnabled(): Promise<boolean>
   isProtectionActive(): Promise<boolean>
   openSettings(): void
+  setEnhancedCaptionFiltering(enabled: boolean): Promise<boolean>
   setProtectionActive(active: boolean): Promise<boolean>
 }
 

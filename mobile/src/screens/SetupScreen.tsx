@@ -30,6 +30,8 @@ type Props = {
   onSetRecognitionLanguage: (language: 'auto' | 'ru' | 'kk') => Promise<void>
   autoDisconnectCritical: boolean
   onSetAutoDisconnectCritical: (enabled: boolean) => Promise<void>
+  enhancedCaptionFiltering: boolean
+  onSetEnhancedCaptionFiltering: (enabled: boolean) => Promise<void>
   onAcceptPrivacy: () => Promise<void>
   onDeclinePrivacy: () => Promise<void>
   onDeleteAllData: () => Promise<void>
@@ -124,6 +126,8 @@ export function SetupScreen({
   onSetRecognitionLanguage,
   autoDisconnectCritical,
   onSetAutoDisconnectCritical,
+  enhancedCaptionFiltering,
+  onSetEnhancedCaptionFiltering,
   onAcceptPrivacy,
   onDeclinePrivacy,
   onDeleteAllData,
@@ -225,6 +229,14 @@ export function SetupScreen({
       <Text style={styles.section}>Required protection access</Text>
       <Step label="Accessibility Live Caption" status={status.accessibility} disabled={!privacyConsent} onPress={() => AccessibilityModule.openSettings()} />
       <Step label="Open Android caption settings" status={status.accessibility} disabled={!privacyConsent} onPress={() => DeviceSettings.openCaptionSettings()} />
+      <View style={styles.safetyOption}>
+        <View style={styles.safetyCopy}>
+          <Text style={styles.noticeTitle}>Enhanced Live Caption filtering</Text>
+          <Text style={styles.copy}>Uses Android Accessibility window content and view IDs during an active protection session to distinguish the real Live Caption text from notifications, TikTok, System UI and VoiceShield's own notification.</Text>
+        </View>
+        <Pressable accessibilityRole="switch" accessibilityState={{ checked: enhancedCaptionFiltering }} disabled={!privacyConsent} onPress={() => { void onSetEnhancedCaptionFiltering(!enhancedCaptionFiltering) }} style={[styles.toggleChip, enhancedCaptionFiltering && styles.toggleChipActive, !privacyConsent && styles.disabled]}><Text style={[styles.toggleText, enhancedCaptionFiltering && styles.toggleTextActive]}>{enhancedCaptionFiltering ? 'ON' : 'OFF'}</Text></Pressable>
+      </View>
+      <Text style={styles.securityCopy}>After changing this option, reopen the Android Accessibility settings and make sure KZ VoiceShield is enabled. Android may ask you to confirm the broader service capability.</Text>
       <Step label="Risk overlay" status={status.overlay} disabled={!privacyConsent} onPress={() => OverlayModule.openOverlaySettings()} />
       <Step label="Call screening role" status={status.callRole} disabled={!privacyConsent} onPress={() => { void CallModule.requestRole().then(refresh).catch(() => refresh()) }} />
       <Step label="Microphone fallback" status={status.microphone} disabled={!privacyConsent} onPress={() => { void requestMicrophone() }} />
@@ -358,6 +370,7 @@ const styles = StyleSheet.create({
   toggleTextActive: { color: colors.brandDark, fontWeight: '900' },
   safetyOption: { alignItems: 'center', backgroundColor: '#fff7ed', borderColor: '#fdba74', borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 10, padding: 11 },
   safetyCopy: { flex: 1, gap: 3 },
+  securityCopy: { color: colors.muted, fontSize: 11, lineHeight: 16 },
   backendPanel: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 9, marginTop: 12, padding: 14 },
   backendInput: { backgroundColor: '#fff', borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, minHeight: 44, paddingHorizontal: 11 },
   backendStatus: { color: colors.sub, fontSize: 12, lineHeight: 17 },

@@ -29,6 +29,7 @@ class AccessibilityReaderService : AccessibilityService() {
       sourceViewId = source?.viewIdResourceName,
       text = text,
       contentDescription = contentDescription,
+      enhancedInspection = ProtectionSessionState.enhancedCaptionFiltering(),
     )
 
     val payload = Arguments.createMap()

@@ -67,6 +67,7 @@ object CaptionSourcePolicy {
     sourceViewId: String?,
     text: String?,
     contentDescription: String?,
+    enhancedInspection: Boolean = false,
   ): CaptionDecision {
     val pkg = packageName?.lowercase().orEmpty()
     val body = text?.trim().orEmpty()
@@ -85,6 +86,9 @@ object CaptionSourcePolicy {
       .lowercase()
     val hasCaptionMarker = captionMarkers.any(sourceFingerprint::contains)
 
+    if (pkg in systemUiPackages && !enhancedInspection) {
+      return CaptionDecision(false, "systemui_extended_filter_disabled")
+    }
     if (pkg in systemUiPackages && !hasCaptionMarker) {
       return CaptionDecision(false, "systemui_without_caption_node")
     }

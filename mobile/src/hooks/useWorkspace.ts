@@ -50,6 +50,7 @@ const donationConsentKey = 'voiceshield.donation-consent.v1'
 const trustedContactKey = 'voiceshield.trusted-contact.v1'
 const autoDeleteTranscriptKey = 'voiceshield.auto-delete-transcript.v1'
 const autoDisconnectKey = 'voiceshield.auto-disconnect-critical.v1'
+const enhancedCaptionFilteringKey = 'voiceshield.enhanced-caption-filtering.v1'
 
 const ensureMicrophonePermission = async (): Promise<boolean> => {
   if (Platform.OS !== 'android') return true
@@ -111,6 +112,7 @@ export function useWorkspace() {
   const [trustedContact, setTrustedContact] = useState<TrustedContact | null>(null)
   const [autoDeleteTranscript, setAutoDeleteTranscript] = useState(true)
   const [autoDisconnectCritical, setAutoDisconnectCritical] = useState(false)
+  const [enhancedCaptionFiltering, setEnhancedCaptionFiltering] = useState(false)
   const [captureCompleteness, setCaptureCompleteness] = useState(1.0)
   // Hysteresis: track displayed risk to avoid bouncing alerts
   const lastAlertedRiskRef = useRef<string>('low')
@@ -199,10 +201,11 @@ export function useWorkspace() {
       SecureStorage.getItem(donationConsentKey).catch(() => null),
       SecureStorage.getItem(autoDeleteTranscriptKey).catch(() => null),
       SecureStorage.getItem(autoDisconnectKey).catch(() => null),
+      SecureStorage.getItem(enhancedCaptionFilteringKey).catch(() => null),
       AsyncStorage.getItem(modelSizeKey).catch(() => null),
       AsyncStorage.getItem(recognitionLanguageKey).catch(() => null),
     ])
-      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete, autoDisconnect, storedModelSize, storedRecognitionLanguage]) => {
+      .then(([encryptedCases, consent, legacyCases, storedTrustedContact, donation, autoDelete, autoDisconnect, enhancedCaption, storedModelSize, storedRecognitionLanguage]) => {
         if (storedModelSize === 'auto' || whisperModels.some((model) => model.id === storedModelSize)) {
           setModelSizePref(storedModelSize as WhisperModelChoice)
         }
@@ -229,6 +232,9 @@ export function useWorkspace() {
         setDonationConsent(donation === 'accepted')
         setAutoDeleteTranscript(autoDelete !== 'disabled')
         setAutoDisconnectCritical(autoDisconnect === 'enabled')
+        const nextEnhancedCaption = enhancedCaption === 'enabled'
+        setEnhancedCaptionFiltering(nextEnhancedCaption)
+        void AccessibilityModule.setEnhancedCaptionFiltering(nextEnhancedCaption).catch(() => undefined)
         if (storedTrustedContact) {
           try {
             const parsed = JSON.parse(storedTrustedContact) as TrustedContact
@@ -532,8 +538,9 @@ export function useWorkspace() {
         setCaptureNotice('Whisper is ready. Android cannot read internal call audio: turn on speakerphone so the microphone can hear the caller. Audio stays on this device.')
       } else {
         updateSource('Live Caption')
-        setCaptureNotice('Live Caption mode is active. Only approved system caption text is processed.')
+        setCaptureNotice(enhancedCaptionFiltering ? 'Live Caption mode is active with enhanced caption-node filtering.' : 'Live Caption mode is active. System UI captions require enhanced filtering in Setup.')
       }
+      await AccessibilityModule.setEnhancedCaptionFiltering(enhancedCaptionFiltering)
       await AccessibilityModule.setProtectionActive(true)
       sessionStartRef.current = Date.now()
       isListeningRef.current = true
@@ -547,7 +554,7 @@ export function useWorkspace() {
     } finally {
       captureTransitionRef.current = false
     }
-  }, [isListening, modelReady, prepareWhisper, privacyConsent, updateSource])
+  }, [enhancedCaptionFiltering, isListening, modelReady, prepareWhisper, privacyConsent, updateSource])
 
   const endActiveCall = useCallback(async () => {
     try {
@@ -730,6 +737,13 @@ export function useWorkspace() {
     await SecureStorage.setItem(autoDisconnectKey, enabled ? 'enabled' : 'disabled')
   }, [privacyConsent])
 
+  const updateEnhancedCaptionFiltering = useCallback(async (enabled: boolean) => {
+    if (enabled && !privacyConsent) return
+    setEnhancedCaptionFiltering(enabled)
+    await SecureStorage.setItem(enhancedCaptionFilteringKey, enabled ? 'enabled' : 'disabled')
+    await AccessibilityModule.setEnhancedCaptionFiltering(enabled).catch(() => undefined)
+  }, [privacyConsent])
+
   const deleteAllLocalData = useCallback(async () => {
     await AccessibilityModule.setProtectionActive(false).catch(() => undefined)
     await AudioCaptureModule.stopCapture().catch(() => undefined)
@@ -886,11 +900,11 @@ export function useWorkspace() {
     reviewerName, setReviewerName,
     source,
     // capture
-    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript, autoDisconnectCritical, modelStorage,
+    isListening, modelReady, modelProgress, audioLevel, captureError, captureNotice, deviceSignals, privacyConsent, donationConsent, storageError, callStatus, trustedContact, autoDeleteTranscript, autoDisconnectCritical, enhancedCaptionFiltering, modelStorage,
     startListening, stopListening, prepareWhisper, switchToMicrophoneFallback,
     endActiveCall,
     modelSizePref, updateModelSize, recognitionLanguage, updateRecognitionLanguage,
-    updateAutoDisconnectCritical,
+    updateAutoDisconnectCritical, updateEnhancedCaptionFiltering,
     repeatBonusData, llmAutoAnalysis, captureCompleteness,
     // computed
     analysis, pressureAnalysis, semanticMatches, callbackInfo,

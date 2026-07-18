@@ -32,6 +32,17 @@ class AccessibilityModule(private val context: ReactApplicationContext) : ReactC
   }
 
   @ReactMethod
+  fun setEnhancedCaptionFiltering(enabled: Boolean, promise: Promise) {
+    ProtectionSessionState.setEnhancedCaptionFiltering(enabled)
+    promise.resolve(enabled)
+  }
+
+  @ReactMethod
+  fun isEnhancedCaptionFilteringEnabled(promise: Promise) {
+    promise.resolve(ProtectionSessionState.enhancedCaptionFiltering())
+  }
+
+  @ReactMethod
   fun isProtectionActive(promise: Promise) {
     promise.resolve(ProtectionSessionState.isActive())
   }

@@ -1,9 +1,11 @@
 package kz.voiceshield
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.provider.ContactsContract
 import android.telephony.PhoneNumberUtils
 import android.util.Base64
 import com.facebook.react.bridge.Arguments
@@ -21,6 +23,7 @@ data class PhoneProtectionConfig(
   val autoBlockCritical: Boolean = false,
   val blockHidden: Boolean = false,
   val blockInternational: Boolean = false,
+  val blockUnknownNotContacts: Boolean = false,
   val blockRepeated: Boolean = true,
   val blockUnknownAtNight: Boolean = false,
   val nightStartHour: Int = 22,
@@ -78,13 +81,42 @@ data class PhoneAnnotation(
   }
 }
 
+data class PhoneCustomRule(
+  val id: String,
+  val label: String,
+  val pattern: String,
+  val action: String,
+  val enabled: Boolean = true,
+  val updatedAt: Long = System.currentTimeMillis(),
+) {
+  fun toWritableMap(): WritableMap = Arguments.createMap().apply {
+    putString("id", id)
+    putString("label", label)
+    putString("pattern", pattern)
+    putString("action", action)
+    putBoolean("enabled", enabled)
+    putDouble("updatedAt", updatedAt.toDouble())
+  }
+
+  fun toJson(): JSONObject = JSONObject().apply {
+    put("id", id)
+    put("label", label)
+    put("pattern", pattern)
+    put("action", action)
+    put("enabled", enabled)
+    put("updatedAt", updatedAt)
+  }
+}
+
 object PhoneReputationStore {
   private const val PREFS = "voiceshield_phone_reputation_v1"
   private const val HMAC_ALIAS = "voiceshield_phone_hmac_v1"
   private const val WINDOW_MS = 10 * 60 * 1000L
   private const val MAX_HISTORY_AGE_MS = 24 * 60 * 60 * 1000L
   private const val ANNOTATIONS_KEY = "phone.annotations.v2"
+  private const val CUSTOM_RULES_KEY = "phone.custom-rules.v1"
   private val relationships = setOf("unknown", "family", "friend", "work", "bank", "delivery", "medical", "government")
+  private val ruleActions = setOf("warn", "suggest_reject", "block")
 
   private fun preferences(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -142,6 +174,7 @@ object PhoneReputationStore {
       autoBlockCritical = prefs.getBoolean("autoBlockCritical", false),
       blockHidden = prefs.getBoolean("blockHidden", false),
       blockInternational = prefs.getBoolean("blockInternational", false),
+      blockUnknownNotContacts = prefs.getBoolean("blockUnknownNotContacts", false),
       blockRepeated = prefs.getBoolean("blockRepeated", true),
       blockUnknownAtNight = prefs.getBoolean("blockUnknownAtNight", false),
       nightStartHour = prefs.getInt("nightStartHour", 22).coerceIn(0, 23),
@@ -151,7 +184,7 @@ object PhoneReputationStore {
 
   fun updateConfig(context: Context, values: Map<String, Any?>): PhoneProtectionConfig {
     val editor = preferences(context).edit()
-    listOf("enabled", "autoBlockCritical", "blockHidden", "blockInternational", "blockRepeated", "blockUnknownAtNight").forEach { key ->
+    listOf("enabled", "autoBlockCritical", "blockHidden", "blockInternational", "blockUnknownNotContacts", "blockRepeated", "blockUnknownAtNight").forEach { key ->
       (values[key] as? Boolean)?.let { editor.putBoolean(key, it) }
     }
     (values["nightStartHour"] as? Number)?.toInt()?.coerceIn(0, 23)?.let { editor.putInt("nightStartHour", it) }
@@ -201,6 +234,8 @@ object PhoneReputationStore {
     val annotation = annotation(context, key)
     val normalized = normalize(number)
     val cfg = config(context)
+    val knownContact = isKnownContact(context, normalized)
+    val customRuleMatch = matchCustomRule(context, normalized)
     val hour = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) LocalTime.now().hour else 12
     val quietHours = if (cfg.nightStartHour > cfg.nightEndHour) hour >= cfg.nightStartHour || hour < cfg.nightEndHour
       else hour in cfg.nightStartHour until cfg.nightEndHour
@@ -216,15 +251,94 @@ object PhoneReputationStore {
         complaintCount = complaint?.optInt("count", 0) ?: 0,
         recentCallCount = recent.count { it > now - WINDOW_MS },
         distinctRecentCallers = distinctRecentCallers,
+        knownContact = knownContact,
+        customRuleScore = when (customRuleMatch?.action) {
+          "block" -> 100
+          "suggest_reject" -> 75
+          "warn" -> 45
+          else -> 0
+        },
+        customRuleReason = customRuleMatch?.let { "Matched local rule: ${it.label.ifBlank { it.pattern }}" }.orEmpty(),
         quietHours = quietHours,
         blockHidden = cfg.blockHidden,
         blockInternational = cfg.blockInternational,
+        blockUnknownNotContacts = cfg.blockUnknownNotContacts,
         blockRepeated = cfg.blockRepeated,
         blockUnknownAtNight = cfg.blockUnknownAtNight,
         autoBlockCritical = cfg.autoBlockCritical,
       ),
     )
     return PhoneAssessment(key, mask(number), result, complaint?.optInt("count", 0) ?: 0, complaint?.optLong("lastAt", 0) ?: 0, annotation)
+  }
+
+  private fun isKnownContact(context: Context, normalized: String): Boolean {
+    if (normalized.length < 3) return false
+    if (context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return false
+    return runCatching {
+      val uri = android.net.Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, android.net.Uri.encode(normalized))
+      context.contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup._ID), null, null, null)?.use { cursor ->
+        cursor.moveToFirst()
+      } == true
+    }.getOrDefault(false)
+  }
+
+  private fun rules(context: Context): List<PhoneCustomRule> = runCatching {
+    val array = JSONArray(EncryptedLocalStore.get(context, CUSTOM_RULES_KEY) ?: "[]")
+    (0 until minOf(array.length(), 100)).mapNotNull { index -> ruleFromJson(array.optJSONObject(index)) }
+  }.getOrDefault(emptyList())
+
+  private fun ruleFromJson(item: JSONObject?): PhoneCustomRule? {
+    item ?: return null
+    val id = item.optString("id", "").take(80)
+    val label = item.optString("label", "").take(80)
+    val pattern = item.optString("pattern", "").take(160)
+    val action = item.optString("action", "warn").takeIf(ruleActions::contains) ?: "warn"
+    if (id.isBlank() || pattern.isBlank()) return null
+    return PhoneCustomRule(
+      id = id,
+      label = label,
+      pattern = pattern,
+      action = action,
+      enabled = item.optBoolean("enabled", true),
+      updatedAt = item.optLong("updatedAt", 0).coerceAtLeast(0),
+    )
+  }
+
+  private fun saveRules(context: Context, values: List<PhoneCustomRule>) {
+    val array = JSONArray()
+    values.take(100).forEach { array.put(it.toJson()) }
+    if (array.length() == 0) EncryptedLocalStore.remove(context, CUSTOM_RULES_KEY)
+    else EncryptedLocalStore.put(context, CUSTOM_RULES_KEY, array.toString())
+  }
+
+  private fun matchCustomRule(context: Context, normalized: String): PhoneCustomRule? {
+    if (normalized.isBlank()) return null
+    return rules(context)
+      .filter { it.enabled }
+      .firstOrNull { rule ->
+        runCatching { Regex(rule.pattern).containsMatchIn(normalized) }.getOrDefault(false)
+      }
+  }
+
+  fun listCustomRules(context: Context): List<PhoneCustomRule> = rules(context)
+
+  @Synchronized
+  fun upsertCustomRule(context: Context, label: String, pattern: String, action: String, enabled: Boolean): PhoneCustomRule {
+    val cleanedPattern = pattern.trim().take(160)
+    require(cleanedPattern.length in 2..160) { "Rule pattern must be 2-160 characters" }
+    require(action in ruleActions) { "Unsupported rule action" }
+    runCatching { Regex(cleanedPattern) }.getOrElse { throw IllegalArgumentException("Invalid regex pattern") }
+    val cleanedLabel = label.trim().take(80).ifBlank { "Custom number rule" }
+    val id = Base64.encodeToString("$cleanedLabel:$cleanedPattern".toByteArray(), Base64.NO_WRAP or Base64.URL_SAFE).take(40)
+    val nextRule = PhoneCustomRule(id, cleanedLabel, cleanedPattern, action, enabled)
+    val next = rules(context).filterNot { it.id == id }.plus(nextRule).takeLast(100)
+    saveRules(context, next)
+    return nextRule
+  }
+
+  @Synchronized
+  fun deleteCustomRule(context: Context, id: String) {
+    saveRules(context, rules(context).filterNot { it.id == id.take(80) })
   }
 
   @Synchronized
@@ -303,7 +417,7 @@ object PhoneReputationStore {
   fun exportData(context: Context): String {
     val prefs = preferences(context)
     return JSONObject().apply {
-      put("schemaVersion", "voiceshield.phone-rules.v1")
+      put("schemaVersion", "voiceshield.phone-rules.v2")
       put("exportedAt", System.currentTimeMillis())
       put("config", JSONObject().apply {
         val cfg = config(context)
@@ -311,6 +425,7 @@ object PhoneReputationStore {
         put("autoBlockCritical", cfg.autoBlockCritical)
         put("blockHidden", cfg.blockHidden)
         put("blockInternational", cfg.blockInternational)
+        put("blockUnknownNotContacts", cfg.blockUnknownNotContacts)
         put("blockRepeated", cfg.blockRepeated)
         put("blockUnknownAtNight", cfg.blockUnknownAtNight)
         put("nightStartHour", cfg.nightStartHour)
@@ -328,13 +443,14 @@ object PhoneReputationStore {
           put(key, item.toJson(includePrivateText = false))
         }
       })
+      put("customRules", JSONArray().apply { rules(context).forEach { put(it.toJson()) } })
       put("privacy", "Contains device-bound HMAC identifiers. Encrypted labels and comments are intentionally excluded.")
     }.toString(2)
   }
 
   fun importData(context: Context, raw: String) {
     val payload = JSONObject(raw)
-    require(payload.optString("schemaVersion") == "voiceshield.phone-rules.v1") { "Unsupported rules schema" }
+    require(payload.optString("schemaVersion") in setOf("voiceshield.phone-rules.v1", "voiceshield.phone-rules.v2")) { "Unsupported rules schema" }
     fun arraySet(name: String): Set<String> {
       val array = payload.optJSONArray(name) ?: JSONArray()
       return (0 until minOf(array.length(), 5000)).mapNotNull { array.optString(it).takeIf { value -> value.length in 8..64 } }.toSet()
@@ -379,10 +495,14 @@ object PhoneReputationStore {
       acceptedAnnotations += 1
     }
     if (safeAnnotations.length() > 0) EncryptedLocalStore.put(context, ANNOTATIONS_KEY, safeAnnotations.toString())
+    val importedRules = payload.optJSONArray("customRules") ?: JSONArray()
+    val safeRules = (0 until minOf(importedRules.length(), 100)).mapNotNull { ruleFromJson(importedRules.optJSONObject(it)) }
+    if (safeRules.isNotEmpty()) saveRules(context, safeRules)
   }
 
   fun clear(context: Context) {
     preferences(context).edit().clear().apply()
     runCatching { EncryptedLocalStore.remove(context, ANNOTATIONS_KEY) }
+    runCatching { EncryptedLocalStore.remove(context, CUSTOM_RULES_KEY) }
   }
 }

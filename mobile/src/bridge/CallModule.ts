@@ -36,10 +36,20 @@ export type PhoneProtectionConfig = {
   autoBlockCritical: boolean
   blockHidden: boolean
   blockInternational: boolean
+  blockUnknownNotContacts: boolean
   blockRepeated: boolean
   blockUnknownAtNight: boolean
   nightStartHour: number
   nightEndHour: number
+}
+
+export type PhoneCustomRule = {
+  id: string
+  label: string
+  pattern: string
+  action: 'warn' | 'suggest_reject' | 'block'
+  enabled: boolean
+  updatedAt: number
 }
 
 type CallNativeModule = {
@@ -54,6 +64,9 @@ type CallNativeModule = {
   reportNumber(number: string, category: string): Promise<PhoneAssessment>
   annotateNumber(number: string, rating: number, comment: string, relationship: PhoneRelationship, label: string, familyProtected: boolean): Promise<PhoneAssessment>
   clearNumberAnnotation(number: string): Promise<PhoneAssessment>
+  listCustomRules(): Promise<PhoneCustomRule[]>
+  upsertCustomRule(label: string, pattern: string, action: PhoneCustomRule['action'], enabled: boolean): Promise<PhoneCustomRule>
+  deleteCustomRule(id: string): Promise<boolean>
   getProtectionConfig(): Promise<PhoneProtectionConfig>
   updateProtectionConfig(config: Partial<PhoneProtectionConfig>): Promise<PhoneProtectionConfig>
   exportProtectionData(): Promise<string>

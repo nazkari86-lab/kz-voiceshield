@@ -213,6 +213,27 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
   }
 
   @ReactMethod
+  fun listCustomRules(promise: Promise) {
+    val array = Arguments.createArray()
+    PhoneReputationStore.listCustomRules(context).forEach { array.pushMap(it.toWritableMap()) }
+    promise.resolve(array)
+  }
+
+  @ReactMethod
+  fun upsertCustomRule(label: String, pattern: String, action: String, enabled: Boolean, promise: Promise) {
+    runCatching { PhoneReputationStore.upsertCustomRule(context, label, pattern, action, enabled).toWritableMap() }
+      .onSuccess(promise::resolve)
+      .onFailure { promise.reject("PHONE_RULE_UPSERT_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
+  fun deleteCustomRule(id: String, promise: Promise) {
+    runCatching { PhoneReputationStore.deleteCustomRule(context, id) }
+      .onSuccess { promise.resolve(true) }
+      .onFailure { promise.reject("PHONE_RULE_DELETE_FAILED", it.message, it) }
+  }
+
+  @ReactMethod
   fun getProtectionConfig(promise: Promise) {
     val config = PhoneReputationStore.config(context)
     promise.resolve(Arguments.createMap().apply {
@@ -220,6 +241,7 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
       putBoolean("autoBlockCritical", config.autoBlockCritical)
       putBoolean("blockHidden", config.blockHidden)
       putBoolean("blockInternational", config.blockInternational)
+      putBoolean("blockUnknownNotContacts", config.blockUnknownNotContacts)
       putBoolean("blockRepeated", config.blockRepeated)
       putBoolean("blockUnknownAtNight", config.blockUnknownAtNight)
       putInt("nightStartHour", config.nightStartHour)

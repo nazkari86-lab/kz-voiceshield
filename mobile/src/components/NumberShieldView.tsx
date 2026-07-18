@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Pressable, Share, StyleSheet, Switch, TextInput, View } from 'react-native'
 import { CallModule } from '@bridge/CallModule'
-import type { PhoneAssessment, PhoneProtectionConfig, PhoneRelationship } from '@bridge/CallModule'
+import type { PhoneAssessment, PhoneCustomRule, PhoneProtectionConfig, PhoneRelationship } from '@bridge/CallModule'
 import { checkScamNumber } from '../data/scamNumbers'
 import type { ScamEntry } from '../data/scamNumbers'
 import { colors } from '../theme'
@@ -15,6 +15,7 @@ const defaultConfig: PhoneProtectionConfig = {
   autoBlockCritical: false,
   blockHidden: false,
   blockInternational: false,
+  blockUnknownNotContacts: false,
   blockRepeated: true,
   blockUnknownAtNight: false,
   nightStartHour: 22,
@@ -61,10 +62,15 @@ export function NumberShieldView({
   const [label, setLabel] = useState('')
   const [relationship, setRelationship] = useState<PhoneRelationship>('unknown')
   const [familyProtected, setFamilyProtected] = useState(false)
+  const [customRules, setCustomRules] = useState<PhoneCustomRule[]>([])
+  const [ruleLabel, setRuleLabel] = useState('')
+  const [rulePattern, setRulePattern] = useState('')
+  const [ruleAction, setRuleAction] = useState<PhoneCustomRule['action']>('warn')
   const phoneIdentity = inspectPhoneIdentity(number)
 
   useEffect(() => {
     void CallModule.getProtectionConfig().then(setConfig).catch(() => setStatus('Call screening is not available on this build'))
+    void CallModule.listCustomRules().then(setCustomRules).catch(() => undefined)
   }, [])
 
   const run = async (operation: (normalized: string) => Promise<PhoneAssessment>, message: string) => {
@@ -110,6 +116,28 @@ export function NumberShieldView({
       setStatus('Rules imported. Device-bound identifiers work only on the device that created the backup.')
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Rules import failed')
+    }
+  }
+
+  const saveCustomRule = async () => {
+    try {
+      await CallModule.upsertCustomRule(ruleLabel, rulePattern, ruleAction, true)
+      setCustomRules(await CallModule.listCustomRules())
+      setRuleLabel('')
+      setRulePattern('')
+      setStatus('Custom number rule saved')
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Could not save custom rule')
+    }
+  }
+
+  const deleteCustomRule = async (id: string) => {
+    try {
+      await CallModule.deleteCustomRule(id)
+      setCustomRules(await CallModule.listCustomRules())
+      setStatus('Custom number rule removed')
+    } catch {
+      setStatus('Could not remove custom rule')
     }
   }
 
@@ -201,9 +229,36 @@ export function NumberShieldView({
       <Setting label="Block only critical reputation" value={config.autoBlockCritical} onChange={(value) => { void updateConfig({ autoBlockCritical: value }) }} />
       <Setting label="Treat hidden numbers as critical" value={config.blockHidden} onChange={(value) => { void updateConfig({ blockHidden: value }) }} />
       <Setting label="Treat international numbers as high risk" value={config.blockInternational} onChange={(value) => { void updateConfig({ blockInternational: value }) }} />
+      <Setting label="Warn when number is not in contacts" value={config.blockUnknownNotContacts} onChange={(value) => { void updateConfig({ blockUnknownNotContacts: value }) }} />
       <Setting label="Escalate repeated calls" value={config.blockRepeated} onChange={(value) => { void updateConfig({ blockRepeated: value }) }} />
       <Setting label="Block unknown callers 22:00–07:00" value={config.blockUnknownAtNight} onChange={(value) => { void updateConfig({ blockUnknownAtNight: value }) }} />
       <Setting label="Delete transcript when protection stops" value={autoDeleteTranscript} onChange={(value) => { void onSetAutoDeleteTranscript(value) }} />
+
+      <Text style={styles.section}>Custom local rules</Text>
+      <Text style={styles.copy}>Add lightweight regex rules for prefixes, short codes or known spam patterns. Rules run only on the normalized phone number and stay encrypted on this device.</Text>
+      <View style={styles.panel}>
+        <TextInput accessibilityLabel="Rule label" maxLength={80} onChangeText={setRuleLabel} placeholder="Rule label, e.g. Suspicious premium short codes" placeholderTextColor={colors.muted} style={styles.input} value={ruleLabel} />
+        <TextInput accessibilityLabel="Number regex rule" autoCapitalize="none" maxLength={160} onChangeText={setRulePattern} placeholder="Regex, e.g. ^8?809|^\\+?998" placeholderTextColor={colors.muted} style={styles.input} value={rulePattern} />
+        <View style={styles.row}>
+          {(['warn', 'suggest_reject', 'block'] as const).map((action) => (
+            <Pressable key={action} onPress={() => setRuleAction(action)} style={[styles.chip, ruleAction === action && styles.chipActive]}>
+              <Text style={[styles.chipText, ruleAction === action && styles.chipTextActive]}>{action.replace('_', ' ')}</Text>
+            </Pressable>
+          ))}
+          <Action label="Save rule" tone="primary" onPress={() => { void saveCustomRule() }} />
+        </View>
+        {customRules.length === 0 ? <Text style={styles.status}>No custom rules yet.</Text> : customRules.map((rule) => (
+          <View key={rule.id} style={styles.ruleRow}>
+            <View style={styles.ruleCopy}>
+              <Text style={styles.ruleTitle}>{rule.label}</Text>
+              <Text style={styles.ruleMeta}>{rule.action.replace('_', ' ')} · /{rule.pattern}/</Text>
+            </View>
+            <Pressable style={styles.removeRule} onPress={() => { void deleteCustomRule(rule.id) }}>
+              <Text style={styles.removeRuleText}>Remove</Text>
+            </Pressable>
+          </View>
+        ))}
+      </View>
 
       <Text style={styles.section}>Rules backup</Text>
       <TextInput
@@ -278,4 +333,10 @@ const styles = StyleSheet.create({
   chipText: { color: colors.sub, fontSize: 12, fontWeight: '800' },
   chipTextActive: { color: colors.brand },
   comment: { minHeight: 92, textAlignVertical: 'top' },
+  ruleRow: { alignItems: 'center', backgroundColor: '#f8fafc', borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: 'row', gap: 8, padding: 10 },
+  ruleCopy: { flex: 1 },
+  ruleTitle: { color: colors.ink, fontSize: 12, fontWeight: '900' },
+  ruleMeta: { color: colors.sub, fontSize: 11, marginTop: 2 },
+  removeRule: { borderColor: '#fecaca', borderRadius: 8, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
+  removeRuleText: { color: '#991b1b', fontSize: 11, fontWeight: '900' },
 })

@@ -29,6 +29,10 @@ class VoiceShieldInCallService : InCallService() {
 
   override fun onCallRemoved(call: Call) {
     call.unregisterCallback(callback)
+    val rawNumber = call.details.handle?.schemeSpecificPart
+    val disconnectReason = call.details.disconnectCause?.label?.toString().orEmpty().ifBlank { call.details.disconnectCause?.reason.orEmpty() }.ifBlank { "call ended" }
+    val assessment = runCatching { PhoneReputationStore.assess(this, rawNumber, "unverified", false) }.getOrNull()
+    PostCallReviewNotifier.show(this, assessment, disconnectReason)
     if (VoiceShieldCallController.call === call) VoiceShieldCallController.setCall(null)
     VoiceShieldCallNotifier.cancel(this)
     super.onCallRemoved(call)

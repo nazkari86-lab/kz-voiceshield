@@ -11,9 +11,13 @@ data class PhoneRiskInput(
   val complaintCount: Int = 0,
   val recentCallCount: Int = 1,
   val distinctRecentCallers: Int = 1,
+  val knownContact: Boolean = false,
+  val customRuleScore: Int = 0,
+  val customRuleReason: String = "",
   val quietHours: Boolean = false,
   val blockHidden: Boolean = false,
   val blockInternational: Boolean = false,
+  val blockUnknownNotContacts: Boolean = false,
   val blockRepeated: Boolean = true,
   val blockUnknownAtNight: Boolean = false,
   val autoBlockCritical: Boolean = false,
@@ -54,6 +58,14 @@ object PhoneReputationPolicy {
     if (input.complaintCount > 0) {
       score += minOf(60, input.complaintCount * 18)
       reasons += "${input.complaintCount} local complaint(s)"
+    }
+    if (input.customRuleScore > 0) {
+      score = maxOf(score, input.customRuleScore.coerceIn(0, 100))
+      reasons += input.customRuleReason.ifBlank { "Matched a local custom number rule" }
+    }
+    if (input.blockUnknownNotContacts && !input.knownContact && !input.trusted && !input.familyProtected) {
+      score = maxOf(score, 80)
+      reasons += "Number is not in device contacts"
     }
     if (input.userRating in 1..2) {
       score += if (input.userRating == 1) 30 else 18
@@ -96,6 +108,7 @@ object PhoneReputationPolicy {
       familyTrusted && score < 65 -> "family"
       input.trusted && score < 65 -> "trusted"
       input.complaintCount > 0 -> "reported_spam"
+      input.customRuleScore >= 65 -> "suspected_spam"
       score >= 65 -> "suspected_spam"
       else -> "unknown"
     }

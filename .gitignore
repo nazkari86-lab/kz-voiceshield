@@ -12,7 +12,10 @@ dist
 dist-ssr
 coverage
 ml/.venv/
-ml/artifacts/
+ml/.venv-voice-auth/
+ml/artifacts/*
+!ml/artifacts/voice-auth/
+!ml/artifacts/voice-auth/**
 backend/.venv/
 .venv-fastconformer/
 models/

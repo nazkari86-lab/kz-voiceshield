@@ -3,6 +3,7 @@ export type TrainingChoice = {
   text: string
   safe: boolean
   feedback: string
+  nextStepIndex?: number
 }
 
 export type TrainingStep = {
@@ -15,12 +16,34 @@ export type TrainingScenario = {
   id: string
   title: string
   language: 'RU' | 'KZ'
-  difficulty: 'Beginner' | 'Advanced'
+  difficulty: 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert'
   skill?: TrainingSkill
   steps: TrainingStep[]
 }
 
 export type TrainingSkill = 'banking' | 'links' | 'remote_access' | 'identity' | 'payments' | 'investments' | 'jobs' | 'marketplace'
+
+export type TrainingResponseAssessment = 'safe' | 'unsafe' | 'unclear'
+
+export const assessSpokenTrainingResponse = (response: string, step: TrainingStep): TrainingResponseAssessment => {
+  const tokens = response.toLocaleLowerCase().split(/[^\p{L}\p{N}]+/u).filter((token) => token.length > 2)
+  if (!tokens.length) return 'unclear'
+  const matchesWord = (spoken: string, expected: string) => {
+    if (spoken === expected) return true
+    // Speech recognition changes endings frequently in RU/KZ. A short stem
+    // match keeps the local trainer useful without sending the response away.
+    return spoken.length >= 5 && expected.length >= 5 && spoken.slice(0, 4) === expected.slice(0, 4)
+  }
+  const score = (choice: TrainingChoice) => {
+    const words = choice.text.toLocaleLowerCase().split(/[^\p{L}\p{N}]+/u).filter((token) => token.length > 2)
+    return words.filter((word) => tokens.some((token) => matchesWord(token, word))).length
+  }
+  const safe = Math.max(...step.choices.filter((choice) => choice.safe).map(score), 0)
+  const unsafe = Math.max(...step.choices.filter((choice) => !choice.safe).map(score), 0)
+  if (safe >= 2 && safe > unsafe) return 'safe'
+  if (unsafe >= 2 && unsafe > safe) return 'unsafe'
+  return 'unclear'
+}
 
 const coreTrainingScenarios: TrainingScenario[] = [
   {
@@ -121,6 +144,95 @@ const coreTrainingScenarios: TrainingScenario[] = [
   },
 ]
 
+// Longer branch-based cases mirror how a real caller changes tactics after the
+// first refusal. They remain synthetic training content and never use call audio.
+const branchTrainingScenarios: TrainingScenario[] = [
+  {
+    id: 'kaspi-support-ru',
+    title: 'Kaspi support impersonation',
+    language: 'RU',
+    difficulty: 'Intermediate',
+    skill: 'banking',
+    steps: [
+      { caller: 'Это служба безопасности Kaspi. Мы видим подозрительный вход в ваш аккаунт.', pattern: 'Brand impersonation', choices: [
+        { id: 'verify-app', text: 'Завершить звонок и открыть приложение самостоятельно', safe: true, feedback: 'Правильно: проверка выполняется только через официальный канал.', nextStepIndex: 2 },
+        { id: 'stay-call', text: 'Остаться на линии и выполнять инструкции оператора', safe: false, feedback: 'Опасно: мошенник удерживает вас на линии, чтобы управлять решениями.', nextStepIndex: 1 },
+      ] },
+      { caller: 'Откройте демонстрацию экрана, я проверю последние операции.', pattern: 'Screen-sharing request', choices: [
+        { id: 'refuse-screen', text: 'Не показывать экран и завершить разговор', safe: true, feedback: 'Правильно: поддержке не нужна демонстрация экрана.', nextStepIndex: 2 },
+        { id: 'show-screen', text: 'Показать экран, но закрыть банковское приложение', safe: false, feedback: 'Небезопасно: уведомления и коды могут остаться видимыми.', nextStepIndex: 2 },
+      ] },
+      { caller: 'Для отмены операции продиктуйте код из SMS.', pattern: 'OTP extraction', choices: [
+        { id: 'end-call', text: 'Не сообщать код, завершить звонок и связаться с банком самому', safe: true, feedback: 'Правильно: одноразовый код нельзя передавать входящему звонку.' },
+        { id: 'share-code', text: 'Продиктовать код для отмены операции', safe: false, feedback: 'Критическая ошибка: код может подтвердить вход или перевод.' },
+      ] },
+    ],
+  },
+  {
+    id: 'halyk-safe-account-kz',
+    title: 'Halyk қауіпсіз шоты',
+    language: 'KZ',
+    difficulty: 'Advanced',
+    skill: 'payments',
+    steps: [
+      { caller: 'Halyk қызметкерімін. Картаңыз бұғатталды, қаражатты қауіпсіз шотқа ауыстырамыз.', pattern: 'Safe-account lie', choices: [
+        { id: 'official-check', text: 'Қоңырауды тоқтатып, банктің ресми нөміріне өзім хабарласу', safe: true, feedback: 'Дұрыс: қауіпсіз шотқа ақша аудару туралы нұсқау алаяқтық белгісі.', nextStepIndex: 2 },
+        { id: 'transfer-now', text: 'Қаражатты қауіпсіз шотқа аудару', safe: false, feedback: 'Қате: банк клиенттен ақшаны басқа шотқа аударуды сұрамайды.', nextStepIndex: 1 },
+      ] },
+      { caller: 'Аударым жасағаныңызды дәлелдеу үшін экранды көрсетіңіз.', pattern: 'Remote control escalation', choices: [
+        { id: 'close-call', text: 'Ештеңе көрсетпей, қоңырауды аяқтау', safe: true, feedback: 'Дұрыс: экранды көрсету құпия деректерді ашуы мүмкін.', nextStepIndex: 2 },
+        { id: 'share-screen', text: 'Экранды көрсету, себебі бұл тек тексеру', safe: false, feedback: 'Қауіпті: алаяқ хабарламалар мен кодтарды көре алады.', nextStepIndex: 2 },
+      ] },
+      { caller: 'SMS кодын айтыңыз, сонда бұғаттауды алып тастаймын.', pattern: 'Code extraction', choices: [
+        { id: 'protect-code', text: 'Кодты айтпау және банктің ресми арнасына жүгіну', safe: true, feedback: 'Дұрыс: SMS коды тек сіздің әрекетіңізді растауға арналған.' },
+        { id: 'read-code', text: 'Кодты операторға айту', safe: false, feedback: 'Критикалық қате: кодты айтсаңыз, операция расталуы мүмкін.' },
+      ] },
+    ],
+  },
+  {
+    id: 'egov-fine-kz',
+    title: 'eGov айыппұлы',
+    language: 'KZ',
+    difficulty: 'Intermediate',
+    skill: 'identity',
+    steps: [
+      { caller: 'eGov орталығынан хабарласып тұрмын. Сізге шұғыл айыппұл шықты.', pattern: 'Government impersonation', choices: [
+        { id: 'open-egov', text: 'eGov-ты өзім ашып, хабарламаны тексеру', safe: true, feedback: 'Дұрыс: ресми қызметті қоңыраудағы сілтемемен емес, өзіңіз ашыңыз.', nextStepIndex: 2 },
+        { id: 'follow-link', text: 'Оператор жіберген төлем сілтемесін ашу', safe: false, feedback: 'Қауіпті: сілтеме жалған төлем бетіне апаруы мүмкін.', nextStepIndex: 1 },
+      ] },
+      { caller: 'Төлемді тез жасау үшін карта нөмірін енгізіңіз.', pattern: 'Phishing payment page', choices: [
+        { id: 'leave-site', text: 'Бетті жабу және айыппұлды ресми кабинеттен тексеру', safe: true, feedback: 'Дұрыс: белгісіз бетке карта деректерін енгізбеңіз.', nextStepIndex: 2 },
+        { id: 'enter-card', text: 'Карта нөмірін енгізу, бірақ CVV айтпау', safe: false, feedback: 'Нөмірдің өзі де фишингке жеткілікті болуы мүмкін.', nextStepIndex: 2 },
+      ] },
+      { caller: 'Істі жабу үшін ЖСН мен SMS кодын айтыңыз.', pattern: 'Identity and OTP extraction', choices: [
+        { id: 'protect-identity', text: 'ЖСН мен кодты бермей, ресми органға өзім хабарласу', safe: true, feedback: 'Дұрыс: күтпеген қоңырауда жеке дерек пен код берілмейді.' },
+        { id: 'give-details', text: 'Істі жабу үшін деректерді айту', safe: false, feedback: 'Критикалық қате: бұл деректер аккаунтқа немесе төлемге қолданылуы мүмкін.' },
+      ] },
+    ],
+  },
+  {
+    id: 'olx-delivery-ru',
+    title: 'OLX/Kolesa buyer link',
+    language: 'RU',
+    difficulty: 'Expert',
+    skill: 'marketplace',
+    steps: [
+      { caller: 'Я покупатель с OLX. Уже оплатил товар, получите деньги по этой ссылке.', pattern: 'Marketplace payment phishing', choices: [
+        { id: 'check-platform', text: 'Проверить оплату только внутри OLX или Kolesa', safe: true, feedback: 'Правильно: внешняя ссылка не подтверждает оплату.', nextStepIndex: 2 },
+        { id: 'open-payment', text: 'Открыть ссылку и ввести карту для получения денег', safe: false, feedback: 'Опасно: для получения платежа не нужен ввод карты на чужом сайте.', nextStepIndex: 1 },
+      ] },
+      { caller: 'Страница защищена. Введите SMS-код, чтобы курьер забрал товар.', pattern: 'Courier urgency and OTP', choices: [
+        { id: 'report-buyer', text: 'Закрыть страницу, сохранить переписку и пожаловаться в сервис', safe: true, feedback: 'Правильно: переписка поможет платформе проверить аккаунт.', nextStepIndex: 2 },
+        { id: 'confirm-code', text: 'Ввести код, чтобы не потерять покупателя', safe: false, feedback: 'Код может подтвердить вход в банк или перевод.', nextStepIndex: 2 },
+      ] },
+      { caller: 'Отправьте скриншот карты, иначе возврат отменится.', pattern: 'Evidence harvesting', choices: [
+        { id: 'delete-contact', text: 'Не отправлять данные, заблокировать контакт и сохранить доказательства', safe: true, feedback: 'Верно: скриншоты карты и SMS нельзя отправлять незнакомым людям.' },
+        { id: 'send-screenshot', text: 'Отправить скриншот без полного номера', safe: false, feedback: 'Даже частичные данные помогают продолжить атаку.' },
+      ] },
+    ],
+  },
+]
+
 type ScenarioTemplate = {
   id: string
   title: string
@@ -184,7 +296,7 @@ const templateScenarios: TrainingScenario[] = templates.map((template) => ({
   ],
 }))
 
-export const trainingScenarios: TrainingScenario[] = [...coreTrainingScenarios, ...templateScenarios]
+export const trainingScenarios: TrainingScenario[] = [...coreTrainingScenarios, ...branchTrainingScenarios, ...templateScenarios]
 
 export const trainingSkillLabels: Record<TrainingSkill, string> = {
   banking: 'Banking and OTP',

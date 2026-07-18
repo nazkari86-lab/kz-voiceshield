@@ -1,4 +1,4 @@
-import { dailyTrainingScenario, examScenarios, trainingScenarios, trainingScore } from '../src/training'
+import { assessSpokenTrainingResponse, dailyTrainingScenario, examScenarios, trainingScenarios, trainingScore } from '../src/training'
 import { recoveryPlans } from '../src/emergency'
 
 describe('training and recovery content', () => {
@@ -13,6 +13,13 @@ describe('training and recovery content', () => {
       expect(step.choices.some((choice) => choice.safe)).toBe(true)
       expect(step.choices.some((choice) => !choice.safe)).toBe(true)
     })
+  })
+
+  it('supports spoken response assessment and branch metadata', () => {
+    const step = trainingScenarios.find((scenario) => scenario.id === 'kaspi-support-ru')!.steps[0]!
+    expect(assessSpokenTrainingResponse('я завершу звонок и открою приложение сам', step)).toBe('safe')
+    expect(assessSpokenTrainingResponse('остаться на линии и выполнять инструкции оператора', step)).toBe('unsafe')
+    expect(step.choices.some((choice) => choice.nextStepIndex === 2)).toBe(true)
   })
 
   it('ships a substantial practice library with deterministic daily and exam modes', () => {

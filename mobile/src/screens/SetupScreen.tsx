@@ -14,6 +14,7 @@ import { colors } from '../theme'
 import { fitsDevice, recommendedModel, requiredStorageBytes, whisperModels } from '../data/whisperModels'
 import type { ModelStorageInfo, WhisperModelChoice } from '../data/whisperModels'
 import { getBackendConfig, inspectBackendTransport, saveBackendConfig, testBackendConnection, type BackendDiagnostics } from '../services/backendConfig'
+import { applyMcpMode, loadMcpPermissions, MCP_CAPABILITIES, MCP_CAPABILITY_LABELS, saveMcpPermissions, type McpCapability, type McpPermissionMode, type McpPermissions } from '../services/mcpPermissions'
 
 type Props = {
   modelReady: boolean
@@ -107,6 +108,51 @@ function BackendConnectionPanel() {
         <Text style={styles.diagnosticTitle}>{copy.capabilities}</Text>
         <Text style={styles.diagnosticCopy}>{Object.entries(diagnostics.capabilities).map(([name, enabled]) => `${name}: ${enabled ? 'ready' : 'unavailable'}`).join(' · ') || 'No capability metadata returned'}</Text>
       </View> : null}
+    </View>
+  )
+}
+
+function McpPermissionsPanel() {
+  const [permissions, setPermissions] = useState<McpPermissions | null>(null)
+
+  useEffect(() => { void loadMcpPermissions().then(setPermissions) }, [])
+
+  const update = async (next: McpPermissions) => {
+    const saved = await saveMcpPermissions(next)
+    setPermissions(saved)
+  }
+
+  if (!permissions) return null
+  const modes: Array<{ id: McpPermissionMode; label: string; detail: string }> = [
+    { id: 'none', label: 'Ничего', detail: 'Ассистент не вызывает MCP-инструменты' },
+    { id: 'safe', label: 'Безопасный минимум', detail: 'Знания, транскрипты, SMS и номера' },
+    { id: 'custom', label: 'Выборочно', detail: 'Разрешения задаются ниже' },
+    { id: 'all', label: 'Всё', detail: 'Включает будущие категории, опасные действия требуют подтверждения' },
+  ]
+  return (
+    <View style={styles.mcpPanel}>
+      <Text style={styles.noticeTitle}>Разрешения AI и MCP</Text>
+      <Text style={styles.copy}>Вы управляете тем, какие данные и инструменты может использовать ассистент. По умолчанию включён только локальный безопасный минимум. Запрещённые категории не передаются модели и backend.</Text>
+      <View style={styles.mcpModeGrid}>
+        {modes.map((mode) => (
+          <Pressable key={mode.id} onPress={() => { void update(applyMcpMode(mode.id, permissions)) }} style={[styles.mcpMode, permissions.mode === mode.id && styles.mcpModeActive]}>
+            <Text style={[styles.mcpModeTitle, permissions.mode === mode.id && styles.mcpModeTitleActive]}>{mode.label}</Text>
+            <Text style={styles.mcpModeDetail}>{mode.detail}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={styles.mcpSubheading}>Детальные разрешения</Text>
+      {MCP_CAPABILITIES.map((capability: McpCapability) => {
+        const enabled = permissions.mode === 'all' || permissions.capabilities[capability]
+        const disabled = permissions.mode !== 'custom'
+        return (
+          <Pressable key={capability} accessibilityRole="switch" accessibilityState={{ checked: enabled, disabled }} disabled={disabled} onPress={() => { void update({ ...permissions, mode: 'custom', capabilities: { ...permissions.capabilities, [capability]: !permissions.capabilities[capability] } }) }} style={[styles.mcpPermissionRow, disabled && styles.mcpPermissionDisabled]}>
+            <View style={styles.safetyCopy}><Text style={styles.mcpPermissionTitle}>{MCP_CAPABILITY_LABELS[capability]}</Text><Text style={styles.mcpPermissionDetail}>{capability === 'contacts' ? 'Разрешает только явно выбранные контактные данные.' : capability === 'files' ? 'Только файлы, которые пользователь выбрал через системный picker.' : capability === 'cloud' ? 'Может отправлять только обезличенный текст после отдельного согласия.' : capability === 'callControl' || capability === 'messaging' || capability === 'shell' ? 'Опасное действие: всегда требует отдельного подтверждения и сейчас не включено в allow-list.' : 'Локальный доступ по назначению функции.'}</Text></View>
+            <Text style={[styles.mcpPermissionState, enabled && styles.mcpPermissionStateActive]}>{enabled ? 'Разрешено' : 'Запрещено'}</Text>
+          </Pressable>
+        )
+      })}
+      <Text style={styles.securityCopy}>Режим «Всё» не даёт модели скрытый доступ к телефону. Любой будущий инструмент с изменением данных, отправкой сообщения, управлением звонком или командами системы должен запросить подтверждение.</Text>
     </View>
   )
 }
@@ -253,6 +299,7 @@ export function SetupScreen({
       <Step label="Open default phone apps" status={status.dialerRole} disabled={!privacyConsent} onPress={() => DeviceSettings.openDefaultAppsSettings()} />
 
       <BackendConnectionPanel />
+      <McpPermissionsPanel />
 
       <Text style={styles.section}>On-device speech model</Text>
       <Text style={styles.copy}>Recognition language</Text>
@@ -372,6 +419,20 @@ const styles = StyleSheet.create({
   safetyCopy: { flex: 1, gap: 3 },
   securityCopy: { color: colors.muted, fontSize: 11, lineHeight: 16 },
   backendPanel: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 9, marginTop: 12, padding: 14 },
+  mcpPanel: { backgroundColor: colors.card, borderColor: colors.border, borderRadius: 8, borderWidth: 1, gap: 9, marginTop: 12, padding: 14 },
+  mcpModeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  mcpMode: { borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexBasis: '48%', flexGrow: 1, gap: 2, minHeight: 58, padding: 9 },
+  mcpModeActive: { backgroundColor: colors.softBrand, borderColor: colors.brand },
+  mcpModeTitle: { color: colors.ink, fontSize: 12, fontWeight: '900' },
+  mcpModeTitleActive: { color: colors.brandDark },
+  mcpModeDetail: { color: colors.muted, fontSize: 10, lineHeight: 14 },
+  mcpSubheading: { color: colors.ink, fontSize: 13, fontWeight: '900', marginTop: 3 },
+  mcpPermissionRow: { alignItems: 'center', borderColor: colors.border, borderRadius: 7, borderWidth: 1, flexDirection: 'row', gap: 8, padding: 9 },
+  mcpPermissionDisabled: { opacity: 0.62 },
+  mcpPermissionTitle: { color: colors.ink, fontSize: 12, fontWeight: '800' },
+  mcpPermissionDetail: { color: colors.muted, fontSize: 10, lineHeight: 14, marginTop: 2 },
+  mcpPermissionState: { color: '#b45309', fontSize: 10, fontWeight: '900' },
+  mcpPermissionStateActive: { color: '#15803d' },
   backendInput: { backgroundColor: '#fff', borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, minHeight: 44, paddingHorizontal: 11 },
   backendStatus: { color: colors.sub, fontSize: 12, lineHeight: 17 },
   diagnosticPanel: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 7, borderWidth: 1, gap: 4, padding: 10 },

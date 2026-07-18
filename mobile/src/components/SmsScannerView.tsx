@@ -69,7 +69,7 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [copy.error])
 
   const requestSmsPermission = useCallback(async () => {
     if (Platform.OS !== 'android' || !SmsScannerModule) return

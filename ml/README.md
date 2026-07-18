@@ -82,3 +82,13 @@ candidate for further review only when p95 real-time factor is at most `1.0`.
 Training is blocked below 30 unique trusted cases or below five examples in any label. Those limits only prevent meaningless smoke runs; production release requires a substantially larger independent RU/KZ dataset, documented labeling instructions, held-out evaluation, calibration, and bias/error review.
 
 Generated artifacts are intentionally git-ignored. Treat imported cases as untrusted until a reviewer confirms the label in VoiceShield.
+
+## Promotion gates
+
+`ml/asr_benchmark.py` compares FastConformer, Whisper and cloud hypotheses
+against the same RU/KZ manifest and reports WER/CER by language. `ml/quality_gate.py`
+checks that a trusted real holdout has enough fraud/safe examples and language
+coverage before model evaluation. Synthetic or transfer rows cannot satisfy
+that gate. Voice-authentication candidates are evaluated separately by
+`ml/voice_auth_lab.py` and remain shadow-only until cross-generator, telephony
+and Xiaomi checks pass.

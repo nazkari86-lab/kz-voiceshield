@@ -10,12 +10,22 @@ from pathlib import Path
 
 MODEL_CANDIDATES = (
     {
+        "id": "aasist-asvspoof2021",
+        "role": "offline speech-deepfake benchmark candidate",
+        "format": "pytorch/checkpoint",
+        "source": "https://github.com/clovaai/aasist",
+        "license": "Verify checkpoint and dataset terms separately",
+        "artifact": "voice-auth/aasist/aasist.onnx",
+        "liveDecisionUse": False,
+        "requires": ["artifact SHA-256", "ONNX conversion validation", "RU/KZ telephony evaluation", "low-FPR calibration"],
+    },
+    {
         "id": "silero-vad-onnx",
         "role": "offline speech-presence and audio-quality evaluation",
         "format": "onnx",
         "source": "https://github.com/snakers4/silero-vad",
         "license": "MIT",
-        "artifact": "models/silero-vad.onnx",
+        "artifact": "voice-auth/silero-vad/silero_vad_16k_op15.onnx",
         "liveDecisionUse": False,
         "requires": ["artifact SHA-256", "Xiaomi benchmark", "offline false-positive review"],
     },

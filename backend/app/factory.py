@@ -25,6 +25,8 @@ from .repository import CaseVersionConflict, Repository
 from .security import PayloadCipher, authenticate, require_roles
 from .transcription import Transcriber, transcriber_from_env
 from .privacy import detect_language, redact_text
+from .mcp_gateway import handle_mcp
+from .training_tts import TrainingTtsService, TrainingTtsSettings, TrainingTtsUnavailable
 
 
 ALLOWED_AUDIO_TYPES = {
@@ -50,6 +52,15 @@ def create_app(
     repository = Repository(resolved_settings.database_path, cipher)
     resolved_model = model_service or ModelService(resolved_settings.model_path)
     resolved_transcriber = transcriber or transcriber_from_env()
+    training_tts = TrainingTtsService(TrainingTtsSettings(
+        api_key=resolved_settings.training_tts_api_key,
+        voice_id=resolved_settings.training_tts_voice_id,
+        model_id=resolved_settings.training_tts_model_id,
+        cache_dir=resolved_settings.training_tts_cache_dir,
+        edge_tts_enabled=resolved_settings.training_edge_tts_enabled,
+        edge_tts_voice_ru=resolved_settings.training_edge_tts_voice_ru,
+        edge_tts_voice_kz=resolved_settings.training_edge_tts_voice_kz,
+    ))
     livekit_rooms: dict[str, dict[str, Any]] = {}
     livekit_lock = Lock()
 
@@ -58,7 +69,7 @@ def create_app(
         yield
         repository.close()
 
-    app = FastAPI(title="KZ VoiceShield API", version="2.1.0", lifespan=lifespan)
+    app = FastAPI(title="KZ VoiceShield API", version="2.2.1", lifespan=lifespan)
     app.state.settings = resolved_settings
     app.state.repository = repository
     app.state.model_service = resolved_model
@@ -89,8 +100,10 @@ def create_app(
             == "FasterWhisperTranscriber",
             "liveKitVoip": livekit_configured(),
             "serverPiiRedaction": True,
+            "mcpGateway": True,
             "trainedKazakhStreamingAsr": False,
             "deepfakeModel": False,
+            "trainingTts": training_tts.available,
         }
 
     @app.get("/readyz")
@@ -138,6 +151,25 @@ def create_app(
             "limits": {"maxAudioBytes": resolved_settings.max_audio_bytes},
             "privacy": {"retainAudio": resolved_settings.retain_audio, "serverPiiRedaction": True},
         }
+
+    @app.post("/mcp")
+    def mcp_endpoint(
+        payload: dict[str, Any], principal: Principal = Depends(authenticate)
+    ) -> dict[str, Any]:
+        """Authenticated, read-only MCP-compatible tool gateway.
+
+        The allow-list is deliberately separate from case mutation and call
+        control endpoints. MCP tools cannot end calls, send messages, access
+        contacts, execute shell commands, or read arbitrary files.
+        """
+        repository.audit(principal.user_id, "mcp_request", {"method": payload.get("method")})
+        return handle_mcp(payload, {
+            "ok": repository.health_check(),
+            "version": app.version,
+            "apiVersion": "v1",
+            "mlAvailable": resolved_model.available,
+            "capabilities": service_capabilities(),
+        })
 
     def livekit_token(room: str, identity: str, name: str) -> str:
         try:
@@ -277,6 +309,64 @@ def create_app(
             "redactedTranscript": safe_transcript,
             "language": language,
         }
+
+    @app.post("/training/tts")
+    async def training_tts_endpoint(
+        body: dict[str, Any], principal: Principal = Depends(authenticate)
+    ) -> dict[str, Any]:
+        """Generate synthetic speech for the training simulator only.
+
+        The endpoint intentionally has no relationship with call capture or
+        transcription. The provider key stays on the backend and the response
+        exposes only a hashed voice identifier.
+        """
+        text = body.get("text")
+        language = body.get("language", "RU")
+        speed = body.get("speed", 0.95)
+        voice_id = body.get("voiceId")
+        if not isinstance(text, str) or not isinstance(language, str) or (voice_id is not None and not isinstance(voice_id, str)):
+            raise HTTPException(status_code=422, detail="text and language are required")
+        requested_voice = str(voice_id or training_tts.settings.voice_id).strip()
+        if not training_tts.available or not requested_voice and not training_tts.settings.edge_tts_enabled:
+            raise HTTPException(status_code=503, detail="Training voice provider is not configured")
+        try:
+            result = await training_tts.synthesize(text, language, float(speed), voice_id=voice_id)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except TrainingTtsUnavailable as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        repository.audit(principal.user_id, "training_tts_generated", {
+            "language": language.upper(),
+            "textLength": len(text),
+            "provider": result.provider,
+            "voiceIdHash": result.voice_id_hash,
+            "cached": result.cached,
+        })
+        return {
+            "audioBase64": result.audio_base64,
+            "mimeType": result.mime_type,
+            "source": "synthetic_training",
+            "provider": result.provider,
+            "voiceIdHash": result.voice_id_hash,
+            "modelId": result.model_id,
+            "cached": result.cached,
+        }
+
+    @app.get("/training/voices")
+    async def training_voices_endpoint(
+        _: Principal = Depends(authenticate),
+    ) -> dict[str, Any]:
+        """Return selectable ElevenLabs and Microsoft Edge voices without exposing secrets."""
+        if not training_tts.available:
+            raise HTTPException(status_code=503, detail="Training voice provider is not configured")
+        try:
+            voices = await training_tts.list_voices()
+        except TrainingTtsUnavailable as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        return {"items": [
+            {"voiceId": voice.voice_id, "name": voice.name, "category": voice.category, "labels": voice.labels}
+            for voice in voices
+        ]}
 
     def process_audio_job(
         job_id: str, audio_bytes: bytes, suffix: str, actor: str

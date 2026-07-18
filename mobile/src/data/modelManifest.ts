@@ -8,7 +8,7 @@ import { trainingDataSnapshot } from './trainingDataSnapshot'
 // and not used for live decisions. Composition numbers come from ml/model_card.py
 // (regenerate the snapshot; never hand-edit its numbers).
 
-export const APP_VERSION = '2.0.8'
+export const APP_VERSION = '2.2.1'
 
 export type SourceRef = { name: string; role: string; link?: string }
 
@@ -27,6 +27,11 @@ export const modelManifest = {
     version: trainingDataSnapshot.modelVersion,
     embeddingModel: 'TF-IDF char n-grams (multilingual, on-device friendly)',
     classifier: 'logistic-regression',
+    voiceAuthenticity: {
+      status: 'offline shadow candidates — not used for live decisions',
+      candidates: ['AASIST', 'LCNN ASVspoof', 'RawNet-style baseline'],
+      requiredGates: ['consent', 'cross-speaker split', 'cross-generator test', 'telephone codec test', 'Xiaomi benchmark'],
+    },
     trainedOn: trainingDataSnapshot,
     sources: [
       { name: 'Synthetic RU/KZ scripts', role: 'Generated from the scheme taxonomy — not real calls' },
@@ -36,6 +41,7 @@ export const modelManifest = {
       { name: 'KSC2 (Kazakh Speech Corpus 2)', role: 'ASR fine-tuning (RU/KZ speech)', link: 'issai.nu.edu.kz/kz-speech-corpus' },
       { name: 'Kazakh Speech Dataset', role: 'Offline ASR quality evaluation only', link: 'huggingface.co/datasets/Flamme-VRM/kazakh-speech-dataset' },
       { name: 'ASVspoof 2021 DF', role: 'Offline deepfake benchmark only; not used by live decisions', link: 'huggingface.co/datasets/SpeechAntiSpoofingBenchmarks/ASVspoof2021_DF' },
+      { name: 'AASIST', role: 'Offline speech deepfake candidate; requires RU/KZ telephony validation', link: 'github.com/clovaai/aasist' },
       { name: 'LCNN ASVspoof 2019 checkpoint', role: 'Unvalidated conversion candidate; not bundled or executed', link: 'huggingface.co/caa-speech-detection-asvspoof2019/lcnn' },
     ] as SourceRef[],
     caveats: [

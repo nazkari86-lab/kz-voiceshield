@@ -60,3 +60,47 @@ jobs:
 
       - name: Browser smoke tests
         run: npm run test:e2e
+
+  mobile:
+    name: Mobile TypeScript and Jest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install mobile dependencies
+        run: npm ci --prefix mobile
+      - name: Mobile typecheck
+        run: npm run typecheck --prefix mobile
+      - name: Mobile tests
+        run: npm test --prefix mobile -- --runInBand
+
+  android-release-build:
+    name: Android release build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install mobile dependencies
+        run: npm ci --prefix mobile
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Assemble Android release
+        working-directory: mobile/android
+        run: ./gradlew :app:assembleRelease --console=plain

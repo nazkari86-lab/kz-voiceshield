@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "voiceshield.voice-auth-artifacts.v1",
+  "policy": {
+    "liveDecisionUse": false,
+    "apkBundled": false,
+    "requiresOfflineEvaluation": true,
+    "requiresXiaomiBenchmark": true
+  },
+  "artifacts": [
+    {
+      "id": "aasist-asvspoof2021",
+      "path": "aasist/aasist.onnx",
+      "source": "https://huggingface.co/SpeechAntiSpoofingBenchmarks/AASIST",
+      "license": "MIT",
+      "bytes": 1615195,
+      "sha256": "130e536266b7c537f9a13029e1612a9f392fd1cc827783683b6d1c062a3db5e1",
+      "input": "mono float32 waveform, 16 kHz, 64600 samples",
+      "output": "logits[2]"
+    },
+    {
+      "id": "silero-vad-16k-op15",
+      "path": "silero-vad/silero_vad_16k_op15.onnx",
+      "source": "https://github.com/snakers4/silero-vad",
+      "license": "MIT",
+      "bytes": 1289603,
+      "sha256": "7ed98ddbad84ccac4cd0aeb3099049280713df825c610a8ed34543318f1b2c49",
+      "input": "mono float32 waveform with recurrent state at 16 kHz",
+      "output": "speech probability and recurrent state"
+    }
+  ]
+}

@@ -77,7 +77,7 @@ def test_health_is_public_and_auth_is_required(api):
     client, _ = api
     assert client.get("/health").json() == {
         "ok": True,
-        "version": "2.1.0",
+            "version": "2.2.1",
         "apiVersion": "v1",
         "mlAvailable": True,
     }
@@ -85,7 +85,7 @@ def test_health_is_public_and_auth_is_required(api):
     assert readiness.status_code == 200
     assert readiness.json() == {
         "ok": True,
-        "version": "2.1.0",
+            "version": "2.2.1",
         "apiVersion": "v1",
         "database": "ok",
         "mlAvailable": True,
@@ -98,8 +98,10 @@ def test_health_is_public_and_auth_is_required(api):
             "serverVad": False,
             "liveKitVoip": False,
             "serverPiiRedaction": True,
+            "mcpGateway": True,
             "trainedKazakhStreamingAsr": False,
             "deepfakeModel": False,
+            "trainingTts": False,
         },
     }
     assert (
@@ -108,6 +110,7 @@ def test_health_is_public_and_auth_is_required(api):
         ).status_code
         == 401
     )
+    assert readiness.json()["capabilities"]["trainingTts"] is False
 
 
 def test_diagnostics_is_authenticated_and_never_returns_secrets(api):
@@ -120,6 +123,60 @@ def test_diagnostics_is_authenticated_and_never_returns_secrets(api):
     assert payload["capabilities"]["serverPiiRedaction"] is True
     assert "token" not in str(payload).lower()
     assert "secret" not in str(payload).lower()
+
+
+def test_mcp_gateway_is_authenticated_and_allow_listed(api):
+    client, _ = api
+    assert client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).status_code == 401
+    listed = client.post(
+        "/mcp",
+        headers=auth("analyst-token"),
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+    )
+    assert listed.status_code == 200
+    names = {tool["name"] for tool in listed.json()["result"]["tools"]}
+    assert "voiceshield_analyze_transcript" in names
+    assert "voiceshield_app_knowledge" in names
+    assert "shell" not in names
+
+
+def test_mcp_tools_are_read_only_and_redact_before_sharing(api):
+    client, _ = api
+    response = client.post(
+        "/mcp",
+        headers=auth("analyst-token"),
+        json={
+            "jsonrpc": "2.0",
+            "id": "analysis",
+            "method": "tools/call",
+            "params": {"name": "voiceshield_analyze_transcript", "arguments": {"text": "Назовите код из SMS и переведите деньги срочно"}},
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["result"]["structuredContent"]["verdict"] == "fraud"
+
+    redact = client.post(
+        "/mcp",
+        headers=auth("analyst-token"),
+        json={
+            "jsonrpc": "2.0",
+            "id": "redact",
+            "method": "tools/call",
+            "params": {"name": "voiceshield_redact_text", "arguments": {"text": "Телефон +77001234567"}},
+        },
+    )
+    assert "77001234567" not in redact.json()["result"]["structuredContent"]["text"]
+
+
+def test_mcp_rejects_unknown_tools(api):
+    client, _ = api
+    response = client.post(
+        "/mcp",
+        headers=auth("analyst-token"),
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "shell", "arguments": {}}},
+    )
+    assert response.status_code == 200
+    assert response.json()["error"]["code"] == -32601
 
 
 def test_livekit_is_explicitly_disabled_without_server_secrets(api):
@@ -227,6 +284,17 @@ def test_reviewer_updates_workflow_and_reads_audit(api):
     ).json()["items"][0]
     assert preserved["status"] == "escalated"
     assert preserved["assignedTo"] == "Team A"
+
+
+def test_training_tts_is_disabled_without_provider_secret(api):
+    client, _ = api
+    response = client.post(
+        "/training/tts",
+        headers=auth("analyst-token"),
+        json={"text": "Назовите код из SMS", "language": "RU"},
+    )
+    assert response.status_code == 503
+    assert "not configured" in response.json()["detail"]
 
 
 def test_workflow_patch_rejects_stale_reviewer_version(api):

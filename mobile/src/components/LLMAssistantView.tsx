@@ -30,6 +30,8 @@ import { VoiceMessageModule } from '../bridge/VoiceMessageBridge'
 import { loadChatHistory, saveChatHistory } from '../services/chatHistory'
 import { DAILY_CLOUD_TOKEN_LIMIT, canUseCloud, estimateTokens, getCloudUsage, recordCloudUsage } from '../services/cloudBudget'
 import { CLOUD_OUTPUT_TOKEN_BUDGET } from '../services/cloudAiClient'
+import { buildLocalMcpContext } from '../services/mcpTools'
+import { DEFAULT_MCP_PERMISSIONS, loadMcpPermissions, type McpPermissions } from '../services/mcpPermissions'
 import {
   assessAttachmentQuality, buildAttachmentEvidenceBundle, cloudAttachmentPrivacySummary, compareAttachments, createChatId, createChatSession,
   extractAttachmentIndicators, extractReceiptFields, inspectAttachment, inspectLinkOffline, titleForChat, toCaseEvidenceItem, type ChatSession, type WorkspaceAttachment, type WorkspaceMessage,
@@ -85,6 +87,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
   const [showCaseWorkspace, setShowCaseWorkspace] = useState(false)
   const [noteDraft, setNoteDraft] = useState('')
   const [showComparison, setShowComparison] = useState(false)
+  const [mcpPermissions, setMcpPermissions] = useState<McpPermissions>(DEFAULT_MCP_PERMISSIONS)
   const [cloudTokensUsed, setCloudTokensUsed] = useState(0)
   const scrollRef = useRef<ScrollView>(null)
   const isAtBottomRef = useRef(true)
@@ -109,6 +112,10 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
     return left && right ? compareAttachments(left, right) : null
   }, [chatAttachments])
   const activeCase = useMemo(() => sessions.find((session) => session.id === activeSessionId) ?? null, [activeSessionId, sessions])
+  const localMcpContext = useMemo(
+    () => buildLocalMcpContext(transcript, { storage: storageInfo, installedModelIds: installedModels.map((model) => model.id), permissions: mcpPermissions }),
+    [installedModels, mcpPermissions, storageInfo, transcript],
+  )
 
   const persistChat = useCallback((sessionId: string, nextMessages: ChatMessage[], attachments: WorkspaceAttachment[] = []) => {
     setSessions((previous) => {
@@ -165,6 +172,10 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
 
   useEffect(() => {
     void loadChatHistory().then(setSessions).catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    void loadMcpPermissions().then(setMcpPermissions)
   }, [])
 
   useEffect(() => {
@@ -404,6 +415,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
           return `Вложение ${index + 1}: ${attachment.fileName}${attachment.truncated ? ' (показано начало)' : ''}.\nЛокальная оценка: ${evidence?.risk ?? 'low'} ${evidence?.score ?? 0}/100; схема: ${evidence?.scheme ?? 'не определена'}.\nФрагменты: ${references}\nЕсли опираешься на этот файл, указывай §номер фрагмента рядом с выводом.\nТекст:\n${preserveTextWindow(attachment.text, 7_000)}`
         }),
         languageContext ? `Контекст знаний VoiceShield и KSC2 (не доказательство): ${preserveTextWindow(languageContext, 8_000)}` : '',
+        `Локальный MCP-контекст (справочный, не доказательство):\n${preserveTextWindow(localMcpContext, 8_000)}`,
         `Казахский semantic runtime: ${modelKazakhContext.slice(0, 1000)}`,
         '',
       ].filter(Boolean).join('\n\n')
@@ -447,7 +459,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
       })
       setGenerating(false)
     }
-  }, [activeSessionId, ai, attachmentEvidence, chatAttachments, cloudAttachmentConsent, cloudTokensUsed, engine, generating, languageContext, messages, modelKazakhContext, modelReady, persistChat, transcript])
+  }, [activeSessionId, ai, attachmentEvidence, chatAttachments, cloudAttachmentConsent, cloudTokensUsed, engine, generating, languageContext, localMcpContext, messages, modelKazakhContext, modelReady, persistChat, transcript])
 
   const attachFile = useCallback(async () => {
     if (!ChatAttachmentModule) {

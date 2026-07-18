@@ -24,6 +24,13 @@ class Settings:
     livekit_url: str | None = None
     livekit_api_key: str | None = None
     livekit_api_secret: str | None = None
+    training_tts_api_key: str = ""
+    training_tts_voice_id: str = ""
+    training_tts_model_id: str = "eleven_multilingual_v2"
+    training_tts_cache_dir: Path = Path("backend/data/training-tts-cache")
+    training_edge_tts_enabled: bool = False
+    training_edge_tts_voice_ru: str = "ru-RU-SvetlanaNeural"
+    training_edge_tts_voice_kz: str = "kk-KZ-AigulNeural"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -58,4 +65,11 @@ class Settings:
             livekit_url=os.environ.get("LIVEKIT_URL", "").strip() or None,
             livekit_api_key=os.environ.get("LIVEKIT_API_KEY", "").strip() or None,
             livekit_api_secret=os.environ.get("LIVEKIT_API_SECRET", "").strip() or None,
+            training_tts_api_key=os.environ.get("ELEVENLABS_API_KEY", "").strip(),
+            training_tts_voice_id=os.environ.get("ELEVENLABS_TRAINING_VOICE_ID", "").strip(),
+            training_tts_model_id=os.environ.get("ELEVENLABS_TRAINING_MODEL", "eleven_multilingual_v2").strip(),
+            training_tts_cache_dir=Path(os.environ.get("VOICESHIELD_TRAINING_TTS_CACHE", "backend/data/training-tts-cache")),
+            training_edge_tts_enabled=os.environ.get("VOICESHIELD_EDGE_TTS_ENABLED", "true").lower() == "true",
+            training_edge_tts_voice_ru=os.environ.get("VOICESHIELD_EDGE_TTS_VOICE_RU", "ru-RU-SvetlanaNeural").strip(),
+            training_edge_tts_voice_kz=os.environ.get("VOICESHIELD_EDGE_TTS_VOICE_KZ", "kk-KZ-AigulNeural").strip(),
         )

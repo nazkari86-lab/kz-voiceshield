@@ -1,6 +1,11 @@
 package kz.voiceshield
 
 import android.speech.tts.TextToSpeech
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.media.MediaPlayer
+import android.util.Base64
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -11,6 +16,8 @@ class TrainingVoiceModule(private val context: ReactApplicationContext) : ReactC
   private var engine: TextToSpeech? = null
   private var ready = false
   private var pending: (() -> Unit)? = null
+  private var player: MediaPlayer? = null
+  private var recognizer: SpeechRecognizer? = null
 
   override fun getName(): String = "TrainingVoiceModule"
 
@@ -51,13 +58,106 @@ class TrainingVoiceModule(private val context: ReactApplicationContext) : ReactC
   @ReactMethod
   fun stop(promise: Promise) {
     engine?.stop()
+    recognizer?.cancel()
+    player?.run {
+      if (isPlaying) stop()
+      reset()
+      release()
+    }
+    player = null
     promise.resolve(null)
+  }
+
+  @ReactMethod
+  fun listen(language: String, promise: Promise) {
+    if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+      promise.reject("SPEECH_RECOGNITION_UNAVAILABLE", "Speech recognition is not available on this device")
+      return
+    }
+    recognizer?.cancel()
+    val next = SpeechRecognizer.createSpeechRecognizer(context)
+    recognizer = next
+    next.setRecognitionListener(object : RecognitionListener {
+      override fun onResults(results: android.os.Bundle?) {
+        val values = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+        promise.resolve(values?.firstOrNull().orEmpty())
+        next.destroy()
+        if (recognizer === next) recognizer = null
+      }
+      override fun onError(error: Int) {
+        promise.reject("SPEECH_RECOGNITION_FAILED", "Could not recognise the training answer (code $error)")
+        next.destroy()
+        if (recognizer === next) recognizer = null
+      }
+      override fun onReadyForSpeech(params: android.os.Bundle?) {}
+      override fun onBeginningOfSpeech() {}
+      override fun onRmsChanged(rmsdB: Float) {}
+      override fun onBufferReceived(buffer: ByteArray?) {}
+      override fun onEndOfSpeech() {}
+      override fun onPartialResults(partialResults: android.os.Bundle?) {}
+      override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+    })
+    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+      putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (language == "KZ") "kk-KZ" else "ru-RU")
+      putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+      putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+      putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+    }
+    next.startListening(intent)
+  }
+
+  @ReactMethod
+  fun playBase64(audioBase64: String, mimeType: String?, promise: Promise) {
+    if (audioBase64.isBlank()) {
+      promise.reject("AUDIO_EMPTY", "Training audio is empty")
+      return
+    }
+    try {
+      val bytes = Base64.decode(audioBase64, Base64.DEFAULT)
+      val file = java.io.File.createTempFile("voiceshield-training-", ".mp3", context.cacheDir)
+      file.outputStream().use { it.write(bytes) }
+      player?.run {
+        if (isPlaying) stop()
+        reset()
+        release()
+      }
+      val next = MediaPlayer()
+      player = next
+      next.setDataSource(file.absolutePath)
+      next.setOnCompletionListener { completed ->
+        completed.release()
+        if (player === completed) player = null
+        file.delete()
+      }
+      next.setOnErrorListener { failed, _, _ ->
+        failed.release()
+        if (player === failed) player = null
+        file.delete()
+        promise.reject("AUDIO_PLAYBACK_FAILED", "Training audio could not be decoded")
+        true
+      }
+      next.setOnPreparedListener { prepared ->
+        prepared.start()
+        promise.resolve(true)
+      }
+      next.prepareAsync()
+    } catch (error: Exception) {
+      promise.reject("AUDIO_PLAYBACK_FAILED", error.message, error)
+    }
   }
 
   override fun invalidate() {
     engine?.stop()
     engine?.shutdown()
     engine = null
+    player?.run {
+      if (isPlaying) stop()
+      reset()
+      release()
+    }
+    player = null
+    recognizer?.destroy()
+    recognizer = null
     super.invalidate()
   }
 }

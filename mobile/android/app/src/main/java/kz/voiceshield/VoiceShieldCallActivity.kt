@@ -15,6 +15,8 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 
 class VoiceShieldCallActivity : Activity(), VoiceShieldCallController.Listener {
   private lateinit var title: TextView
@@ -23,6 +25,8 @@ class VoiceShieldCallActivity : Activity(), VoiceShieldCallController.Listener {
   private lateinit var reasons: TextView
   private lateinit var answer: Button
   private lateinit var end: Button
+  private lateinit var screeningStatus: TextView
+  private var tts: TextToSpeech? = null
   private var muted = false
   private var speaker = false
 
@@ -34,11 +38,13 @@ class VoiceShieldCallActivity : Activity(), VoiceShieldCallController.Listener {
     }
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or WindowManager.LayoutParams.FLAG_SECURE)
     setContentView(buildContent())
+    tts = TextToSpeech(this) { status -> if (status == TextToSpeech.SUCCESS) tts?.language = Locale("ru", "RU") }
     VoiceShieldCallController.addListener(this)
   }
 
   override fun onDestroy() {
     VoiceShieldCallController.removeListener(this)
+    tts?.shutdown()
     super.onDestroy()
   }
 
@@ -109,6 +115,15 @@ class VoiceShieldCallActivity : Activity(), VoiceShieldCallController.Listener {
     controls.addView(answer, LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginEnd = dp(6) })
     controls.addView(end, LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginStart = dp(6) })
     root.addView(controls, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(28) })
+    val screen = button("Screen before answering", Color.rgb(124, 58, 237)) {
+      VoiceShieldCallController.answer()
+      screeningStatus.text = "VoiceShield assistant asked the caller to identify the organisation and purpose."
+      tts?.speak("Здравствуйте. Назовите организацию и цель звонка. Не просите коды или переводы.", TextToSpeech.QUEUE_FLUSH, null, "voiceshield-screening")
+    }
+    screeningStatus = text("", 12f)
+    screeningStatus.setTextColor(Color.rgb(196, 181, 253))
+    root.addView(screen, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(12) })
+    root.addView(screeningStatus, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
     val tools = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
     val mute = button("Mute", Color.rgb(51, 65, 85)) { pressed ->
       muted = !muted

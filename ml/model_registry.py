@@ -12,7 +12,7 @@ MODEL_CANDIDATES = (
     {
         "id": "aasist-asvspoof2021",
         "role": "offline speech-deepfake benchmark candidate",
-        "format": "pytorch/checkpoint",
+        "format": "onnx",
         "source": "https://github.com/clovaai/aasist",
         "license": "Verify checkpoint and dataset terms separately",
         "artifact": "voice-auth/aasist/aasist.onnx",

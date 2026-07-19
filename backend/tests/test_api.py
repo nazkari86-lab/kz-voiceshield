@@ -102,6 +102,8 @@ def test_health_is_public_and_auth_is_required(api):
             "trainedKazakhStreamingAsr": False,
             "deepfakeModel": False,
             "trainingTts": False,
+            "externalNumberLookup": False,
+            "externalPhishingLookup": True,
         },
     }
     assert (
@@ -111,6 +113,21 @@ def test_health_is_public_and_auth_is_required(api):
         == 401
     )
     assert readiness.json()["capabilities"]["trainingTts"] is False
+
+
+def test_external_intel_is_authenticated_and_disabled_without_number_keys(api):
+    client, _ = api
+    assert client.get("/intel/number?number=%2B77001234567").status_code == 401
+    response = client.get("/intel/number?number=%2B77001234567", headers=auth("analyst-token"))
+    assert response.status_code == 503
+    assert response.json()["detail"] == "number_lookup_not_configured"
+
+
+def test_external_phishtank_is_authenticated_and_validates_input(api):
+    client, _ = api
+    assert client.post("/intel/url", json={"url": "https://example.com"}).status_code == 401
+    response = client.post("/intel/url", headers=auth("analyst-token"), json={"url": "not-a-url"})
+    assert response.status_code == 422
 
 
 def test_crowd_reports_require_auth_and_dedupe_without_raw_text(api):

@@ -397,6 +397,35 @@ class VoiceShieldEngine:
             scam_confidence=confidence_band,
         )
 
+    def analyze_with_audio(
+        self,
+        text: str,
+        waveform: Any,
+        *,
+        sample_rate: int = 16_000,
+        scorer: Any | None = None,
+    ) -> AnalysisResult:
+        """Attach an offline AASIST signal without changing text risk scoring.
+
+        The audio signal is deliberately evidence-only. It cannot promote,
+        block, or end a call until RU/KZ telephony calibration and physical
+        device validation are completed.
+        """
+        result = self.analyze(text)
+        if scorer is None:
+            try:
+                from .aasist_inference import AasistScorer
+            except ImportError:  # Support direct execution from ``ml``.
+                from aasist_inference import AasistScorer
+
+            scorer = AasistScorer()
+        score = scorer.score(waveform, sample_rate)
+        return replace(
+            result,
+            synthetic_voice_score=score.synthetic_voice_score,
+            verification_status="AASIST_UNCALIBRATED",
+        )
+
     def start_session(self, session_id: str) -> SessionState:
         return SessionState(session_id=session_id)
 

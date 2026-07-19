@@ -1,6 +1,8 @@
 import unittest
 from pathlib import Path
 
+import numpy as np
+
 from ml.voiceshield_engine import VoiceShieldEngine
 from ml.subword_tokenizer import KzRuSubwordTokenizer
 
@@ -94,6 +96,18 @@ class VoiceShieldEngineTests(unittest.TestCase):
         engine = VoiceShieldEngine(tokenizer_model=Path("/tmp/voiceshield-missing.model"))
         self.assertIsNone(engine.subword_tokenizer)
         self.assertEqual(KzRuSubwordTokenizer().encode("Kaspi төлем"), ["▁kaspi", "kas", "▁төлем", "төл"])
+
+    def test_aasist_is_evidence_only_and_does_not_change_text_risk(self):
+        from ml.aasist_inference import AasistScorer
+
+        waveform = np.zeros(16_000, dtype=np.float32)
+        text = "Служба безопасности банка: срочно переведите деньги на безопасный счет"
+        text_result = self.engine.analyze(text)
+        combined = self.engine.analyze_with_audio(text, waveform, scorer=AasistScorer())
+        self.assertEqual(combined.fraud_class, text_result.fraud_class)
+        self.assertEqual(combined.decision, text_result.decision)
+        self.assertIsNotNone(combined.synthetic_voice_score)
+        self.assertEqual(combined.verification_status, "AASIST_UNCALIBRATED")
 
 
 if __name__ == "__main__":

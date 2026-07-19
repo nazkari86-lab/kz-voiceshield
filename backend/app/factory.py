@@ -29,6 +29,7 @@ from .transcription import Transcriber, transcriber_from_env
 from .privacy import detect_language, redact_text
 from .mcp_gateway import handle_mcp
 from .training_tts import TrainingTtsService, TrainingTtsSettings, TrainingTtsUnavailable
+from .external_intel import ExternalIntelService, ExternalIntelSettings, ExternalIntelUnavailable
 
 
 ALLOWED_AUDIO_TYPES = {
@@ -62,6 +63,12 @@ def create_app(
         edge_tts_enabled=resolved_settings.training_edge_tts_enabled,
         edge_tts_voice_ru=resolved_settings.training_edge_tts_voice_ru,
         edge_tts_voice_kz=resolved_settings.training_edge_tts_voice_kz,
+    ))
+    external_intel = ExternalIntelService(ExternalIntelSettings(
+        numverify_api_key=resolved_settings.numverify_api_key,
+        abstract_api_key=resolved_settings.abstract_api_key,
+        phishtank_api_key=resolved_settings.phishtank_api_key,
+        timeout_seconds=resolved_settings.external_intel_timeout_seconds,
     ))
     livekit_rooms: dict[str, dict[str, Any]] = {}
     livekit_lock = Lock()
@@ -106,6 +113,8 @@ def create_app(
             "trainedKazakhStreamingAsr": False,
             "deepfakeModel": False,
             "trainingTts": training_tts.available,
+            "externalNumberLookup": external_intel.number_available,
+            "externalPhishingLookup": external_intel.phishing_available,
         }
 
     @app.get("/readyz")
@@ -153,6 +162,29 @@ def create_app(
             "limits": {"maxAudioBytes": resolved_settings.max_audio_bytes},
             "privacy": {"retainAudio": resolved_settings.retain_audio, "serverPiiRedaction": True},
         }
+
+    @app.get("/intel/number")
+    def lookup_external_number(number: str = Query(min_length=7, max_length=24), principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        try:
+            result = external_intel.lookup_number(number)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except ExternalIntelUnavailable as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        repository.audit(principal.user_id, "external_number_lookup", {"provider": result["provider"]})
+        return result
+
+    @app.post("/intel/url")
+    def check_external_url(payload: dict[str, Any], principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        url = payload.get("url") if isinstance(payload.get("url"), str) else ""
+        try:
+            result = external_intel.check_url(url)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except ExternalIntelUnavailable as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        repository.audit(principal.user_id, "external_url_lookup", {"provider": result["provider"]})
+        return result
 
     @app.post("/reputation/reports")
     def receive_crowd_reports(body: CrowdReportBatch, principal: Principal = Depends(authenticate)) -> dict[str, Any]:

@@ -32,6 +32,10 @@ class Settings:
     training_edge_tts_voice_ru: str = "ru-RU-SvetlanaNeural"
     training_edge_tts_voice_kz: str = "kk-KZ-AigulNeural"
     ota_private_key_b64: str = ""
+    numverify_api_key: str = ""
+    abstract_api_key: str = ""
+    phishtank_api_key: str = ""
+    external_intel_timeout_seconds: float = 8.0
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -74,4 +78,8 @@ class Settings:
             training_edge_tts_voice_ru=os.environ.get("VOICESHIELD_EDGE_TTS_VOICE_RU", "ru-RU-SvetlanaNeural").strip(),
             training_edge_tts_voice_kz=os.environ.get("VOICESHIELD_EDGE_TTS_VOICE_KZ", "kk-KZ-AigulNeural").strip(),
             ota_private_key_b64=os.environ.get("VOICESHIELD_OTA_PRIVATE_KEY_B64", "").strip(),
+            numverify_api_key=os.environ.get("NUMVERIFY_API_KEY", "").strip(),
+            abstract_api_key=os.environ.get("ABSTRACTAPI_PHONE_API_KEY", "").strip(),
+            phishtank_api_key=os.environ.get("PHISHTANK_API_KEY", "").strip(),
+            external_intel_timeout_seconds=float(os.environ.get("VOICESHIELD_EXTERNAL_INTEL_TIMEOUT_SECONDS", "8")),
         )

@@ -33,6 +33,7 @@ import { SmsScannerModule, type SmsMessage } from './bridge/SmsScannerBridge'
 import { saveIncomingCall } from './services/incomingCallHistory'
 import { IncomingCallHistoryView } from './components/IncomingCallHistoryView'
 import { loadStoredNumberFeed, refreshNumberFeed } from './services/numberUpdates'
+import { WidgetModule } from './bridge/WidgetBridge'
 import { TranscriptHistoryView } from './components/TranscriptHistoryView'
 import { LLMAssistantView } from './components/LLMAssistantView'
 import { ProtectionWalkthroughView } from './components/ProtectionWalkthroughView'
@@ -209,6 +210,8 @@ function AppContent() {
   useEffect(() => {
     if (w.hydrated && !w.privacyConsent) selectTab('setup')
   }, [w.hydrated, w.privacyConsent])
+
+  useEffect(() => { void WidgetModule?.updateRisk(w.analysis.score, w.analysis.risk).catch(() => undefined) }, [w.analysis.risk, w.analysis.score])
 
   // Fire live alert notification when risk escalates to critical/high during active session
   useEffect(() => {

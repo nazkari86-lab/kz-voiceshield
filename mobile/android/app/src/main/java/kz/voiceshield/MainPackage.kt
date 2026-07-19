@@ -30,6 +30,7 @@ class MainPackage : ReactPackage {
       DeepfakeDetectorModule(reactContext),
       SmsScannerModule(reactContext),
       LLMInferenceModule(reactContext),
+      WidgetModule(reactContext),
     )
   }
 

@@ -1,6 +1,6 @@
 {
   "REPOVERSION": "1.0.0",
-  "VERSION": "1.0.0",
+  "VERSION": "1.1.0",
   "PUBLISHED_AT": "2026-07-19T00:00:00Z",
   "SCHEMA_VERSION": "voiceshield.grammar.seed.v1",
   "COUNTRY": "KZ",
@@ -475,7 +475,11 @@
     "WARRANTY": ["гарантия", "гарантийный", "кепілдік"],
     "LOTTERY": ["лотерея", "выигрыш", "приз", "ұтыс", "жүлде"],
     "AUTHORITY": ["налоговая", "полиция", "суд", "прокуратура", "мемлекеттік"],
-    "SAFE_NOTIFICATION": ["операция выполнена", "платеж принят", "төлем қабылданды"]
+    "SAFE_NOTIFICATION": ["операция выполнена", "платеж принят", "төлем қабылданды"],
+    "SOCIAL_INSURANCE": ["фомс", "пенсия", "пособие", "әлеуметтік төлем", "зейнетақы"],
+    "TAX_COLLECTOR": ["кгд", "налоговая", "налоговая задолженность", "салық берешегі"],
+    "DEBT_COLLECTOR": ["коллектор", "долг", "задолженность", "қарыз", "берешек"],
+    "POLITICAL_CALL": ["опрос", "выборы", "партия", "агитация", "сауалнама", "сайлау"]
   },
   "DECISION_TIERS": {
     "1": {"name": "PLACE_IMMEDIATELY", "meaning": "safe_signal", "automatic_action": "none"},
@@ -607,6 +611,38 @@
       "confidence": 0.62,
       "all": [["предложени", "сроч"], ["робот", "нажм"], ["автоматты", "ұсыныс"]],
       "none": [["перевод"], ["код"], ["ссылк"], ["установ"]]
+    },
+    {
+      "id": "tax_collector_pressure",
+      "grammar": "GRM_TAX_COLLECTOR_SCAM_KZ",
+      "subtype": "TAX_COLLECTOR_SCAM",
+      "risk": "high",
+      "confidence": 0.86,
+      "all": [["кгд", "сроч"], ["налог", "задолжен", "оплат"], ["салық", "берешек", "төлем"]]
+    },
+    {
+      "id": "social_insurance_scam",
+      "grammar": "GRM_SOCIAL_INSURANCE_SCAM_KZ",
+      "subtype": "SOCIAL_INSURANCE_SCAM",
+      "risk": "high",
+      "confidence": 0.82,
+      "all": [["фомс", "комисси"], ["пенси", "код"], ["пособи", "оплат"], ["әлеуметтік", "код"]]
+    },
+    {
+      "id": "debt_collector_pressure",
+      "grammar": "GRM_DEBT_COLLECTOR_KZ",
+      "subtype": "DEBT_COLLECTOR_PRESSURE",
+      "risk": "medium",
+      "confidence": 0.72,
+      "all": [["коллектор", "долг"], ["задолжен", "сроч"], ["қарыз", "сот"]]
+    },
+    {
+      "id": "political_or_survey_call",
+      "grammar": "GRM_POLITICAL_CALL_KZ",
+      "subtype": "POLITICAL_OR_SURVEY",
+      "risk": "low",
+      "confidence": 0.65,
+      "all": [["опрос"], ["выбор"], ["партия"], ["сауалнама"], ["сайлау"]]
     }
   ]
 }

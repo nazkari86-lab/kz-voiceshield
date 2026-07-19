@@ -2,7 +2,7 @@
 // Keep this artifact limited to derived SMS metadata; it is not a live-call decision model.
 export const voiceShieldKzSeed = {
   schemaVersion: 'voiceshield.grammar.seed.v1',
-  version: '1.0.0',
+  version: '1.1.0',
   languages: ['ru', 'kz'],
   officialSenders: [
     'Kaspi', 'Halyk', 'BCC', 'ForteBank', 'Jusan', 'Beeline', 'Kcell', 'Tele2', 'eGov',
@@ -18,6 +18,10 @@ export const voiceShieldKzSeed = {
     { id: 'otp_request', subtype: 'otp_request', risk: 'medium', phrase: 'назовите код' },
     { id: 'safe_otp', subtype: 'safe_otp', risk: 'none', phrase: 'никому не сообщайте код' },
     { id: 'safe_transaction', subtype: 'safe_notification', risk: 'none', phrase: 'списание баланс' },
+    { id: 'tax_collector_pressure', subtype: 'tax_collector_scam', risk: 'high', phrase: 'налоговая задолженность срочно оплатить' },
+    { id: 'social_insurance_scam', subtype: 'social_insurance_scam', risk: 'high', phrase: 'пенсия код комиссия' },
+    { id: 'debt_collector_pressure', subtype: 'debt_collector_pressure', risk: 'medium', phrase: 'коллектор долг срочно' },
+    { id: 'political_or_survey_call', subtype: 'political_or_survey', risk: 'low', phrase: 'политический опрос' },
   ],
 } as const
 

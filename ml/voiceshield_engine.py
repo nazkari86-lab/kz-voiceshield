@@ -55,9 +55,18 @@ class AnalysisResult:
     session_elapsed_s: float = 0.0
     force_final: bool = False
     user_action_recommended: bool = False
+    synthetic_voice_score: float | None = None
+    verification_status: str = "NOT_VERIFIED"
+    caller_scam_risk: str = "NO_RISK"
+    scam_confidence: str = "LOW"
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data["syntheticVoiceScore"] = data.pop("synthetic_voice_score")
+        data["verificationStatus"] = data.pop("verification_status")
+        data["callerScamRisk"] = data.pop("caller_scam_risk")
+        data["scamConfidence"] = data.pop("scam_confidence")
+        return data
 
 
 @dataclass
@@ -370,6 +379,13 @@ class VoiceShieldEngine:
     ) -> AnalysisResult:
         result = self._analyze_text(text)
         decision = self._decision_for(result, low_confidence)
+        caller_risk = (
+            "HIGH_RISK" if result.risk_level in {"high", "critical"}
+            else "MEDIUM_RISK" if result.risk_level == "medium"
+            else "LOW_RISK" if result.risk_level == "low"
+            else "NO_RISK"
+        )
+        confidence_band = "HIGH" if result.confidence >= 0.85 else "MEDIUM" if result.confidence >= 0.55 else "LOW"
         return replace(
             result,
             decision=decision,
@@ -377,6 +393,8 @@ class VoiceShieldEngine:
             session_elapsed_s=max(0.0, session_elapsed_s),
             force_final=force_final,
             user_action_recommended=decision >= 4,
+            caller_scam_risk=caller_risk,
+            scam_confidence=confidence_band,
         )
 
     def start_session(self, session_id: str) -> SessionState:
@@ -438,6 +456,10 @@ class VoiceShieldEngine:
             "GRM_LOTTERY_SCAM_KZ": "Лотерейный скам — сообщение о выигрыше с требованием комиссии",
             "GRM_RECOVERY_SCAM_KZ": "Скам компенсации — ложный возврат средств или налоговый вычет",
             "GRM_TELEMARKETING_KZ": "Телемаркетинг или рекламный робозвонок",
+            "GRM_TAX_COLLECTOR_SCAM_KZ": "Используется давление от имени КГД или налоговой службы",
+            "GRM_SOCIAL_INSURANCE_SCAM_KZ": "Предлагается фиктивная выплата, пенсия или социальная компенсация",
+            "GRM_DEBT_COLLECTOR_KZ": "Есть признаки давления из-за долга или задолженности",
+            "GRM_POLITICAL_CALL_KZ": "Политический или опросный звонок; это не доказательство мошенничества",
         }
         suffix = "; название известного бренда не отменяет риск" if vendor else ""
         return explanations.get(hit.grammar, "Найден опасный языковой паттерн") + suffix

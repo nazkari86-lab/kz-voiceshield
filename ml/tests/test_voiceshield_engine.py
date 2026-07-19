@@ -57,6 +57,18 @@ class VoiceShieldEngineTests(unittest.TestCase):
         self.assertClass("Вы выиграли приз, оплатите комиссию для получения", "GRM_LOTTERY_SCAM_KZ")
         self.assertClass("Вам одобрена компенсация, оплатите комиссию за возврат", "GRM_RECOVERY_SCAM_KZ")
 
+    def test_hiya_inspired_kz_categories_and_result_metadata(self):
+        result = self.engine.analyze("КГД сообщает: налоговая задолженность, срочно оплатите")
+        self.assertEqual(result.fraud_class, "GRM_TAX_COLLECTOR_SCAM_KZ")
+        payload = result.to_dict()
+        self.assertEqual(payload["callerScamRisk"], "HIGH_RISK")
+        self.assertEqual(payload["verificationStatus"], "NOT_VERIFIED")
+        self.assertIsNone(payload["syntheticVoiceScore"])
+
+        political = self.engine.analyze("Опрос о выборах и политической программе")
+        self.assertEqual(political.fraud_class, "GRM_POLITICAL_CALL_KZ")
+        self.assertEqual(political.risk_level, "low")
+
     def test_decision_tier_is_recommendation_not_automatic_action(self):
         result = self.engine.analyze("Служба безопасности банка: срочно переведите деньги на безопасный счет")
         self.assertEqual(result.decision, 5)

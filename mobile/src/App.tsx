@@ -6,6 +6,8 @@ import { SetupScreen } from '@screens/SetupScreen'
 import { OnboardingScreen } from '@screens/OnboardingScreen'
 import { useWorkspace } from '@hooks/useWorkspace'
 import { LiveAlertModule } from './bridge/LiveAlertBridge'
+import { callEvents, type PostCallEvent, type SafeCallEvent } from './bridge/CallModule'
+import { recordBlockedCall, recordCallFeedback } from './services/callStats'
 import { riskColor } from './theme'
 import { ThemeProvider, useTheme } from './ThemeContext'
 import { I18nProvider } from './I18nContext'
@@ -27,6 +29,7 @@ import { StatsView, recordSession } from './components/StatsView'
 import { NumberShieldView } from './components/NumberShieldView'
 import { ScamToolsView } from './components/ScamToolsView'
 import { SmsScannerView } from './components/SmsScannerView'
+import { SmsScannerModule, type SmsMessage } from './bridge/SmsScannerBridge'
 import { TranscriptHistoryView } from './components/TranscriptHistoryView'
 import { LLMAssistantView } from './components/LLMAssistantView'
 import { ProtectionWalkthroughView } from './components/ProtectionWalkthroughView'
@@ -130,6 +133,7 @@ function AppContent() {
   const [pendingSharedAudio, setPendingSharedAudio] = useState(false)
   const [hubOpen, setHubOpen] = useState(false)
   const [onboardingDone, setOnboardingDone] = useState(true)
+  const [postCall, setPostCall] = useState<PostCallEvent | null>(null)
   const lastAlertRiskRef = useRef<string>('')
   const ai = useOnDeviceAiRuntime()
   const w = useWorkspace()
@@ -162,6 +166,26 @@ function AppContent() {
     void AsyncStorage.getItem(ONBOARDING_KEY).then((value) => {
       setOnboardingDone(value === 'done')
     }).catch(() => setOnboardingDone(true))
+  }, [])
+
+  useEffect(() => {
+    const acceptSms = (message?: SmsMessage | null) => {
+      if (!message?.body) return
+      setSharedText(message.body)
+      setAssistantAttachmentText(message.body)
+      selectTab('sms')
+    }
+    const sub = callEvents.addListener('VS_SMS_RECEIVED', (message: SmsMessage) => acceptSms(message))
+    void SmsScannerModule?.consumePendingSms?.().then(acceptSms).catch(() => undefined)
+    return () => sub.remove()
+  }, [])
+
+  useEffect(() => {
+    const incoming = callEvents.addListener('VS_CALL_INCOMING', (event: SafeCallEvent) => {
+      if (event.reputation?.action === 'block') void recordBlockedCall()
+    })
+    const ended = callEvents.addListener('VS_CALL_ENDED', (event: PostCallEvent) => setPostCall(event))
+    return () => { incoming.remove(); ended.remove() }
   }, [])
 
   useEffect(() => {
@@ -273,6 +297,7 @@ function AppContent() {
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={{ backgroundColor: colors.bg, flex: 1 }}>
+      {postCall ? <View style={styles.feedbackSheet}><Text style={styles.feedbackTitle}>{postCall.wangiri ? 'Короткий подозрительный звонок' : 'Звонок завершён'}</Text><Text style={styles.feedbackCopy}>{postCall.wangiri ? 'Номер позвонил и быстро отключился. Не перезванивайте автоматически.' : 'Помогло ли предупреждение VoiceShield?'}</Text>{postCall.wangiri ? null : <View style={styles.feedbackRow}><Pressable style={styles.feedbackButton} onPress={() => { void recordCallFeedback(true); setPostCall(null) }}><Text style={styles.feedbackButtonText}>Да</Text></Pressable><Pressable style={styles.feedbackButton} onPress={() => { void recordCallFeedback(false); setPostCall(null) }}><Text style={styles.feedbackButtonText}>Нет</Text></Pressable></View>}<Pressable onPress={() => setPostCall(null)}><Text style={styles.feedbackClose}>Закрыть</Text></Pressable></View> : null}
       <View style={{ alignItems: 'center', backgroundColor: colors.brandDark, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 17 }}>
         <View style={styles.headerText}>
           <Text style={styles.brand}>KZ VOICESHIELD</Text>
@@ -320,4 +345,11 @@ const styles = StyleSheet.create({
   hubTitle: { color: '#fff', fontSize: 23, fontWeight: '900', lineHeight: 29 },
   hubCopy: { color: '#c1dfd0', fontSize: 13, lineHeight: 19 },
   toolGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  feedbackSheet: { backgroundColor: '#fff7ed', borderColor: '#fb923c', borderRadius: 8, borderWidth: 1, gap: 8, margin: 12, padding: 14 },
+  feedbackTitle: { color: '#9a3412', fontSize: 16, fontWeight: '900' },
+  feedbackCopy: { color: '#7c2d12', fontSize: 13, lineHeight: 18 },
+  feedbackRow: { flexDirection: 'row', gap: 8 },
+  feedbackButton: { backgroundColor: '#087f5b', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10 },
+  feedbackButtonText: { color: '#fff', fontWeight: '900' },
+  feedbackClose: { color: '#7c2d12', fontWeight: '800' },
 })

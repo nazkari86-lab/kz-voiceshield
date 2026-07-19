@@ -17,7 +17,8 @@ class SmsScannerModule(reactContext: ReactApplicationContext) : ReactContextBase
 
   @ReactMethod
   fun hasPermission(promise: Promise) {
-    val granted = ContextCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+    val granted = ContextCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED &&
+      ContextCompat.checkSelfPermission(reactApplicationContext, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
     promise.resolve(granted)
   }
 
@@ -54,5 +55,20 @@ class SmsScannerModule(reactContext: ReactApplicationContext) : ReactContextBase
     } catch (e: Throwable) {
       promise.reject("SMS_READ_ERROR", e)
     }
+  }
+
+  @ReactMethod
+  fun consumePendingSms(promise: Promise) {
+    val prefs = reactApplicationContext.getSharedPreferences(SmsBroadcastReceiver.STORE, android.content.Context.MODE_PRIVATE)
+    val body = prefs.getString("body", null)
+    if (body.isNullOrBlank()) { promise.resolve(null); return }
+    val map = Arguments.createMap().apply {
+      putString("id", "broadcast-${prefs.getLong("date", 0L)}")
+      putString("address", prefs.getString("address", "") ?: "")
+      putString("body", body)
+      putDouble("date", prefs.getLong("date", 0L).toDouble())
+    }
+    prefs.edit().clear().apply()
+    promise.resolve(map)
   }
 }

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, PermissionsAndroid, Platform, Share, StyleSheet, TouchableOpacity, View } from 'react-native'
 import { SmsScannerModule, type SmsMessage } from '../bridge/SmsScannerBridge'
 import { checkScamNumber } from '../data/scamNumbers'
+import { checkPhishingUrl, type ExternalUrlResult } from '../services/externalIntel'
 import { colors } from '../theme'
 import { Card, SectionTitle } from './ui'
 import { LocalizedText as Text } from './LocalizedText'
@@ -31,6 +32,13 @@ type ScannedSms = SmsMessage & {
   financeCategory: SmsFinanceCategory
   fingerprint: string
   feedback: SmsFeedback | null
+}
+
+function extractUrls(text: string): string[] {
+  return Array.from(text.matchAll(/https?:\/\/[^\s<>"']+/gi))
+    .map((match) => match[0].replace(/[),.;!?]+$/, ''))
+    .filter((url, index, values) => values.indexOf(url) === index)
+    .slice(0, 3)
 }
 
 function categoryLabel(category: SmsCategory, lang: 'ru' | 'kz' | 'en'): string {
@@ -99,6 +107,7 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
   const [loading, setLoading] = useState(false)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
   const [suspiciousOnly, setSuspiciousOnly] = useState(false)
+  const [phishResults, setPhishResults] = useState<Record<string, ExternalUrlResult | null>>({})
 
   const checkPermission = useCallback(async () => {
     if (!SmsScannerModule) { setHasPermission(false); return }
@@ -122,6 +131,10 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
       }))
       scored.sort((a, b) => b.scamScore - a.scamScore)
       setMessages(scored)
+      const urlChecks = await Promise.all(scored.flatMap((message) => extractUrls(message.body).map(async (url) => {
+        try { return [message.fingerprint, await checkPhishingUrl(url)] as const } catch { return [message.fingerprint, null] as const }
+      })))
+      setPhishResults(Object.fromEntries(urlChecks))
     } catch (e) {
       Alert.alert(copy.error, String(e))
     } finally {
@@ -136,13 +149,21 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
 
   const requestSmsPermission = useCallback(async () => {
     if (Platform.OS !== 'android' || !SmsScannerModule) return
-    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_SMS, {
+    const readResult = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_SMS, {
       title: copy.permissionTitle,
       message: copy.permissionMessage,
       buttonPositive: copy.allowButton,
       buttonNegative: copy.notNow,
     })
-    setHasPermission(result === PermissionsAndroid.RESULTS.GRANTED)
+    const receiveResult = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECEIVE_SMS, {
+      title: copy.permissionTitle,
+      message: copy.permissionMessage,
+      buttonPositive: copy.allowButton,
+      buttonNegative: copy.notNow,
+    })
+    const granted = readResult === PermissionsAndroid.RESULTS.GRANTED && receiveResult === PermissionsAndroid.RESULTS.GRANTED
+    if (!granted) { setHasPermission(false); return }
+    setHasPermission(granted)
   }, [copy])
 
   if (hasPermission === null) return <ActivityIndicator style={styles.center} />
@@ -210,6 +231,7 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
               </View>
             )}
             <Text style={styles.body} numberOfLines={4}>{msg.body}</Text>
+            {phishResults[msg.fingerprint] && <View style={styles.urlAlert}><Text style={styles.urlAlertTitle}>PhishTank</Text><Text style={styles.urlAlertText}>{phishResults[msg.fingerprint]?.verified ? 'Ссылка подтверждена как фишинговая.' : phishResults[msg.fingerprint]?.inDatabase ? 'Ссылка найдена в базе PhishTank, но требует проверки.' : 'Ссылка проверена: совпадений в базе не найдено.'}</Text></View>}
             {msg.scamReasons.length > 0 && <Text style={styles.reasons}>{copy.reasons}: {msg.scamReasons.slice(0, 3).join(' · ')}</Text>}
             {msg.fuzzyMatches.length > 0 && <Text style={styles.reasons}>Pattern match: {msg.fuzzyMatches.join(', ')}</Text>}
             <View style={styles.actionsPanel}>
@@ -257,6 +279,9 @@ const styles = StyleSheet.create({
   numAlertText: { color: '#9a3412', fontSize: 12, fontWeight: '700' },
   body: { color: colors.ink, fontSize: 13, lineHeight: 19, marginTop: 4 },
   reasons: { color: '#9a3412', fontSize: 11, lineHeight: 16, marginTop: 5 },
+  urlAlert: { backgroundColor: '#fef2f2', borderColor: '#fecaca', borderRadius: 7, borderWidth: 1, marginTop: 7, padding: 8 },
+  urlAlertTitle: { color: '#991b1b', fontSize: 11, fontWeight: '900' },
+  urlAlertText: { color: '#7f1d1d', fontSize: 12, lineHeight: 17, marginTop: 2 },
   actionsPanel: { backgroundColor: '#f8fafc', borderRadius: 7, gap: 2, marginTop: 8, padding: 9 },
   actionsTitle: { color: colors.ink, fontSize: 12, fontWeight: '900' },
   actionCopy: { color: colors.sub, fontSize: 12, lineHeight: 17 },

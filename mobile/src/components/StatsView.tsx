@@ -5,6 +5,7 @@ import type { SavedCase } from '@scoring'
 import { colors, riskColor } from '../theme'
 import { Card, Metric, SectionTitle } from './ui'
 import { LocalizedText as Text } from './LocalizedText'
+import { readCallStats, type CallStats } from '../services/callStats'
 
 type Props = {
   cases: SavedCase[]
@@ -29,6 +30,7 @@ function weekStart() {
 
 export function StatsView({ cases }: Props) {
   const [sessions, setSessions] = useState<SessionStats>({ total: 0, thisWeek: 0, allTime: 0 })
+  const [callStats, setCallStats] = useState<CallStats>({ blocked: 0, rejected: 0, feedbackHelpful: 0, feedbackNotHelpful: 0 })
 
   useEffect(() => {
     void AsyncStorage.getItem(SESSIONS_KEY).then((raw) => {
@@ -37,6 +39,7 @@ export function StatsView({ cases }: Props) {
       setSessions(data)
     }).catch(() => undefined)
   }, [])
+  useEffect(() => { void readCallStats().then(setCallStats) }, [])
 
   const wStart = weekStart()
   const casesThisWeek = cases.filter((c) => new Date(c.createdAt).getTime() >= wStart).length
@@ -82,6 +85,13 @@ export function StatsView({ cases }: Props) {
         <Metric value={casesThisWeek} label="this week" />
         <Metric value={avgScore} label="avg risk score" />
         <Metric value={highRiskRate} label="% high risk" />
+      </View>
+
+      <SectionTitle>Call protection</SectionTitle>
+      <View style={styles.metricRow}>
+        <Metric value={callStats.blocked} label="blocked calls" />
+        <Metric value={callStats.rejected} label="rejected calls" />
+        <Metric value={callStats.feedbackHelpful} label="helpful alerts" />
       </View>
 
       <SectionTitle>Risk distribution</SectionTitle>

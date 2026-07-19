@@ -10,6 +10,7 @@ export type SmsMessage = {
 type SmsScannerModuleType = {
   hasPermission: () => Promise<boolean>
   getRecentMessages: (limit: number) => Promise<SmsMessage[]>
+  consumePendingSms: () => Promise<SmsMessage | null>
 }
 
 export const SmsScannerModule: SmsScannerModuleType | null =

@@ -7,6 +7,8 @@ export type SafeCallEvent = {
   reputation?: PhoneAssessment
 }
 
+export type PostCallEvent = { maskedNumber?: string; reason: string; durationSeconds: number; wangiri: boolean; blocked: boolean }
+
 export type PhoneAssessment = {
   numberKey: string
   maskedNumber: string

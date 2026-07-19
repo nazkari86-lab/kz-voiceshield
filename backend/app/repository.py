@@ -51,6 +51,13 @@ class Repository:
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS audit_case_sequence_idx ON audit_log(case_id, sequence DESC);
+                CREATE TABLE IF NOT EXISTS crowd_reports (
+                    id TEXT PRIMARY KEY,
+                    number_fingerprint TEXT NOT NULL,
+                    payload BLOB NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS crowd_reports_created_idx ON crowd_reports(created_at DESC);
                 CREATE TABLE IF NOT EXISTS audio_jobs (
                     id TEXT PRIMARY KEY,
                     status TEXT NOT NULL,
@@ -173,6 +180,24 @@ class Repository:
             }
             for row in rows
         ]
+
+    def upsert_crowd_report(self, report_id: str, payload: dict[str, Any], actor: str) -> bool:
+        now = utc_now()
+        with self._lock, self._connection:
+            existing = self._connection.execute("SELECT 1 FROM crowd_reports WHERE id = ?", (report_id,)).fetchone()
+            if existing:
+                return False
+            self._connection.execute(
+                "INSERT INTO crowd_reports(id, number_fingerprint, payload, created_at) VALUES (?, ?, ?, ?)",
+                (report_id, str(payload["numberFingerprint"]), self._cipher.encrypt_json(payload), now),
+            )
+        self.audit(actor, "crowd_report_received", {"reportId": report_id, "feedback": payload["feedback"]})
+        return True
+
+    def list_crowd_reports(self, limit: int) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute("SELECT payload FROM crowd_reports ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return [self._cipher.decrypt_json(row["payload"]) for row in rows]
 
     def create_audio_job(self, job_id: str, content_type: str, audio: bytes | None, actor: str) -> None:
         now = utc_now()

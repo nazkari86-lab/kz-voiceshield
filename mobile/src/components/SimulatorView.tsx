@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import React, { useEffect, useRef, useState } from 'react'
-import { Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Animated, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { colors } from '../theme'
 import { assessSpokenTrainingResponse, dailyTrainingScenario, examScenarios, scenarioSkill, trainingScenarios, trainingScore, trainingSkillLabels } from '../training'
 import type { TrainingChoice, TrainingSkill } from '../training'
@@ -13,6 +13,13 @@ type TrainingEvidence = { id: string; scenarioId: string; title: string; languag
 const TRAINING_KEY = 'voiceshield.training.v2'
 const TRAINING_VOICE_KEY = 'voiceshield.training.voice-id.v1'
 const dailyGoal = 3
+
+const EDGE_VOICE_OPTIONS: TrainingVoiceOption[] = [
+  { voiceId: 'edge:ru-RU-SvetlanaNeural', name: 'Svetlana', category: 'Microsoft Edge · RU', labels: { language: 'RU', provider: 'edge-tts' } },
+  { voiceId: 'edge:ru-RU-DmitryNeural', name: 'Dmitry', category: 'Microsoft Edge · RU', labels: { language: 'RU', provider: 'edge-tts' } },
+  { voiceId: 'edge:kk-KZ-AigulNeural', name: 'Aigul', category: 'Microsoft Edge · KZ', labels: { language: 'KZ', provider: 'edge-tts' } },
+  { voiceId: 'edge:kk-KZ-DauletNeural', name: 'Daulet', category: 'Microsoft Edge · KZ', labels: { language: 'KZ', provider: 'edge-tts' } },
+]
 
 const dayKey = (date = new Date()) => date.toISOString().slice(0, 10)
 
@@ -27,17 +34,7 @@ function SnowLeopardMascot() {
     return () => animation.stop()
   }, [float])
   return <Animated.View style={[styles.mascot, { transform: [{ translateY: float }] }]} accessibilityLabel="Snow leopard mascot">
-    <View style={styles.mascotEarLeft} />
-    <View style={styles.mascotEarRight} />
-    <View style={styles.mascotFace}>
-      <Text style={styles.mascotMark}>✦</Text>
-      <View style={[styles.mascotSpot, styles.mascotSpotOne]} />
-      <View style={[styles.mascotSpot, styles.mascotSpotTwo]} />
-      <View style={[styles.mascotSpot, styles.mascotSpotThree]} />
-      <View style={styles.mascotEyes}><View style={styles.mascotEye} /><View style={styles.mascotEye} /></View>
-      <View style={styles.mascotMuzzle}><Text style={styles.mascotNose}>•</Text></View>
-    </View>
-    <View style={styles.mascotScarf}><Text style={styles.mascotFlag}>🇰🇿</Text></View>
+    <Image source={require('../assets/snow-leopard-mascot.png')} resizeMode="contain" style={styles.mascotImage} />
   </Animated.View>
 }
 
@@ -50,7 +47,7 @@ export function SimulatorView() {
   const [completedCount, setCompletedCount] = useState(0)
   const [voiceStatus, setVoiceStatus] = useState('')
   const [voiceId, setVoiceId] = useState('')
-  const [voiceOptions, setVoiceOptions] = useState<TrainingVoiceOption[]>([])
+  const [voiceOptions, setVoiceOptions] = useState<TrainingVoiceOption[]>(EDGE_VOICE_OPTIONS)
   const [voiceCatalogStatus, setVoiceCatalogStatus] = useState('')
   const [selectedSkill, setSelectedSkill] = useState<TrainingSkill | 'all'>('all')
   const [examQueue, setExamQueue] = useState<string[]>([])
@@ -85,9 +82,15 @@ export function SimulatorView() {
 
   useEffect(() => {
     void listTrainingVoices().then((items) => {
-      setVoiceOptions(items)
-      setVoiceCatalogStatus(items.length ? '' : 'No voices available')
-    }).catch(() => setVoiceCatalogStatus('Connect the backend to load ElevenLabs voices'))
+      const merged = [...EDGE_VOICE_OPTIONS, ...items.filter((item) => !EDGE_VOICE_OPTIONS.some((edge) => edge.voiceId === item.voiceId))]
+      setVoiceOptions(merged)
+      setVoiceCatalogStatus(items.length ? 'Microsoft Edge voices are ready. ElevenLabs voices are loaded from your backend.' : 'Microsoft Edge voices are shown locally. Connect the backend to load ElevenLabs voices.')
+    }).catch((error: unknown) => {
+      setVoiceOptions(EDGE_VOICE_OPTIONS)
+      setVoiceCatalogStatus(error instanceof Error && error.message.includes('token')
+        ? 'Microsoft Edge voices are shown locally. Add a backend token to enable generated audio and ElevenLabs.'
+        : 'Microsoft Edge voices are shown locally. Backend connection is needed to generate audio.')
+    })
   }, [])
 
   useEffect(() => {
@@ -185,8 +188,11 @@ export function SimulatorView() {
       }
       const choice = step.choices.find((item) => item.safe === (assessment === 'safe'))
       if (choice) choose(choice.safe, choice.feedback + ' Spoken answer: "' + response + '"', choice, response)
-    } catch {
-      setVoiceStatus('Voice recognition is unavailable. You can choose an action manually.')
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Microphone recognition failed'
+      setVoiceStatus(message.includes('MICROPHONE_PERMISSION_REQUIRED') || message.toLowerCase().includes('microphone')
+        ? 'Allow microphone access in VoiceShield Setup, then try again.'
+        : 'Voice recognition is unavailable. You can choose an action manually.')
     } finally {
       setIsListening(false)
     }
@@ -202,15 +208,17 @@ export function SimulatorView() {
       try {
         const generated = await requestTrainingVoice(step.caller, scenario.language, voiceId)
         await TrainingVoiceModule.playBase64(generated.audioBase64, generated.mimeType)
-        setVoiceStatus(generated.cached ? 'Playing cached synthetic training voice' : 'Playing synthetic training voice')
+        const provider = generated.provider.toLowerCase().includes('eleven') ? 'ElevenLabs' : 'Microsoft Edge'
+        setVoiceStatus(`${generated.cached ? 'Playing cached' : 'Playing'} ${provider} training voice`)
         return
-      } catch {
-        setVoiceStatus('Cloud training voice unavailable. Using device voice…')
+      } catch (error: unknown) {
+        const reason = error instanceof Error ? error.message : 'backend unavailable'
+        setVoiceStatus(`Cloud voice unavailable: ${reason}. Using Android system voice.`)
         await TrainingVoiceModule.speak(step.caller, scenario.language)
       }
-      setVoiceStatus('')
-    } catch {
-      setVoiceStatus(`Install a ${scenario.language} speech voice in Android settings to use this simulation.`)
+    } catch (error: unknown) {
+      const reason = error instanceof Error ? error.message : 'speech voice unavailable'
+      setVoiceStatus(`Android voice unavailable: ${reason}`)
     }
   }
 
@@ -260,7 +268,7 @@ export function SimulatorView() {
         <View style={styles.stats}><Text style={styles.stat}>{completedCount} sessions</Text><Text style={styles.stat}>{bestScore} best</Text><Text style={styles.stat}>{trainingScenarios.length} cases</Text></View>
         {weakSkill ? <Text style={styles.adaptive}>Recommended focus: {trainingSkillLabels[weakSkill]}. Your mistakes stay on this device.</Text> : null}
       </View>
-      <View style={styles.voiceSettings}><Text style={styles.filterTitle}>Training voice</Text><Text style={styles.hint}>Choose a voice from your ElevenLabs account.</Text>{voiceOptions.length ? <View style={styles.voiceOptions}>{voiceOptions.map((option) => <Pressable key={option.voiceId} onPress={() => { setVoiceId(option.voiceId); void AsyncStorage.setItem(TRAINING_VOICE_KEY, option.voiceId) }} style={[styles.voiceOption, voiceId === option.voiceId && styles.voiceOptionActive]}><Text style={[styles.voiceOptionText, voiceId === option.voiceId && styles.voiceOptionTextActive]}>{option.name}</Text><Text style={styles.voiceOptionMeta}>{option.category ?? 'Voice'}</Text></Pressable>)}</View> : null}{voiceCatalogStatus ? <Text style={styles.voiceStatus}>{voiceCatalogStatus}</Text> : null}<TextInput value={voiceId} onChangeText={(value) => { setVoiceId(value); void AsyncStorage.setItem(TRAINING_VOICE_KEY, value) }} placeholder="Or paste a Voice ID" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} style={styles.voiceInput} /></View>
+      <View style={styles.voiceSettings}><Text style={styles.filterTitle}>Training voice</Text><Text style={styles.hint}>Choose Microsoft Edge for keyless cloud speech or ElevenLabs from your connected backend. Android voice is the offline fallback.</Text>{voiceOptions.length ? <View style={styles.voiceOptions}>{voiceOptions.map((option) => <Pressable key={option.voiceId} onPress={() => { setVoiceId(option.voiceId); void AsyncStorage.setItem(TRAINING_VOICE_KEY, option.voiceId) }} style={[styles.voiceOption, voiceId === option.voiceId && styles.voiceOptionActive]}><Text style={[styles.voiceOptionText, voiceId === option.voiceId && styles.voiceOptionTextActive]}>{option.name}</Text><Text style={styles.voiceOptionMeta}>{option.category ?? 'Voice'}</Text></Pressable>)}</View> : null}{voiceCatalogStatus ? <Text style={styles.voiceStatus}>{voiceCatalogStatus}</Text> : null}<TextInput value={voiceId} onChangeText={(value) => { setVoiceId(value); void AsyncStorage.setItem(TRAINING_VOICE_KEY, value) }} placeholder="Or paste a Voice ID" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} style={styles.voiceInput} /></View>
       <View style={styles.modeRow}><Pressable style={styles.daily} onPress={() => start(daily.id)}><Text style={styles.modeKicker}>TODAY</Text><Text style={styles.modeTitle}>{daily.title}</Text><Text style={styles.modeCopy}>Daily practice</Text></Pressable><Pressable style={styles.exam} onPress={startExam}><Text style={styles.modeKicker}>EXAM</Text><Text style={styles.modeTitle}>5-case challenge</Text><Text style={styles.modeCopy}>Measure your skills</Text></Pressable></View>
       <View style={styles.pathHeader}><Text style={styles.filterTitle}>Your protection path</Text><Text style={styles.pathHint}>{todayCompleted >= dailyGoal ? 'Goal complete' : `${dailyGoal - todayCompleted} lesson${dailyGoal - todayCompleted === 1 ? '' : 's'} to go`}</Text></View>
       <View style={styles.pathRow}><View style={[styles.pathNode, styles.pathNodeDone]}><Text style={styles.pathNodeIcon}>✓</Text><Text style={styles.pathNodeText}>Pause</Text></View><View style={styles.pathLine} /><View style={[styles.pathNode, completedCount > 0 && styles.pathNodeDone]}><Text style={styles.pathNodeIcon}>◉</Text><Text style={styles.pathNodeText}>Verify</Text></View><View style={styles.pathLine} /><View style={[styles.pathNode, completedCount >= 5 && styles.pathNodeDone]}><Text style={styles.pathNodeIcon}>★</Text><Text style={styles.pathNodeText}>Protect</Text></View></View>
@@ -353,19 +361,6 @@ const styles = StyleSheet.create({
   pathNodeIcon: { backgroundColor: colors.chipBg, borderColor: colors.border, borderRadius: 20, borderWidth: 1, color: colors.sub, fontSize: 16, height: 34, paddingTop: 7, textAlign: 'center', width: 34 },
   pathNodeText: { color: colors.sub, fontSize: 10, fontWeight: '900' },
   pathLine: { backgroundColor: colors.border, flex: 1, height: 2, marginHorizontal: 4, marginTop: 16 },
-  mascot: { height: 88, position: 'relative', width: 84 },
-  mascotFace: { alignItems: 'center', backgroundColor: '#f8f8f0', borderColor: '#cbd8cf', borderRadius: 42, borderWidth: 2, height: 72, justifyContent: 'center', left: 6, overflow: 'hidden', position: 'absolute', top: 7, width: 72 },
-  mascotEarLeft: { backgroundColor: '#f8f8f0', borderColor: '#cbd8cf', borderRadius: 10, borderWidth: 2, height: 22, left: 6, position: 'absolute', top: 1, transform: [{ rotate: '-28deg' }], width: 22 },
-  mascotEarRight: { backgroundColor: '#f8f8f0', borderColor: '#cbd8cf', borderRadius: 10, borderWidth: 2, height: 22, position: 'absolute', right: 6, top: 1, transform: [{ rotate: '28deg' }], width: 22 },
-  mascotMark: { color: '#d7c25c', fontSize: 18, position: 'absolute', top: 10 },
-  mascotSpot: { backgroundColor: '#8b9c91', borderRadius: 4, height: 5, opacity: 0.75, position: 'absolute', width: 5 },
-  mascotSpotOne: { left: 16, top: 31 },
-  mascotSpotTwo: { right: 16, top: 35 },
-  mascotSpotThree: { left: 23, top: 46 },
-  mascotEyes: { flexDirection: 'row', gap: 18, marginTop: 10 },
-  mascotEye: { backgroundColor: '#10251d', borderRadius: 4, height: 7, width: 7 },
-  mascotMuzzle: { alignItems: 'center', backgroundColor: '#fff', borderRadius: 16, height: 20, justifyContent: 'center', marginTop: 4, width: 32 },
-  mascotNose: { color: '#3c5147', fontSize: 15, lineHeight: 16 },
-  mascotScarf: { alignItems: 'center', backgroundColor: '#147a5c', borderColor: '#f4c95d', borderRadius: 4, borderWidth: 1, bottom: 1, height: 18, justifyContent: 'center', position: 'absolute', right: 1, transform: [{ rotate: '-8deg' }], width: 73 },
-  mascotFlag: { fontSize: 13 },
+  mascot: { alignItems: 'center', height: 142, justifyContent: 'flex-end', overflow: 'visible', width: 112 },
+  mascotImage: { height: 154, width: 112 },
 })

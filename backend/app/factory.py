@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 from threading import Lock
+import base64
+import json
 
 from fastapi import (
     BackgroundTasks,
@@ -20,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Principal, Settings
 from .ml_service import ModelService, ModelUnavailable
-from .models import AudioJobResponse, CasePayload, TranscriptAnalysisResponse, TranscriptRequest, WorkflowPatch
+from .models import AudioJobResponse, CasePayload, CrowdReportBatch, TranscriptAnalysisResponse, TranscriptRequest, WorkflowPatch
 from .repository import CaseVersionConflict, Repository
 from .security import PayloadCipher, authenticate, require_roles
 from .transcription import Transcriber, transcriber_from_env
@@ -151,6 +153,37 @@ def create_app(
             "limits": {"maxAudioBytes": resolved_settings.max_audio_bytes},
             "privacy": {"retainAudio": resolved_settings.retain_audio, "serverPiiRedaction": True},
         }
+
+    @app.post("/reputation/reports")
+    def receive_crowd_reports(body: CrowdReportBatch, principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        accepted = 0
+        for report in body.reports:
+            if repository.upsert_crowd_report(report.id, report.model_dump(mode="json"), principal.user_id):
+                accepted += 1
+        return {"ok": True, "accepted": accepted, "duplicates": len(body.reports) - accepted}
+
+    @app.get("/reputation/reports")
+    def list_crowd_reports(
+        limit: int = Query(default=100, ge=1, le=500),
+        _: Principal = Depends(require_roles("reviewer", "admin")),
+    ) -> dict[str, Any]:
+        items = repository.list_crowd_reports(limit)
+        return {"items": items, "count": len(items)}
+
+    @app.get("/api/seed/voiceshield-kz")
+    def seed_manifest(_: Principal = Depends(authenticate)) -> dict[str, Any]:
+        if not resolved_settings.ota_private_key_b64:
+            raise HTTPException(status_code=503, detail="OTA signing key is not configured")
+        seed_path = Path(__file__).resolve().parents[2] / "ml" / "seeds" / "voiceshield_seed_kz.json"
+        try:
+            seed = json.loads(seed_path.read_text(encoding="utf-8"))
+            payload = {"schemaVersion": seed["SCHEMA_VERSION"], "version": seed["VERSION"], "publishedAt": seed.get("PUBLISHED_AT", "2026-07-19T00:00:00Z"), "rules": seed["RULES"]}
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+            private_key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(resolved_settings.ota_private_key_b64))
+            signature = base64.b64encode(private_key.sign(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))).decode("ascii")
+        except (OSError, KeyError, ValueError) as error:
+            raise HTTPException(status_code=503, detail="OTA seed manifest is unavailable") from error
+        return {**payload, "signature": signature}
 
     @app.post("/mcp")
     def mcp_endpoint(

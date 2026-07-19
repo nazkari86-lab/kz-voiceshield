@@ -113,6 +113,30 @@ def test_health_is_public_and_auth_is_required(api):
     assert readiness.json()["capabilities"]["trainingTts"] is False
 
 
+def test_crowd_reports_require_auth_and_dedupe_without_raw_text(api):
+    client, _ = api
+    report = {
+        "id": "sms_report_001",
+        "numberFingerprint": "sms_abcd1234",
+        "feedback": "confirmed_fraud",
+        "riskClass": "FRAUD",
+        "score": 92,
+        "source": "local_sms",
+        "createdAt": "2026-07-19T00:00:00Z",
+        "appVersion": "2.2.1",
+    }
+    assert client.post("/reputation/reports", json={"reports": [report]}).status_code == 401
+    first = client.post("/reputation/reports", headers=auth("analyst-token"), json={"reports": [report]})
+    assert first.status_code == 200
+    assert first.json() == {"ok": True, "accepted": 1, "duplicates": 0}
+    duplicate = client.post("/reputation/reports", headers=auth("analyst-token"), json={"reports": [report]})
+    assert duplicate.json() == {"ok": True, "accepted": 0, "duplicates": 1}
+    listed = client.get("/reputation/reports", headers=auth("reviewer-token"))
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["numberFingerprint"] == "sms_abcd1234"
+    assert "raw" not in str(listed.json()).lower()
+
+
 def test_diagnostics_is_authenticated_and_never_returns_secrets(api):
     client, _ = api
     assert client.get("/diagnostics").status_code == 401

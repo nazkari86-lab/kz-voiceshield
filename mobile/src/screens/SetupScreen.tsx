@@ -15,6 +15,8 @@ import { fitsDevice, recommendedModel, requiredStorageBytes, whisperModels } fro
 import type { ModelStorageInfo, WhisperModelChoice } from '../data/whisperModels'
 import { getBackendConfig, inspectBackendTransport, saveBackendConfig, testBackendConnection, type BackendDiagnostics } from '../services/backendConfig'
 import { applyMcpMode, loadMcpPermissions, MCP_CAPABILITIES, MCP_CAPABILITY_LABELS, saveMcpPermissions, type McpCapability, type McpPermissionMode, type McpPermissions } from '../services/mcpPermissions'
+import { checkForSeedUpdate, getSeedUpdateStatus } from '../services/seedUpdates'
+import { voiceShieldKzSeed } from '../data/voiceShieldKzSeed'
 
 type Props = {
   modelReady: boolean
@@ -155,6 +157,29 @@ function McpPermissionsPanel() {
       <Text style={styles.securityCopy}>Режим «Всё» не даёт модели скрытый доступ к телефону. Любой будущий инструмент с изменением данных, отправкой сообщения, управлением звонком или командами системы должен запросить подтверждение.</Text>
     </View>
   )
+}
+
+function SeedUpdatePanel() {
+  const { lang } = useI18n()
+  const [status, setStatus] = useState('')
+  const title = lang === 'kz' ? 'Алаяқтық ережелерін жаңарту' : lang === 'ru' ? 'Обновление правил мошенничества' : 'Fraud rule updates'
+  const detail = lang === 'kz' ? 'Жаңа ережелер HTTPS арқылы тексеріледі және алдымен кандидат ретінде сақталады.' : lang === 'ru' ? 'Новые правила проверяются через HTTPS и сначала сохраняются только как кандидат.' : 'New rules are fetched over HTTPS and stored as a candidate before review.'
+  const check = async () => {
+    try {
+      const next = await checkForSeedUpdate(voiceShieldKzSeed.version)
+      setStatus(next.status === 'candidate' ? `${lang === 'ru' ? 'Доступна версия' : lang === 'kz' ? 'Қолжетімді нұсқа' : 'Candidate version'} ${next.version}` : (lang === 'ru' ? 'Обновлений нет' : lang === 'kz' ? 'Жаңарту жоқ' : 'No updates'))
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Update check failed')
+    }
+  }
+  useEffect(() => { void getSeedUpdateStatus().then((current) => { if (current.status === 'candidate') setStatus(`Candidate ${current.version}`) }) }, [])
+  return <View style={styles.backendPanel}>
+    <Text style={styles.noticeTitle}>{title}</Text>
+    <Text style={styles.copy}>{detail}</Text>
+    <Text style={styles.backendStatus}>{lang === 'ru' ? 'Текущая версия' : lang === 'kz' ? 'Ағымдағы нұсқа' : 'Current version'}: {voiceShieldKzSeed.version}</Text>
+    <Pressable style={styles.secondary} onPress={() => { void check() }}><Text style={styles.secondaryText}>{lang === 'ru' ? 'Проверить обновления' : lang === 'kz' ? 'Жаңартуды тексеру' : 'Check for updates'}</Text></Pressable>
+    {status ? <Text style={styles.backendStatus}>{status}</Text> : null}
+  </View>
 }
 
 export function SetupScreen({
@@ -299,6 +324,7 @@ export function SetupScreen({
       <Step label="Open default phone apps" status={status.dialerRole} disabled={!privacyConsent} onPress={() => DeviceSettings.openDefaultAppsSettings()} />
 
       <BackendConnectionPanel />
+      <SeedUpdatePanel />
       <McpPermissionsPanel />
 
       <Text style={styles.section}>On-device speech model</Text>

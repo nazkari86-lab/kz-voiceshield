@@ -9,6 +9,7 @@ import { LocalizedText as Text } from './LocalizedText'
 import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
 import { AiAssistButton } from './AiAssistButton'
 import { inspectPhoneIdentity } from '../utils/phoneIdentity'
+import { getNumberReputation, type NumberReputation } from '../utils/numberReputation'
 
 const defaultConfig: PhoneProtectionConfig = {
   enabled: false,
@@ -55,6 +56,7 @@ export function NumberShieldView({
   const [number, setNumber] = useState('')
   const [assessment, setAssessment] = useState<PhoneAssessment | null>(null)
   const [scamMatch, setScamMatch] = useState<ScamEntry | null>(null)
+  const [numberReputation, setNumberReputation] = useState<NumberReputation | null>(null)
   const [config, setConfig] = useState<PhoneProtectionConfig>(defaultConfig)
   const [backup, setBackup] = useState('')
   const [status, setStatus] = useState('Local reputation is ready')
@@ -158,7 +160,7 @@ export function NumberShieldView({
           value={number}
         />
         <View style={styles.row}>
-          <Action label="Check" tone="primary" onPress={() => { setScamMatch(checkScamNumber(phoneIdentity.canonical)); void run((value) => CallModule.evaluateNumber(value), 'Number checked locally') }} />
+          <Action label="Check" tone="primary" onPress={() => { const reputation = getNumberReputation(phoneIdentity.canonical); setNumberReputation(reputation); setScamMatch(reputation.scamMatch); void run((value) => CallModule.evaluateNumber(value), 'Number checked locally') }} />
           <Action label="Trust" onPress={() => { void run((value) => CallModule.setNumberDisposition(value, 'trusted'), 'Added to trusted list') }} />
           <Action label="Block" tone="danger" onPress={() => { void run((value) => CallModule.setNumberDisposition(value, 'blocked'), 'Added to block list') }} />
           <Action label="Neutral" onPress={() => { void run((value) => CallModule.setNumberDisposition(value, 'neutral'), 'Local disposition removed') }} />
@@ -175,6 +177,14 @@ export function NumberShieldView({
           <Text style={styles.scamTitle}>{scamMatch.risk === 'critical' ? 'CRITICAL' : scamMatch.risk === 'high' ? 'HIGH RISK' : 'CAUTION'} — Pattern match</Text>
           <Text style={styles.scamReason}>{scamMatch.reason}</Text>
           <Text style={styles.scamSource}>Source: {scamMatch.source} · {scamMatch.verifiedAt}</Text>
+        </View>
+      )}
+
+      {numberReputation?.verifiedBusiness && !scamMatch && (
+        <View style={[styles.panel, styles.verifiedAlert]}>
+          <Text style={styles.verifiedTitle}>Known official identifier · {numberReputation.verifiedBusiness.name}</Text>
+          <Text style={styles.scamReason}>Channel: {numberReputation.verifiedBusiness.channel} · verified {numberReputation.verifiedBusiness.verifiedAt}</Text>
+          <Text style={styles.scamSource}>Caller ID can be spoofed. Never share OTP, passwords or transfer money because a known short code is displayed.</Text>
         </View>
       )}
 
@@ -336,6 +346,8 @@ const styles = StyleSheet.create({
   intervalInput: { backgroundColor: '#fff', borderColor: colors.border, borderRadius: 8, borderWidth: 1, color: colors.ink, fontSize: 13, fontWeight: '900', minWidth: 70, paddingHorizontal: 10, paddingVertical: 8, textAlign: 'center' },
   status: { color: colors.sub, fontSize: 12, lineHeight: 18 },
   scamAlert: { borderColor: '#dc2626', borderLeftWidth: 4, borderWidth: 1 },
+  verifiedAlert: { backgroundColor: '#ecfdf5', borderColor: '#86efac', borderWidth: 1 },
+  verifiedTitle: { color: '#166534', fontSize: 12, fontWeight: '900' },
   scamTitle: { color: '#991b1b', fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
   scamReason: { color: colors.ink, fontSize: 13, lineHeight: 19 },
   scamSource: { color: colors.muted, fontSize: 11 },

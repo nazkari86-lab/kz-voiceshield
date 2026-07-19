@@ -1,0 +1,612 @@
+{
+  "REPOVERSION": "1.0.0",
+  "VERSION": "1.0.0",
+  "PUBLISHED_AT": "2026-07-19T00:00:00Z",
+  "SCHEMA_VERSION": "voiceshield.grammar.seed.v1",
+  "COUNTRY": "KZ",
+  "SOURCE": "VoiceShield RU/KZ grammar seed; independently authored from public fraud-pattern research. Not affiliated with Truecaller.",
+  "PROVENANCE": {
+    "origin": "manual_ru_kz_seed",
+    "languages": ["ru", "kz"],
+    "license": "internal-prototype",
+    "trusted_for_holdout": false,
+    "live_decision_use": false
+  },
+  "TOKENS": {
+    "SAL": [
+      "уважаемый",
+      "здравствуйте",
+      "сәлем",
+      "құрметті",
+      "доброго дня",
+      "добрый день"
+    ],
+    "CUST": [
+      "клиент",
+      "пользователь",
+      "абонент",
+      "азамат"
+    ],
+    "DET": [
+      "ваш",
+      "ваши",
+      "вашем",
+      "сіздің",
+      "сіздің"
+    ],
+    "CARD": [
+      "карта",
+      "картасы",
+      "карточка",
+      "картой",
+      "карту"
+    ],
+    "ACCOUNT": [
+      "счёт",
+      "шот",
+      "аккаунт",
+      "личный кабинет"
+    ],
+    "KASPI": [
+      "kaspi",
+      "каспи",
+      "kaspi gold",
+      "каспи голд"
+    ],
+    "HALYK": [
+      "halyk",
+      "халык",
+      "народный банк",
+      "halykbank"
+    ],
+    "KZ_BANK": [
+      "kaspi",
+      "каспи",
+      "halyk",
+      "халык",
+      "народный",
+      "fortebank",
+      "форте",
+      "bcc",
+      "bccbank",
+      "центркредит",
+      "jusan",
+      "жусан",
+      "bereke",
+      "береке",
+      "eurasian",
+      "евразийский"
+    ],
+    "KZ_OPERATOR": [
+      "beeline",
+      "билайн",
+      "kcell",
+      "кселл",
+      "tele2",
+      "алтел",
+      "activ"
+    ],
+    "KZ_GOV": [
+      "egov",
+      "еgov",
+      "егов",
+      "госуслуги",
+      "мцриап",
+      "министерство",
+      "прокуратура",
+      "полиция",
+      "следователь",
+      "суд",
+      "приставы",
+      "налоговая",
+      "кнб"
+    ],
+    "TRX": [
+      "списан|debit",
+      "снят|debit",
+      "удержан|debit",
+      "зачислен|credit",
+      "поступил|credit",
+      "переведён|credit",
+      "аударылды|debit",
+      "есептелді|credit"
+    ],
+    "TRANS": [
+      "перевод|debit",
+      "оплата|debit",
+      "платёж|debit",
+      "транзакция|debit",
+      "аударым|debit",
+      "төлем|debit"
+    ],
+    "OTP": [
+      "otp",
+      "отп",
+      "код",
+      "пароль",
+      "верификация",
+      "растау коды"
+    ],
+    "PIN": [
+      "пин",
+      "pin",
+      "пин-код"
+    ],
+    "PASSWORD": [
+      "пароль",
+      "құпия сөз",
+      "парол"
+    ],
+    "URGENCY": [
+      "срочно",
+      "немедленно",
+      "сейчас же",
+      "не медли",
+      "шұғыл",
+      "дереу",
+      "қазір",
+      "бүгін ғана"
+    ],
+    "TRANSFER_REQUEST": [
+      "переведи",
+      "отправь",
+      "перечисли",
+      "пополни",
+      "аудар",
+      "жібер",
+      "толтыр"
+    ],
+    "THREAT": [
+      "заблокируем",
+      "арест",
+      "задержан",
+      "уголовное дело",
+      "бұғатталады",
+      "тұтқындалған",
+      "қылмыстық іс"
+    ],
+    "AMOUNT": [
+      "сумма",
+      "сом",
+      "тенге",
+      "тг",
+      "kzt",
+      "₸",
+      "теңге"
+    ],
+    "LINK_SIGNAL": [
+      "перейди по ссылке",
+      "нажми",
+      "скачай",
+      "установи",
+      "сілтемеге өт"
+    ],
+    "SAFE_OTP_CONTEXT": [
+      "ваш код для входа",
+      "код подтверждения",
+      "кіру коды",
+      "растау коды"
+    ]
+  },
+  "GRAMMAR": {
+    "GRM_OTP_KZ": {
+      "GRMR": [
+        {
+          "OTPCODE_RU": "КОД {1}ЦИФРЫ,ПАРОЛЬ {1}ОДНОРАЗОВЫЙ,OTP {1}ЧИСЛО",
+          "OTPNO_KZ[otp]<4>": "OTP ЧИСЛО,ЧИСЛО OTP,КОД ПОДТВЕРЖДЕНИЯ ЧИСЛО,КОД {1}ВХОДА",
+          "SAFE_OTP<3>": "КОД {2}ВХОДА {2}СЕРВИС,KASPI КОД,HALYK КОД",
+          "SUSPICIOUS_OTP[fraud]<5>": "КОД {3}НЕЗНАКОМЕЦ,НИКОМУ {2}КОД,СООБЩИ {2}КОД {2}НЕЗНАКОМЕЦ",
+          "NEVER_SHARE[fraud]<4>": "НИКОМУ {1}СООБЩАТЬ,НЕ {1}ГОВОРИТЬ {1}КОД,ЕШ {1}АЙТПА {1}КОД"
+        }
+      ],
+      "PATTERN": [
+        "OTP {2}|KASPI",
+        "КОД {2}|KASPI",
+        "РАСТАУ {2}|КОДЫ"
+      ]
+    },
+    "GRM_BANK_FRAUD_KZ": {
+      "GRMR": [
+        {
+          "FAKE_BANK[fraud]<5>": "BANK {3}СОТРУДНИК {3}ЗВОНОК,БЕЗОПАСНОСТЬ {3}ОТДЕЛ {3}ЗВОНОК",
+          "CARD_BLOCK_FAKE[fraud]<4>": "КАРТА {2}ЗАБЛОКИРОВАН,КАРТА {2}УГРОЗА,ПОДОЗРИТЕЛЬНАЯ {1}ОПЕРАЦИЯ",
+          "TRANSFER_URGENT[fraud]<5>": "СРОЧНО {2}ПЕРЕВОД,НЕМЕДЛЕННО {2}АУДАРЫМ,ШҰҒЫЛ {2}АУДАР",
+          "SAFE_ACCOUNT_SCAM[fraud]<5>": "БЕЗОПАСНЫЙ {1}СЧЁТ,SAFE {1}ACCOUNT,СОХРАННЫЙ {1}СЧЁТ"
+        }
+      ],
+      "PATTERN": [
+        "BANK {5}|СОТРУДНИК {3}|ПРОВЕРКА",
+        "КАРТА {3}|ЗАБЛОКИРОВАН {3}|СРОЧНО",
+        "ПЕРЕВЕДИТЕ {5}|БЕЗОПАСНЫЙ {2}|СЧЁТ"
+      ]
+    },
+    "GRM_POLICE_SCAM_KZ": {
+      "GRMR": [
+        {
+          "FAKE_POLICE[fraud]<5>": "ПОЛИЦИЯ {3}СОТРУДНИК,СЛЕДОВАТЕЛЬ {3}ЗВОНОК,ПРОКУРАТУРА {3}ВЫЗОВ",
+          "ARREST_THREAT[fraud]<5>": "РОДСТВЕННИК {2}ЗАДЕРЖАН,АРЕСТ {2}УГРОЖАЕТ,ТҰТҚЫНДАЛҒАН {2}ТУЫСҚАН",
+          "BAIL_MONEY[fraud]<5>": "ЗАЛОГ {3}ДЕНЬГИ,ШТРАФ {3}СРОЧНО,АЙЫП {3}ТӨЛЕМ"
+        }
+      ],
+      "PATTERN": [
+        "СЛЕДОВАТЕЛЬ {5}|ДЕЛО {3}|РОДСТВЕННИК",
+        "КНБ {4}|ЗВОНОК {3}|СРОЧНО",
+        "ПОЛИЦИЯ {3}|ЗАДЕРЖАН {3}|ЗАЛОГ"
+      ]
+    },
+    "GRM_EGOV_SCAM_KZ": {
+      "GRMR": [
+        {
+          "FAKE_GOV[fraud]<4>": "EGOV {3}ПОДТВЕРЖДЕНИЕ,ГОСУСЛУГИ {3}ВХОД,МЦРИАП {3}КОД",
+          "GOV_LINK[fraud]<4>": "EGOV {2}ССЫЛКА,GOSUSLUGI {2}ССЫЛКА,ПОРТАЛ {2}ПЕРЕЙДИ",
+          "PAYMENT_DEMAND[fraud]<5>": "ШТРАФ {3}ОПЛАТИ,НАЛОГ {3}СРОЧНО,АЙЫП {3}ШҰҒЫЛ"
+        }
+      ],
+      "PATTERN": [
+        "EGOV {4}|ССЫЛКА {3}|КОД",
+        "ГОСУСЛУГИ {4}|ПОДТВЕРДИ {3}|ДАННЫЕ",
+        "НАЛОГОВАЯ {3}|ЗАДОЛЖЕННОСТЬ {3}|НЕМЕДЛЕННО"
+      ]
+    },
+    "GRM_INVEST_SCAM_KZ": {
+      "GRMR": [
+        {
+          "FAKE_INVEST[fraud]<4>": "ИНВЕСТИЦИЯ {3}ГАРАНТИЯ,ДОХОДНОСТЬ {2}100,ПРИБЫЛЬ {2}ГАРАНТИРОВАН",
+          "CRYPTO_SCAM[fraud]<4>": "КРИПТО {3}ИНВЕСТ,BITCOIN {3}ВЛОЖИ,ТОКЕН {3}КУПИ {3}СРОЧНО",
+          "PYRAMID[fraud]<5>": "ПАРТНЁР {3}ПРИВЛЕКИ,РЕФЕРАЛ {3}ПРОГРАММА {3}ЗАРАБОТАЙ"
+        }
+      ],
+      "PATTERN": [
+        "ВЛОЖИ {5}|ПОЛУЧИ {3}|ГАРАНТИЯ",
+        "КРИПТО {4}|ПЛАТФОРМА {3}|РЕГИСТРАЦИЯ",
+        "ДОХОДНОСТЬ {3}|ПРОЦЕНТ {3}|ГАРАНТИРОВАН"
+      ]
+    },
+    "GRM_SMISHING_KZ": {
+      "GRMR": [
+        {
+          "MALICIOUS_LINK[fraud]<4>": "ССЫЛКА {2}ПЕРЕЙДИ,LINK {2}CLICK,СІЛТЕМЕ {2}БАС",
+          "APK_INSTALL[fraud]<5>": "СКАЧАЙ {2}ПРИЛОЖЕНИЕ {2}ССЫЛКА,УСТАНОВИ {2}APK,ЖҮКТЕЙ {2}ҚОСЫМША",
+          "PRIZE_SCAM[fraud]<4>": "ВЫИГРАЛ {2}ПРИЗ,ПОБЕДИТЕЛЬ {2}РОЗЫГРЫШ,УТВЕРЖДАЙ {2}ВЫИГРЫШ"
+        }
+      ],
+      "PATTERN": [
+        "KASPI {4}|ССЫЛКА {3}|ЛОГИН",
+        "PRIZE {4}|ПОЛУЧИ {3}|ССЫЛКА",
+        "СКАЧАЙ {3}|ПРИЛОЖЕНИЕ {3}|ДАННЫЕ"
+      ]
+    },
+    "GRM_SAFE_KZ": {
+      "GRMR": [
+        {
+          "SAFE_BANK_NOTIF[safe]<3>": "KASPI {2}СПИСАНИЕ,HALYK {2}ЗАЧИСЛЕНИЕ,BANK {2}УВЕДОМЛЕНИЕ",
+          "SAFE_OTP[safe]<3>": "КОД {2}KASPI,КОД {2}HALYK,РАСТАУ {2}КОДЫ",
+          "SAFE_OPERATOR[safe]<3>": "BEELINE {2}БАЛАНС,KCELL {2}ТАРИФ,TELE2 {2}ПОПОЛНЕНИЕ"
+        }
+      ],
+      "PATTERN": [
+        "KASPI {3}|ОПЛАТА {2}|СУММА",
+        "HALYK {3}|ПЕРЕВОД {2}|ПОЛУЧАТЕЛЬ",
+        "BEELINE {3}|ПОПОЛНЕНИЕ {2}|БАЛАНС"
+      ]
+    }
+  },
+  "CLASSIFIER": {
+    "CLASSES": [
+      {
+        "id": 0,
+        "name": "TRANSFER",
+        "kz": "аударым",
+        "ru": "перевод",
+        "risk": "medium"
+      },
+      {
+        "id": 1,
+        "name": "OTP",
+        "kz": "растау коды",
+        "ru": "код подтверждения",
+        "risk": "monitor"
+      },
+      {
+        "id": 2,
+        "name": "PAYMENT",
+        "kz": "төлем",
+        "ru": "оплата",
+        "risk": "low"
+      },
+      {
+        "id": 3,
+        "name": "LOAN",
+        "kz": "несие",
+        "ru": "кредит",
+        "risk": "medium"
+      },
+      {
+        "id": 4,
+        "name": "SAFE_NOTIFICATION",
+        "kz": "хабарлама",
+        "ru": "уведомление",
+        "risk": "none"
+      },
+      {
+        "id": 5,
+        "name": "PHISHING",
+        "kz": "фишинг",
+        "ru": "фишинг",
+        "risk": "high"
+      },
+      {
+        "id": 6,
+        "name": "SCAM_CALL",
+        "kz": "алаяқтық",
+        "ru": "мошенничество",
+        "risk": "critical"
+      }
+    ],
+    "FRAUD_SUBCLASSES": [
+      "BANK_FRAUD",
+      "POLICE_SCAM",
+      "EGOV_PHISHING",
+      "INVESTMENT_SCAM",
+      "SMISHING",
+      "DEEPFAKE_CALL"
+    ]
+  },
+  "VENDOR_WHITELIST": {
+    "banks": [
+      "kaspi",
+      "halyk",
+      "fortebank",
+      "bcc",
+      "jusan",
+      "bereke",
+      "eurasian",
+      "citibank"
+    ],
+    "operators": [
+      "beeline",
+      "kcell",
+      "tele2",
+      "altel",
+      "activ"
+    ],
+    "gov": [
+      "egov",
+      "gosuslugi",
+      "мцриап",
+      "салык",
+      "зейнетакы"
+    ],
+    "payment": [
+      "kaspi pay",
+      "halyk pay",
+      "apple pay",
+      "google pay"
+    ],
+    "ecommerce": [
+      "kaspi магазин",
+      "wildberries",
+      "ozon",
+      "lamoda"
+    ]
+  },
+  "BLACKLIST": {
+    "version": "1.0.0",
+    "algorithm": "shingling+ngram",
+    "shingles": 2,
+    "ngrams": 2,
+    "min_sim_score": 0.4,
+    "patterns": [
+      {
+        "id": 1,
+        "type": "fraud",
+        "subtype": "police_scam",
+        "tokens": [
+          "следователь",
+          "задержан",
+          "залог",
+          "срочно"
+        ],
+        "threshold": 0.4
+      },
+      {
+        "id": 2,
+        "type": "fraud",
+        "subtype": "bank_fraud",
+        "tokens": [
+          "безопасный счёт",
+          "защитный счёт",
+          "сохранный счёт"
+        ],
+        "threshold": 0.35
+      },
+      {
+        "id": 3,
+        "type": "fraud",
+        "subtype": "egov_phishing",
+        "tokens": [
+          "egov",
+          "ссылка",
+          "код",
+          "подтверди"
+        ],
+        "threshold": 0.45
+      },
+      {
+        "id": 4,
+        "type": "fraud",
+        "subtype": "investment",
+        "tokens": [
+          "гарантированный доход",
+          "100%",
+          "инвестиция"
+        ],
+        "threshold": 0.4
+      },
+      {
+        "id": 5,
+        "type": "fraud",
+        "subtype": "smishing_kaspi",
+        "tokens": [
+          "kaspi",
+          "ссылка",
+          "войти",
+          "данные"
+        ],
+        "threshold": 0.5
+      },
+      {
+        "id": 6,
+        "type": "fraud",
+        "subtype": "police_kz",
+        "tokens": [
+          "алаяқтық",
+          "тұтқындалған",
+          "шұғыл",
+          "аудар"
+        ],
+        "threshold": 0.4
+      }
+    ]
+  },
+  "EXTENDED_TOKENS": {
+    "AUTOMATED": ["робот", "автоматический", "автоматты"],
+    "RECOVERY": ["возврат", "компенсация", "қайтарым", "өтемақы"],
+    "WARRANTY": ["гарантия", "гарантийный", "кепілдік"],
+    "LOTTERY": ["лотерея", "выигрыш", "приз", "ұтыс", "жүлде"],
+    "AUTHORITY": ["налоговая", "полиция", "суд", "прокуратура", "мемлекеттік"],
+    "SAFE_NOTIFICATION": ["операция выполнена", "платеж принят", "төлем қабылданды"]
+  },
+  "DECISION_TIERS": {
+    "1": {"name": "PLACE_IMMEDIATELY", "meaning": "safe_signal", "automatic_action": "none"},
+    "2": {"name": "SAFE", "meaning": "safe", "automatic_action": "none"},
+    "3": {"name": "UNKNOWN_SHOW_UI", "meaning": "needs_review", "automatic_action": "show_warning"},
+    "4": {"name": "SPAM", "meaning": "spam_or_suspicious", "automatic_action": "show_warning"},
+    "5": {"name": "SCAM_ABORT_RECOMMENDATION", "meaning": "high_confidence_scam", "automatic_action": "ask_user_to_end_call"}
+  },
+  "SESSION_CONFIG": {
+    "schema_version": "voiceshield.session.v1",
+    "chunk_interval_ms": 3000,
+    "force_final_timeout_s": 15,
+    "low_confidence_threshold": 0.35,
+    "max_chunks": 120,
+    "continue_after_safe_signal": true,
+    "automatic_call_termination": false
+  },
+  "FRAUD_OVERRIDES": [
+    {"id": "lottery_fee", "risk": "high", "all": [["выигр", "комисси"], ["приз", "комисси"], ["ұтыс", "төлем"]]},
+    {"id": "recovery_fee", "risk": "high", "all": [["возврат", "комисси"], ["компенсаци", "оплат"], ["салық", "қайтарым"]]},
+    {"id": "telemarketing_pressure", "risk": "low", "all": [["предложени", "сроч"], ["робот", "нажм"], ["автоматты", "ұсыныс"]]}
+  ],
+  "RULES": [
+    {
+      "id": "bank_safe_account",
+      "grammar": "GRM_BANK_FRAUD_KZ",
+      "subtype": "SAFE_ACCOUNT_SCAM",
+      "risk": "critical",
+      "confidence": 0.9,
+      "all": [["безопасн", "счет"], ["защитн", "счет"], ["сақтандырылған", "шот"]]
+    },
+    {
+      "id": "bank_fake_employee",
+      "grammar": "GRM_BANK_FRAUD_KZ",
+      "subtype": "FAKE_BANK",
+      "risk": "critical",
+      "confidence": 0.9,
+      "all": [["служб", "безопасност"], ["сотрудник", "банк"], ["банк", "қызметкер"]],
+      "any": [["код"], ["перевод"], ["счет"]]
+    },
+    {
+      "id": "bank_urgent_transfer",
+      "grammar": "GRM_BANK_FRAUD_KZ",
+      "subtype": "URGENT_TRANSFER",
+      "risk": "critical",
+      "confidence": 0.95,
+      "all": [["сроч", "перев"], ["немедлен", "перев"], ["шұғыл", "аудар"]]
+    },
+    {
+      "id": "police_relative",
+      "grammar": "GRM_POLICE_SCAM_KZ",
+      "subtype": "POLICE_SCAM",
+      "risk": "critical",
+      "confidence": 0.95,
+      "all": [["следователь", "задерж"], ["полици", "задерж"], ["тұтқын", "туыс"]]
+    },
+    {
+      "id": "egov_phishing",
+      "grammar": "GRM_EGOV_SCAM_KZ",
+      "subtype": "EGOV_PHISHING",
+      "risk": "high",
+      "confidence": 0.9,
+      "all": [["egov", "ссылк"], ["egov", "код"], ["штраф", "сроч"]]
+    },
+    {
+      "id": "investment",
+      "grammar": "GRM_INVEST_SCAM_KZ",
+      "subtype": "INVESTMENT_SCAM",
+      "risk": "high",
+      "confidence": 0.85,
+      "all": [["инвест", "гарант"], ["доход", "гарант"], ["крипт", "влож"]]
+    },
+    {
+      "id": "smishing",
+      "grammar": "GRM_SMISHING_KZ",
+      "subtype": "SMISHING",
+      "risk": "high",
+      "confidence": 0.9,
+      "all": [["скач", "прилож"], ["установ", "apk"], ["ссылк", "данн"]]
+    },
+    {
+      "id": "otp_request",
+      "grammar": "GRM_OTP_KZ",
+      "subtype": "OTP_REQUEST",
+      "risk": "medium",
+      "confidence": 0.7,
+      "all": [["код", "назов"], ["код", "продикт"], ["otp", "сообщ"]],
+      "none": [["никому"], ["передава"]]
+    },
+    {
+      "id": "safe_otp",
+      "grammar": "GRM_SAFE_KZ",
+      "subtype": "SAFE_OTP",
+      "risk": "none",
+      "confidence": 0.95,
+      "all": [["код", "вход"], ["код", "подтверж"], ["никому", "код"]],
+      "none": [["сроч"], ["перевод"], ["ссылк"], ["установ"]]
+    },
+    {
+      "id": "safe_transaction",
+      "grammar": "GRM_SAFE_KZ",
+      "subtype": "SAFE_NOTIFICATION",
+      "risk": "none",
+      "confidence": 0.9,
+      "all": [["kaspi", "спис"], ["halyk", "зачис"], ["beeline", "баланс"]],
+      "none": [["сроч"], ["перевод"], ["ссылк"], ["установ"]]
+    },
+    {
+      "id": "lottery_fee",
+      "grammar": "GRM_LOTTERY_SCAM_KZ",
+      "subtype": "LOTTERY_SCAM",
+      "risk": "high",
+      "confidence": 0.88,
+      "all": [["выигр", "комисси"], ["приз", "комисси"], ["ұтыс", "төлем"]]
+    },
+    {
+      "id": "recovery_fee",
+      "grammar": "GRM_RECOVERY_SCAM_KZ",
+      "subtype": "RECOVERY_SCAM",
+      "risk": "high",
+      "confidence": 0.88,
+      "all": [["возврат", "комисси"], ["компенсаци", "оплат"], ["салық", "қайтарым"]]
+    },
+    {
+      "id": "telemarketing",
+      "grammar": "GRM_TELEMARKETING_KZ",
+      "subtype": "TELEMARKETING",
+      "risk": "low",
+      "confidence": 0.62,
+      "all": [["предложени", "сроч"], ["робот", "нажм"], ["автоматты", "ұсыныс"]],
+      "none": [["перевод"], ["код"], ["ссылк"], ["установ"]]
+    }
+  ]
+}

@@ -59,3 +59,18 @@ class AudioJobResponse(BaseModel):
     transcriptConfidence: int | None = Field(default=None, ge=0, le=100)
     ml: MlAssessment | None = None
     error: str | None = None
+
+
+class CrowdReport(BaseModel):
+    id: str = Field(min_length=8, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
+    numberFingerprint: str = Field(min_length=8, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
+    feedback: Literal["confirmed_fraud", "not_fraud"]
+    riskClass: Literal["SAFE", "UNKNOWN", "ALERT", "SPAM", "PHISHING", "FRAUD", "DANGER"]
+    score: int = Field(ge=0, le=100)
+    source: Literal["local_sms", "local_call"]
+    createdAt: str = Field(min_length=10, max_length=64)
+    appVersion: str = Field(min_length=1, max_length=32)
+
+
+class CrowdReportBatch(BaseModel):
+    reports: list[CrowdReport] = Field(min_length=1, max_length=100)

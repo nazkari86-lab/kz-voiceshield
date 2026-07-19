@@ -7,7 +7,9 @@ import { Card, SectionTitle } from './ui'
 import { LocalizedText as Text } from './LocalizedText'
 import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
 import { AiAssistButton } from './AiAssistButton'
-import { scoreSms, smsRiskTier } from '../utils/smsRisk'
+import { analyzeSms, smsFingerprint, smsRiskTier, type SmsCategory, type SmsFeedback, type SmsFinanceCategory, type SmsRiskClass } from '../utils/smsRisk'
+import { getSmsFeedback, saveSmsFeedback } from '../services/smsFeedback'
+import { cacheSmsAnalysis, getCachedSmsAnalysis } from '../services/smsAnalysisCache'
 import { useI18n } from '../I18nContext'
 
 type SmsCopy = {
@@ -16,6 +18,56 @@ type SmsCopy = {
   error: string; permissionTitle: string; permissionMessage: string; allowButton: string; notNow: string
   risk: Record<'critical' | 'high' | 'medium' | 'safe', string>
   criticalActions: string[]; mediumActions: string[]; cautionAction: string; safeAction: string
+}
+
+type ScannedSms = SmsMessage & {
+  scamScore: number
+  scamReasons: string[]
+  category: SmsCategory
+  knownSender: string | null
+  entities: string[]
+  fuzzyMatches: string[]
+  riskClass: SmsRiskClass
+  financeCategory: SmsFinanceCategory
+  fingerprint: string
+  feedback: SmsFeedback | null
+}
+
+function categoryLabel(category: SmsCategory, lang: 'ru' | 'kz' | 'en'): string {
+  const labels: Record<SmsCategory, [string, string, string]> = {
+    safe: ['Безопасное уведомление', 'Қауіпсіз хабарлама', 'Safe notification'],
+    otp: ['Код входа/подтверждения', 'Кіру/растау коды', 'Login/verification code'],
+    transaction: ['Операция', 'Операция', 'Transaction'],
+    transfer: ['Перевод или платёж', 'Аударым немесе төлем', 'Transfer or payment'],
+    loan: ['Кредит или займ', 'Несие немесе қарыз', 'Loan or credit'],
+    delivery: ['Доставка', 'Жеткізу', 'Delivery'],
+    government: ['Госуслуга', 'Мемлекеттік қызмет', 'Government service'],
+    fraud: ['Подозрительный сценарий', 'Күдікті сценарий', 'Suspicious pattern'],
+    needs_review: ['Нужна проверка', 'Тексеру қажет', 'Needs review'],
+  }
+  return labels[category][lang === 'ru' ? 0 : lang === 'kz' ? 1 : 2]
+}
+
+function riskClassLabel(riskClass: SmsRiskClass, lang: 'ru' | 'kz' | 'en'): string {
+  const labels: Record<SmsRiskClass, [string, string, string]> = {
+    SAFE: ['Безопасно', 'Қауіпсіз', 'Safe'], UNKNOWN: ['Неизвестно', 'Белгісіз', 'Unknown'], ALERT: ['Нужна проверка', 'Тексеру қажет', 'Review'],
+    SPAM: ['Спам', 'Спам', 'Spam'], PHISHING: ['Фишинг', 'Фишинг', 'Phishing'], FRAUD: ['Мошенничество', 'Алаяқтық', 'Fraud'], DANGER: ['Опасно', 'Қауіпті', 'Danger'],
+  }
+  return labels[riskClass][lang === 'ru' ? 0 : lang === 'kz' ? 1 : 2]
+}
+
+function financeCategoryLabel(category: SmsFinanceCategory, lang: 'ru' | 'kz' | 'en'): string {
+  const labels: Record<SmsFinanceCategory, [string, string, string]> = {
+    none: ['Без финансовой категории', 'Қаржы санаты жоқ', 'No finance category'], banking: ['Банк', 'Банк', 'Banking'], transfer: ['Перевод', 'Аударым', 'Transfer'],
+    payment: ['Платёж', 'Төлем', 'Payment'], loan: ['Кредит', 'Несие', 'Loan'], investment: ['Инвестиции', 'Инвестиция', 'Investment'],
+    refund: ['Возврат/компенсация', 'Қайтарым/өтемақы', 'Refund/compensation'], delivery: ['Доставка', 'Жеткізу', 'Delivery'], government: ['Госуслуга', 'Мемлекеттік қызмет', 'Government'],
+  }
+  return labels[category][lang === 'ru' ? 0 : lang === 'kz' ? 1 : 2]
+}
+
+function feedbackLabel(feedback: SmsFeedback, lang: 'ru' | 'kz' | 'en'): string {
+  if (feedback === 'confirmed_fraud') return lang === 'kz' ? 'Мошина деп расталды' : lang === 'ru' ? 'Отмечено как мошенничество' : 'Marked as fraud'
+  return lang === 'kz' ? 'Қате белгіленді' : lang === 'ru' ? 'Отмечено как ошибка' : 'Marked as false alarm'
 }
 
 const smsCopyFor = (lang: 'ru' | 'kz' | 'en'): SmsCopy => lang === 'kz' ? {
@@ -43,7 +95,7 @@ function responseActions(score: number, hasKnownScamNumber: boolean, copy: SmsCo
 export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) => void; ai?: OnDeviceAiRuntime }) {
   const { lang } = useI18n()
   const copy = smsCopyFor(lang)
-  const [messages, setMessages] = useState<(SmsMessage & { scamScore: number; scamReasons: string[] })[]>([])
+  const [messages, setMessages] = useState<ScannedSms[]>([])
   const [loading, setLoading] = useState(false)
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
   const [suspiciousOnly, setSuspiciousOnly] = useState(false)
@@ -61,7 +113,13 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
     setLoading(true)
     try {
       const raw = await SmsScannerModule.getRecentMessages(50)
-      const scored = raw.map(m => { const result = scoreSms(m.body); return { ...m, scamScore: result.score, scamReasons: result.reasons } })
+      const scored = await Promise.all(raw.map(async (m) => {
+        const fingerprint = smsFingerprint(m.body, m.address)
+        const cached = await getCachedSmsAnalysis(fingerprint)
+        const result = cached ?? analyzeSms(m.body, m.address)
+        if (!cached) await cacheSmsAnalysis(fingerprint, result)
+        return { ...m, scamScore: result.score, scamReasons: result.reasons, category: result.category, knownSender: result.knownSender, entities: result.entities.map((entity) => entity.type), fuzzyMatches: result.fuzzyMatches, riskClass: result.riskClass, financeCategory: result.financeCategory, fingerprint, feedback: await getSmsFeedback(fingerprint) }
+      }))
       scored.sort((a, b) => b.scamScore - a.scamScore)
       setMessages(scored)
     } catch (e) {
@@ -70,6 +128,11 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
       setLoading(false)
     }
   }, [copy.error])
+
+  const setFeedback = async (fingerprint: string, feedback: SmsFeedback) => {
+    await saveSmsFeedback(fingerprint, feedback)
+    setMessages((current) => current.map((message) => message.fingerprint === fingerprint ? { ...message, feedback } : message))
+  }
 
   const requestSmsPermission = useCallback(async () => {
     if (Platform.OS !== 'android' || !SmsScannerModule) return
@@ -139,6 +202,8 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
               <Text style={styles.sender} numberOfLines={1}>{msg.address}</Text>
               <RiskChip score={msg.scamScore} copy={copy} />
             </View>
+            <Text style={styles.category}>{categoryLabel(msg.category, lang)}{msg.knownSender ? ` · ${msg.knownSender}` : ''}</Text>
+            <Text style={styles.metadata}>{riskClassLabel(msg.riskClass, lang)} · {financeCategoryLabel(msg.financeCategory, lang)} · {msg.feedback ? feedbackLabel(msg.feedback, lang) : (lang === 'kz' ? 'Ереже арқылы талдау' : lang === 'ru' ? 'Анализ по правилам' : 'Rules analysis')}</Text>
             {scamEntry && (
               <View style={styles.numAlert}>
                 <Text style={styles.numAlertText}>⚠ {copy.knownNumber}: {scamEntry.reason}</Text>
@@ -146,12 +211,20 @@ export function SmsScannerView({ onAnalyze, ai }: { onAnalyze?: (text: string) =
             )}
             <Text style={styles.body} numberOfLines={4}>{msg.body}</Text>
             {msg.scamReasons.length > 0 && <Text style={styles.reasons}>{copy.reasons}: {msg.scamReasons.slice(0, 3).join(' · ')}</Text>}
+            {msg.fuzzyMatches.length > 0 && <Text style={styles.reasons}>Pattern match: {msg.fuzzyMatches.join(', ')}</Text>}
             <View style={styles.actionsPanel}>
               <Text style={styles.actionsTitle}>{copy.actions}</Text>
               {actions.map((action) => <Text key={action} style={styles.actionCopy}>• {action}</Text>)}
             </View>
+            <View style={styles.feedbackRow}>
+              <Text style={styles.feedbackTitle}>{lang === 'kz' ? 'Нәтижені нақтылаңыз' : lang === 'ru' ? 'Уточнить результат' : 'Improve this result'}</Text>
+              <View style={styles.feedbackButtons}>
+                <TouchableOpacity style={styles.feedbackBtn} onPress={() => { void setFeedback(msg.fingerprint, 'confirmed_fraud') }}><Text style={styles.feedbackBtnText}>{lang === 'kz' ? 'Алаяқтық' : lang === 'ru' ? 'Мошенничество' : 'Fraud'}</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.feedbackBtn} onPress={() => { void setFeedback(msg.fingerprint, 'not_fraud') }}><Text style={styles.feedbackBtnText}>{lang === 'kz' ? 'Қате' : lang === 'ru' ? 'Ошибка' : 'False alarm'}</Text></TouchableOpacity>
+              </View>
+            </View>
             {onAnalyze && <TouchableOpacity style={styles.analyzeBtn} onPress={() => onAnalyze(msg.body)}><Text style={styles.analyzeBtnText}>{copy.fullAnalysis}</Text></TouchableOpacity>}
-            {ai && <AiAssistButton ai={ai} context={`SMS sender: ${msg.address}\nLocal SMS score: ${msg.scamScore}/100\nReasons: ${msg.scamReasons.join('; ')}\nMessage: ${msg.body}`} label="Объяснить SMS через AI" />}
+            {ai && <AiAssistButton ai={ai} context={`SMS sender: ${msg.address}\nLocal SMS category: ${categoryLabel(msg.category, lang)}\nLocal SMS score: ${msg.scamScore}/100\nKnown sender: ${msg.knownSender ?? 'none'}\nEntities: ${msg.entities.join(', ') || 'none'}\nReasons: ${msg.scamReasons.join('; ')}\nMessage: ${msg.body}`} label="Объяснить SMS через AI" />}
             <Text style={styles.date}>{new Date(msg.date).toLocaleString(lang === 'kz' ? 'kk-KZ' : lang === 'ru' ? 'ru-RU' : 'en-US', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Text>
           </Card>
         )
@@ -176,6 +249,8 @@ const styles = StyleSheet.create({
   summary: { color: colors.sub, fontSize: 12, marginBottom: 8 },
   msgHeader: { alignItems: 'center', flexDirection: 'row', gap: 8 },
   sender: { color: colors.ink, flex: 1, fontSize: 13, fontWeight: '800' },
+  category: { color: colors.brandDark, fontSize: 11, fontWeight: '800', marginTop: 3 },
+  metadata: { color: colors.sub, fontSize: 11, lineHeight: 16, marginTop: 3 },
   chip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   chipText: { fontSize: 10, fontWeight: '900' },
   numAlert: { backgroundColor: '#fff7ed', borderRadius: 6, marginTop: 4, padding: 6 },
@@ -185,6 +260,11 @@ const styles = StyleSheet.create({
   actionsPanel: { backgroundColor: '#f8fafc', borderRadius: 7, gap: 2, marginTop: 8, padding: 9 },
   actionsTitle: { color: colors.ink, fontSize: 12, fontWeight: '900' },
   actionCopy: { color: colors.sub, fontSize: 12, lineHeight: 17 },
+  feedbackRow: { borderTopColor: colors.border, borderTopWidth: 1, marginTop: 10, paddingTop: 9 },
+  feedbackTitle: { color: colors.sub, fontSize: 11, fontWeight: '800', marginBottom: 6 },
+  feedbackButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  feedbackBtn: { borderColor: colors.border, borderRadius: 7, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 6 },
+  feedbackBtnText: { color: colors.brandDark, fontSize: 11, fontWeight: '800' },
   analyzeBtn: { alignSelf: 'flex-start', borderColor: colors.border, borderRadius: 7, borderWidth: 1, marginTop: 8, paddingHorizontal: 10, paddingVertical: 7 },
   analyzeBtnText: { color: colors.brandDark, fontSize: 11, fontWeight: '900' },
   date: { color: colors.muted, fontSize: 11, marginTop: 4 },

@@ -1,6 +1,8 @@
 package kz.voiceshield
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.Manifest
 import android.speech.tts.TextToSpeech
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -59,7 +61,11 @@ class TrainingVoiceModule(private val context: ReactApplicationContext) : ReactC
   @ReactMethod
   fun stop(promise: Promise) {
     engine?.stop()
-    recognizer?.cancel()
+    recognizer?.run {
+      cancel()
+      destroy()
+    }
+    recognizer = null
     player?.run {
       if (isPlaying) stop()
       reset()
@@ -71,40 +77,60 @@ class TrainingVoiceModule(private val context: ReactApplicationContext) : ReactC
 
   @ReactMethod
   fun listen(language: String, promise: Promise) {
-    if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-      promise.reject("SPEECH_RECOGNITION_UNAVAILABLE", "Speech recognition is not available on this device")
+    if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+      promise.reject("MICROPHONE_PERMISSION_REQUIRED", "Allow microphone access in VoiceShield Setup before speaking an answer")
       return
     }
-    recognizer?.cancel()
-    val next = SpeechRecognizer.createSpeechRecognizer(context)
-    recognizer = next
-    next.setRecognitionListener(object : RecognitionListener {
-      override fun onResults(results: android.os.Bundle?) {
-        val values = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-        promise.resolve(values?.firstOrNull().orEmpty())
+    try {
+      if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+        promise.reject("SPEECH_RECOGNITION_UNAVAILABLE", "Speech recognition is not available on this device")
+        return
+      }
+      recognizer?.run {
+        cancel()
+        destroy()
+      }
+      val next = SpeechRecognizer.createSpeechRecognizer(context)
+      recognizer = next
+      var settled = false
+      fun close() {
         next.destroy()
         if (recognizer === next) recognizer = null
       }
-      override fun onError(error: Int) {
-        promise.reject("SPEECH_RECOGNITION_FAILED", "Could not recognise the training answer (code $error)")
-        next.destroy()
-        if (recognizer === next) recognizer = null
+      next.setRecognitionListener(object : RecognitionListener {
+        override fun onResults(results: android.os.Bundle?) {
+          if (settled) return
+          settled = true
+          val values = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+          promise.resolve(values?.firstOrNull().orEmpty())
+          close()
+        }
+        override fun onError(error: Int) {
+          if (settled) return
+          settled = true
+          promise.reject("SPEECH_RECOGNITION_FAILED", "Could not recognise the training answer (code $error)")
+          close()
+        }
+        override fun onReadyForSpeech(params: android.os.Bundle?) {}
+        override fun onBeginningOfSpeech() {}
+        override fun onRmsChanged(rmsdB: Float) {}
+        override fun onBufferReceived(buffer: ByteArray?) {}
+        override fun onEndOfSpeech() {}
+        override fun onPartialResults(partialResults: android.os.Bundle?) {}
+        override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+      })
+      val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (language == "KZ") "kk-KZ" else "ru-RU")
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
       }
-      override fun onReadyForSpeech(params: android.os.Bundle?) {}
-      override fun onBeginningOfSpeech() {}
-      override fun onRmsChanged(rmsdB: Float) {}
-      override fun onBufferReceived(buffer: ByteArray?) {}
-      override fun onEndOfSpeech() {}
-      override fun onPartialResults(partialResults: android.os.Bundle?) {}
-      override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
-    })
-    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-      putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (language == "KZ") "kk-KZ" else "ru-RU")
-      putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-      putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-      putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+      next.startListening(intent)
+    } catch (error: Exception) {
+      recognizer?.destroy()
+      recognizer = null
+      promise.reject("SPEECH_RECOGNITION_FAILED", "Could not start microphone recognition safely", error)
     }
-    next.startListening(intent)
   }
 
   @ReactMethod

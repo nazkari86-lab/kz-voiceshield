@@ -29,4 +29,4 @@ fi
 "$APKSIGNER" verify --verbose --print-certs "$APK"
 mkdir -p ../dist
 cp "$APK" ../dist/kz-voiceshield-release.apk
-echo "Signed release created at mobile/dist/kz-voiceshield-release.apk"
+echo "Signed release created at ${ROOT}/dist/kz-voiceshield-release.apk"

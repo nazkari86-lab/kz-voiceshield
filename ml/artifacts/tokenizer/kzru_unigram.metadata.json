@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "voiceshield.tokenizer.v1",
+  "modelType": "unigram",
+  "languages": [
+    "ru",
+    "kk"
+  ],
+  "vocabSizeTarget": 2048,
+  "corpusLines": 32236,
+  "sources": [
+    "ml/seeds/voiceshield_seed_kz.json",
+    "ml/artifacts/ksc2-language-pack-v1/lexicon.json",
+    "ml/artifacts/ksc2-language-pack-v1/phrases.json",
+    "ml/artifacts/ksc2-language-pack-v1/benchmark.jsonl",
+    "ml/artifacts/kazakh-linguistic-pack-v1/linguistic-pack.json",
+    "ml/artifacts/synthetic.jsonl"
+  ],
+  "sha256": "eebcde71b6ca8bc0816cee9ac2748a3baafa6a3fedb96c905efaaf63248ab122",
+  "holdoutUse": false
+}

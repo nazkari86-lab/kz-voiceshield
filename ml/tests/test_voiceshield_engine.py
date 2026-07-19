@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from ml.voiceshield_engine import VoiceShieldEngine
 from ml.subword_tokenizer import KzRuSubwordTokenizer
@@ -78,7 +79,7 @@ class VoiceShieldEngineTests(unittest.TestCase):
         self.assertFalse(result.user_action_recommended)
 
     def test_engine_keeps_dependency_free_fallback_without_model(self):
-        engine = VoiceShieldEngine(tokenizer_model=None)
+        engine = VoiceShieldEngine(tokenizer_model=Path("/tmp/voiceshield-missing.model"))
         self.assertIsNone(engine.subword_tokenizer)
         self.assertEqual(KzRuSubwordTokenizer().encode("Kaspi төлем"), ["▁kaspi", "kas", "▁төлем", "төл"])
 

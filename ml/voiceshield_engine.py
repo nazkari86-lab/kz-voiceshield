@@ -13,14 +13,19 @@ import json
 import re
 import unicodedata
 from dataclasses import asdict, dataclass, field, replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
-from subword_tokenizer import KzRuSubwordTokenizer
+try:
+    from .subword_tokenizer import KzRuSubwordTokenizer
+except ImportError:  # Support `python ml/voiceshield_engine.py` from the repo root.
+    from subword_tokenizer import KzRuSubwordTokenizer
 
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_SEED_PATH = ROOT / "seeds" / "voiceshield_seed_kz.json"
+DEFAULT_TOKENIZER_MODEL = ROOT / "artifacts" / "tokenizer" / "kzru_unigram.model"
 RISK_ORDER = {"none": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 
 
@@ -92,7 +97,7 @@ def _term_matches(
     if subword_tokens and tokenizer is not None:
         # With a trained model, compare the term's complete subword sequence.
         # This adds morphology support without changing raw transcript text.
-        pieces = tokenizer.encode(term)
+        pieces = _encoded_term(tokenizer, term)
         width = len(pieces)
         return bool(pieces) and any(
             subword_tokens[index : index + width] == pieces
@@ -117,6 +122,11 @@ def _group_label(group: Iterable[str]) -> str:
     return " + ".join(group)
 
 
+@lru_cache(maxsize=512)
+def _encoded_term(tokenizer: KzRuSubwordTokenizer, term: str) -> tuple[str, ...]:
+    return tuple(tokenizer.encode(term))
+
+
 class VoiceShieldEngine:
     """Load and evaluate explicit seed rules with conservative calibration."""
 
@@ -131,9 +141,8 @@ class VoiceShieldEngine:
         self._validate_seed()
         self.rules: list[dict[str, Any]] = list(self.seed["RULES"])
         self.whitelist: dict[str, list[str]] = self.seed.get("VENDOR_WHITELIST", {})
-        self.subword_tokenizer = (
-            KzRuSubwordTokenizer(tokenizer_model) if tokenizer_model else None
-        )
+        resolved_tokenizer = Path(tokenizer_model) if tokenizer_model else None
+        self.subword_tokenizer = KzRuSubwordTokenizer(resolved_tokenizer) if resolved_tokenizer and resolved_tokenizer.exists() else None
 
     def _validate_seed(self) -> None:
         required = {
@@ -495,7 +504,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("text", nargs="*")
     parser.add_argument("--seed", type=Path, default=DEFAULT_SEED_PATH)
-    parser.add_argument("--tokenizer-model", type=Path, default=None)
+    parser.add_argument("--tokenizer-model", type=Path, default=DEFAULT_TOKENIZER_MODEL)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:

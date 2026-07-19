@@ -14,7 +14,7 @@ function utf8ByteLength(value: string): number {
   }, 0)
 }
 
-function encodeUtf8(value: string): Uint8Array {
+export function encodeUtf8(value: string): Uint8Array {
   const bytes: number[] = []
   for (const character of value) {
     const codePoint = character.codePointAt(0) ?? 0
@@ -40,7 +40,7 @@ function versionParts(version: string): number[] {
   return version.split('.').map((part) => Number(part)).filter((part) => Number.isInteger(part) && part >= 0)
 }
 
-function decodeBase64(value: string): Uint8Array {
+export function decodeBase64(value: string): Uint8Array {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
   const clean = value.replace(/=+$/u, '')
   const bytes: number[] = []

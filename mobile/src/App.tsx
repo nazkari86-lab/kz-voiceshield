@@ -30,6 +30,9 @@ import { NumberShieldView } from './components/NumberShieldView'
 import { ScamToolsView } from './components/ScamToolsView'
 import { SmsScannerView } from './components/SmsScannerView'
 import { SmsScannerModule, type SmsMessage } from './bridge/SmsScannerBridge'
+import { saveIncomingCall } from './services/incomingCallHistory'
+import { IncomingCallHistoryView } from './components/IncomingCallHistoryView'
+import { loadStoredNumberFeed, refreshNumberFeed } from './services/numberUpdates'
 import { TranscriptHistoryView } from './components/TranscriptHistoryView'
 import { LLMAssistantView } from './components/LLMAssistantView'
 import { ProtectionWalkthroughView } from './components/ProtectionWalkthroughView'
@@ -169,6 +172,11 @@ function AppContent() {
   }, [])
 
   useEffect(() => {
+    void loadStoredNumberFeed()
+    void refreshNumberFeed().catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
     const acceptSms = (message?: SmsMessage | null) => {
       if (!message?.body) return
       setSharedText(message.body)
@@ -184,7 +192,7 @@ function AppContent() {
     const incoming = callEvents.addListener('VS_CALL_INCOMING', (event: SafeCallEvent) => {
       if (event.reputation?.action === 'block') void recordBlockedCall()
     })
-    const ended = callEvents.addListener('VS_CALL_ENDED', (event: PostCallEvent) => setPostCall(event))
+    const ended = callEvents.addListener('VS_CALL_ENDED', (event: PostCallEvent) => { setPostCall(event); void saveIncomingCall({ maskedNumber: event.maskedNumber ?? '', durationSeconds: event.durationSeconds, reason: event.reason, wangiri: event.wangiri, blocked: event.blocked }) })
     return () => { incoming.remove(); ended.remove() }
   }, [])
 
@@ -272,7 +280,7 @@ function AppContent() {
       {tab === 'verify' && <VerifyView />}
       {tab === 'stats' && <StatsView cases={w.cases} />}
       {tab === 'sms' && <SmsScannerView ai={ai} onAnalyze={(text) => { w.setTranscript(text); w.setFileName('sms-message.txt'); selectTab('tools') }} />}
-      {tab === 'history' && <TranscriptHistoryView />}
+      {tab === 'history' && <><IncomingCallHistoryView /><TranscriptHistoryView /></>}
       {tab === 'llm' && <LLMAssistantView attachmentText={assistantAttachmentText} transcript={w.analysisTranscript} languageContext={[w.ksc2LanguageContext, assistantKnowledgeContext].filter(Boolean).join('\n\n')} ai={ai} />}
       {tab === 'demo' && <ProtectionWalkthroughView
         onOpenReview={(transcript) => { w.setTranscript(transcript); w.setFileName('protection-walkthrough.txt'); selectTab('review') }}

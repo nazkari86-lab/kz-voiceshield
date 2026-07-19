@@ -27,9 +27,15 @@ export const scamPatterns: ScamEntry[] = [
   { id: 'zero-prefix', pattern: '+00', matchType: 'prefix', reason: 'Double-zero international prefix — non-standard, often spoofed caller ID', risk: 'high', source: 'Telecom analysis', verifiedAt: '2026-07-13' },
 ]
 
+let remoteScamPatterns: ScamEntry[] = []
+
+export function setRemoteScamPatterns(entries: ScamEntry[]): void {
+  remoteScamPatterns = entries.slice(0, 500)
+}
+
 export function checkScamNumber(phone: string): ScamEntry | null {
   const normalized = phone.replace(/[\s\-()]/g, '')
-  for (const entry of scamPatterns) {
+  for (const entry of [...remoteScamPatterns, ...scamPatterns]) {
     if (entry.matchType === 'prefix' && normalized.startsWith(entry.pattern)) return entry
     if (entry.matchType === 'exact' && normalized === entry.pattern) return entry
     if (entry.matchType === 'contains' && normalized.includes(entry.pattern)) return entry

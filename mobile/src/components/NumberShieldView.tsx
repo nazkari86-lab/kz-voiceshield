@@ -23,6 +23,10 @@ const defaultConfig: PhoneProtectionConfig = {
   repeatedMinIntervalSeconds: 5,
   nightStartHour: 22,
   nightEndHour: 7,
+  quietHoursEnabled: false,
+  quietStartMinute: 1320,
+  quietEndMinute: 420,
+  allowTrustedDuringQuiet: true,
 }
 
 const Action = ({ label, tone, onPress }: { label: string; tone?: 'danger' | 'primary'; onPress: () => void }) => (
@@ -139,7 +143,8 @@ export function NumberShieldView({
   const runExternalLookup = async () => {
     if (!phoneIdentity.possible) { setStatus('Введите полный номер телефона перед онлайн-проверкой'); return }
     try {
-      setExternalLookup(await lookupNumber(phoneIdentity.canonical))
+      const result = await lookupNumber(phoneIdentity.canonical)
+      setExternalLookup({ ...result, checkedAt: new Date().toISOString() })
       setStatus('Онлайн-данные номера получены. Это не подтверждение личности звонящего.')
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Онлайн-проверка недоступна')
@@ -183,7 +188,7 @@ export function NumberShieldView({
       {externalLookup ? <View style={[styles.panel, styles.verifiedAlert]}>
         <Text style={styles.verifiedTitle}>External provider: {externalLookup.provider}</Text>
         <Text style={styles.scamReason}>{externalLookup.valid === null ? 'Validity unknown' : externalLookup.valid ? 'Number format accepted' : 'Number format rejected'} · {externalLookup.countryCode ?? 'country unknown'} · {externalLookup.lineType ?? 'line type unknown'}</Text>
-        <Text style={styles.scamSource}>{externalLookup.carrier ?? 'Carrier unavailable'} · Evidence only. Caller ID can still be spoofed.</Text>
+        <Text style={styles.scamSource}>{externalLookup.carrier ?? 'Carrier unavailable'} · Source: {externalLookup.provider} · Checked: {new Date(externalLookup.checkedAt ?? Date.now()).toLocaleString()} · Evidence only. Caller ID can still be spoofed.</Text>
       </View> : null}
       {number.trim() ? <View style={styles.formatNotice}>
         <Text style={styles.formatTitle}>{phoneIdentity.kind === 'short-code' ? 'Short code' : phoneIdentity.valid ? 'Validated format' : 'Check number format'}</Text>
@@ -275,7 +280,15 @@ export function NumberShieldView({
           value={String(config.repeatedMinIntervalSeconds)}
         />
       </View>
-      <Setting label="Block unknown callers 22:00–07:00" value={config.blockUnknownAtNight} onChange={(value) => { void updateConfig({ blockUnknownAtNight: value }) }} />
+      <Setting label="Protect unknown callers during quiet hours" value={config.quietHoursEnabled} onChange={(value) => { void updateConfig({ quietHoursEnabled: value, blockUnknownAtNight: value }) }} />
+      <View style={styles.setting}>
+        <Text style={styles.settingLabel}>Quiet hours (minutes after midnight)</Text>
+        <View style={styles.row}>
+          <TextInput accessibilityLabel="Quiet hours start" keyboardType="number-pad" onChangeText={(value) => { const n = Number(value.replace(/\D/gu, '')); if (Number.isFinite(n)) void updateConfig({ quietStartMinute: Math.min(1439, n) }) }} placeholder="1320" placeholderTextColor={colors.muted} style={styles.intervalInput} value={String(config.quietStartMinute)} />
+          <TextInput accessibilityLabel="Quiet hours end" keyboardType="number-pad" onChangeText={(value) => { const n = Number(value.replace(/\D/gu, '')); if (Number.isFinite(n)) void updateConfig({ quietEndMinute: Math.min(1439, n) }) }} placeholder="420" placeholderTextColor={colors.muted} style={styles.intervalInput} value={String(config.quietEndMinute)} />
+        </View>
+      </View>
+      <Setting label="Allow trusted and family contacts during quiet hours" value={config.allowTrustedDuringQuiet} onChange={(value) => { void updateConfig({ allowTrustedDuringQuiet: value }) }} />
       <Setting label="Delete transcript when protection stops" value={autoDeleteTranscript} onChange={(value) => { void onSetAutoDeleteTranscript(value) }} />
 
       <Text style={styles.section}>Custom local rules</Text>

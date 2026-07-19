@@ -247,6 +247,10 @@ class CallScreeningModule(private val context: ReactApplicationContext) : ReactC
       putInt("repeatedMinIntervalSeconds", config.repeatedMinIntervalSeconds)
       putInt("nightStartHour", config.nightStartHour)
       putInt("nightEndHour", config.nightEndHour)
+      putBoolean("quietHoursEnabled", config.quietHoursEnabled)
+      putInt("quietStartMinute", config.quietStartMinute)
+      putInt("quietEndMinute", config.quietEndMinute)
+      putBoolean("allowTrustedDuringQuiet", config.allowTrustedDuringQuiet)
     })
   }
 

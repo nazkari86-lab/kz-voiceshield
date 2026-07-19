@@ -263,6 +263,20 @@ def create_app(
             raise HTTPException(status_code=503, detail="OTA seed manifest is unavailable") from error
         return {**payload, "signature": signature}
 
+    @app.get("/api/number-feed/kz")
+    def number_feed(_: Principal = Depends(authenticate)) -> dict[str, Any]:
+        if not resolved_settings.ota_private_key_b64 or not resolved_settings.number_feed_path:
+            raise HTTPException(status_code=503, detail="Number feed is not configured")
+        try:
+            feed = json.loads(resolved_settings.number_feed_path.read_text(encoding="utf-8"))
+            payload = {"schemaVersion": "voiceshield.number-feed.v1", "version": str(feed["version"]), "publishedAt": str(feed["publishedAt"]), "entries": feed["entries"]}
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+            private_key = Ed25519PrivateKey.from_private_bytes(base64.b64decode(resolved_settings.ota_private_key_b64))
+            signature = base64.b64encode(private_key.sign(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))).decode("ascii")
+        except (OSError, KeyError, TypeError, ValueError) as error:
+            raise HTTPException(status_code=503, detail="Number feed is unavailable") from error
+        return {**payload, "signature": signature}
+
     @app.post("/mcp")
     def mcp_endpoint(
         payload: dict[str, Any], principal: Principal = Depends(authenticate)

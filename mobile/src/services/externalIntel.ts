@@ -8,6 +8,7 @@ export type ExternalNumberResult = {
   lineType: string | null
   internationalFormat: string
   evidenceOnly: true
+  checkedAt?: string
 }
 
 export type ExternalUrlResult = {

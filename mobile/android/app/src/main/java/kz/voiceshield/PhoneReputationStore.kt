@@ -29,6 +29,10 @@ data class PhoneProtectionConfig(
   val repeatedMinIntervalSeconds: Int = 5,
   val nightStartHour: Int = 22,
   val nightEndHour: Int = 7,
+  val quietHoursEnabled: Boolean = false,
+  val quietStartMinute: Int = 22 * 60,
+  val quietEndMinute: Int = 7 * 60,
+  val allowTrustedDuringQuiet: Boolean = true,
 )
 
 data class PhoneAssessment(
@@ -181,17 +185,23 @@ object PhoneReputationStore {
       repeatedMinIntervalSeconds = prefs.getInt("repeatedMinIntervalSeconds", 5).coerceIn(1, 300),
       nightStartHour = prefs.getInt("nightStartHour", 22).coerceIn(0, 23),
       nightEndHour = prefs.getInt("nightEndHour", 7).coerceIn(0, 23),
+      quietHoursEnabled = prefs.getBoolean("quietHoursEnabled", prefs.getBoolean("blockUnknownAtNight", false)),
+      quietStartMinute = prefs.getInt("quietStartMinute", 22 * 60).coerceIn(0, 1439),
+      quietEndMinute = prefs.getInt("quietEndMinute", 7 * 60).coerceIn(0, 1439),
+      allowTrustedDuringQuiet = prefs.getBoolean("allowTrustedDuringQuiet", true),
     )
   }
 
   fun updateConfig(context: Context, values: Map<String, Any?>): PhoneProtectionConfig {
     val editor = preferences(context).edit()
-    listOf("enabled", "autoBlockCritical", "blockHidden", "blockInternational", "blockUnknownNotContacts", "blockRepeated", "blockUnknownAtNight").forEach { key ->
+    listOf("enabled", "autoBlockCritical", "blockHidden", "blockInternational", "blockUnknownNotContacts", "blockRepeated", "blockUnknownAtNight", "quietHoursEnabled", "allowTrustedDuringQuiet").forEach { key ->
       (values[key] as? Boolean)?.let { editor.putBoolean(key, it) }
     }
     (values["repeatedMinIntervalSeconds"] as? Number)?.toInt()?.coerceIn(1, 300)?.let { editor.putInt("repeatedMinIntervalSeconds", it) }
     (values["nightStartHour"] as? Number)?.toInt()?.coerceIn(0, 23)?.let { editor.putInt("nightStartHour", it) }
     (values["nightEndHour"] as? Number)?.toInt()?.coerceIn(0, 23)?.let { editor.putInt("nightEndHour", it) }
+    (values["quietStartMinute"] as? Number)?.toInt()?.coerceIn(0, 1439)?.let { editor.putInt("quietStartMinute", it) }
+    (values["quietEndMinute"] as? Number)?.toInt()?.coerceIn(0, 1439)?.let { editor.putInt("quietEndMinute", it) }
     editor.apply()
     return config(context)
   }
@@ -239,9 +249,14 @@ object PhoneReputationStore {
     val cfg = config(context)
     val knownContact = isKnownContact(context, normalized)
     val customRuleMatch = matchCustomRule(context, normalized)
-    val hour = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) LocalTime.now().hour else 12
-    val quietHours = if (cfg.nightStartHour > cfg.nightEndHour) hour >= cfg.nightStartHour || hour < cfg.nightEndHour
-      else hour in cfg.nightStartHour until cfg.nightEndHour
+    val localTime = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) LocalTime.now() else null
+    val minuteOfDay = localTime?.let { it.hour * 60 + it.minute } ?: 12 * 60
+    val quietHours = cfg.quietHoursEnabled && if (cfg.quietStartMinute > cfg.quietEndMinute) {
+      minuteOfDay >= cfg.quietStartMinute || minuteOfDay < cfg.quietEndMinute
+    } else {
+      minuteOfDay in cfg.quietStartMinute until cfg.quietEndMinute
+    }
+    val quietProtection = quietHours && (!cfg.allowTrustedDuringQuiet || (!trusted && !annotation.familyProtected))
     val result = PhoneReputationPolicy.evaluate(
       PhoneRiskInput(
         verificationStatus = verificationStatus,
@@ -263,13 +278,14 @@ object PhoneReputationStore {
           else -> 0
         },
         customRuleReason = customRuleMatch?.let { "Matched local rule: ${it.label.ifBlank { it.pattern }}" }.orEmpty(),
-        quietHours = quietHours,
+        quietHours = quietProtection,
         blockHidden = cfg.blockHidden,
         blockInternational = cfg.blockInternational,
         blockUnknownNotContacts = cfg.blockUnknownNotContacts,
         blockRepeated = cfg.blockRepeated,
         blockUnknownAtNight = cfg.blockUnknownAtNight,
         autoBlockCritical = cfg.autoBlockCritical,
+        kzNeighborSpoofSignal = normalized.startsWith("+77") || normalized.startsWith("+772"),
       ),
     )
     return PhoneAssessment(key, mask(number), result, complaint?.optInt("count", 0) ?: 0, complaint?.optLong("lastAt", 0) ?: 0, annotation)
@@ -435,6 +451,10 @@ object PhoneReputationStore {
         put("repeatedMinIntervalSeconds", cfg.repeatedMinIntervalSeconds)
         put("nightStartHour", cfg.nightStartHour)
         put("nightEndHour", cfg.nightEndHour)
+        put("quietHoursEnabled", cfg.quietHoursEnabled)
+        put("quietStartMinute", cfg.quietStartMinute)
+        put("quietEndMinute", cfg.quietEndMinute)
+        put("allowTrustedDuringQuiet", cfg.allowTrustedDuringQuiet)
       })
       put("trusted", JSONArray(prefs.getStringSet("trusted", emptySet()).orEmpty().toList()))
       put("blocked", JSONArray(prefs.getStringSet("blocked", emptySet()).orEmpty().toList()))

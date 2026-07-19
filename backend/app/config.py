@@ -32,6 +32,7 @@ class Settings:
     training_edge_tts_voice_ru: str = "ru-RU-SvetlanaNeural"
     training_edge_tts_voice_kz: str = "kk-KZ-AigulNeural"
     ota_private_key_b64: str = ""
+    number_feed_path: Path | None = None
     numverify_api_key: str = ""
     abstract_api_key: str = ""
     phishtank_api_key: str = ""
@@ -78,6 +79,7 @@ class Settings:
             training_edge_tts_voice_ru=os.environ.get("VOICESHIELD_EDGE_TTS_VOICE_RU", "ru-RU-SvetlanaNeural").strip(),
             training_edge_tts_voice_kz=os.environ.get("VOICESHIELD_EDGE_TTS_VOICE_KZ", "kk-KZ-AigulNeural").strip(),
             ota_private_key_b64=os.environ.get("VOICESHIELD_OTA_PRIVATE_KEY_B64", "").strip(),
+            number_feed_path=Path(os.environ["VOICESHIELD_NUMBER_FEED_JSON"]) if os.environ.get("VOICESHIELD_NUMBER_FEED_JSON", "").strip() else None,
             numverify_api_key=os.environ.get("NUMVERIFY_API_KEY", "").strip(),
             abstract_api_key=os.environ.get("ABSTRACTAPI_PHONE_API_KEY", "").strip(),
             phishtank_api_key=os.environ.get("PHISHTANK_API_KEY", "").strip(),

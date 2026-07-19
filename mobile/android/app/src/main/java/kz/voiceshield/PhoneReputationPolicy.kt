@@ -22,6 +22,7 @@ data class PhoneRiskInput(
   val blockRepeated: Boolean = true,
   val blockUnknownAtNight: Boolean = false,
   val autoBlockCritical: Boolean = false,
+  val kzNeighborSpoofSignal: Boolean = false,
 )
 
 data class PhoneRiskResult(
@@ -55,6 +56,10 @@ object PhoneReputationPolicy {
     if (input.international) {
       score += if (input.blockInternational) 70 else 25
       reasons += "International number"
+    }
+    if (input.kzNeighborSpoofSignal && !input.knownContact && !input.trusted && !input.familyProtected) {
+      // Informational only: a KZ-looking caller ID is not proof of fraud and must not raise the score.
+      reasons += "KZ local-format caller ID; neighboring-number spoofing cannot be ruled out"
     }
     if (input.complaintCount > 0) {
       score += minOf(60, input.complaintCount * 18)

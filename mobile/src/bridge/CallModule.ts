@@ -44,6 +44,10 @@ export type PhoneProtectionConfig = {
   repeatedMinIntervalSeconds: number
   nightStartHour: number
   nightEndHour: number
+  quietHoursEnabled: boolean
+  quietStartMinute: number
+  quietEndMinute: number
+  allowTrustedDuringQuiet: boolean
 }
 
 export type PhoneCustomRule = {

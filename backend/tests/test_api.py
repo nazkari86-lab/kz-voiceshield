@@ -130,6 +130,27 @@ def test_external_phishtank_is_authenticated_and_validates_input(api):
     assert response.status_code == 422
 
 
+def test_device_account_family_invite_and_logout(api):
+    client, _ = api
+    created = client.post("/account/register", json={"deviceId": "device_primary_001", "displayName": "Dulat"})
+    assert created.status_code == 200
+    session = created.json()["sessionToken"]
+    session_auth = auth(session)
+    me = client.get("/account/me", headers=session_auth)
+    assert me.status_code == 200
+    assert me.json()["account"]["phoneVerified"] is False
+    family = client.post("/family", headers=session_auth, json={"name": "My family"})
+    assert family.status_code == 200
+    invite = client.post("/family/invite", headers=session_auth)
+    assert invite.status_code == 200
+    second = client.post("/account/register", json={"deviceId": "device_second_002", "displayName": "Family member"})
+    joined = client.post("/family/join", headers=auth(second.json()["sessionToken"]), json={"inviteCode": invite.json()["inviteCode"]})
+    assert joined.status_code == 200
+    assert len(joined.json()["family"]["members"]) == 2
+    assert client.post("/account/logout", headers=session_auth).json() == {"ok": True}
+    assert client.get("/account/me", headers=session_auth).status_code == 401
+
+
 def test_crowd_reports_require_auth_and_dedupe_without_raw_text(api):
     client, _ = api
     report = {

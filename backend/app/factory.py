@@ -15,6 +15,7 @@ from fastapi import (
     File,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -22,7 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import Principal, Settings
 from .ml_service import ModelService, ModelUnavailable
-from .models import AudioJobResponse, CasePayload, CrowdReportBatch, TranscriptAnalysisResponse, TranscriptRequest, WorkflowPatch
+from .models import AccountRegisterRequest, AudioJobResponse, CasePayload, CrowdReportBatch, FamilyCreateRequest, FamilyJoinRequest, TranscriptAnalysisResponse, TranscriptRequest, WorkflowPatch
 from .repository import CaseVersionConflict, Repository
 from .security import PayloadCipher, authenticate, require_roles
 from .transcription import Transcriber, transcriber_from_env
@@ -162,6 +163,51 @@ def create_app(
             "limits": {"maxAudioBytes": resolved_settings.max_audio_bytes},
             "privacy": {"retainAudio": resolved_settings.retain_audio, "serverPiiRedaction": True},
         }
+
+    @app.post("/account/register")
+    def register_account(body: AccountRegisterRequest) -> dict[str, Any]:
+        account, session_token = repository.create_account(body.deviceId, body.displayName.strip(), body.phone)
+        repository.audit(account["userId"], "account_registered", {"deviceId": body.deviceId})
+        return {"account": account, "sessionToken": session_token, "phoneVerification": "not_configured"}
+
+    @app.get("/account/me")
+    def account_me(principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        account = repository.get_account(principal.user_id)
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        return {"account": account, "family": repository.get_family(principal.user_id)}
+
+    @app.post("/account/logout")
+    def account_logout(request: Request, principal: Principal = Depends(authenticate)) -> dict[str, bool]:
+        credentials = request.headers.get("Authorization", "")
+        if credentials.lower().startswith("bearer "):
+            repository.revoke_session(credentials[7:].strip())
+        repository.audit(principal.user_id, "account_logout", {})
+        return {"ok": True}
+
+    @app.post("/family")
+    def create_family(body: FamilyCreateRequest, principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        if principal.role != "member":
+            raise HTTPException(status_code=403, detail="A user account is required")
+        return {"family": repository.create_family_group(principal.user_id, body.name.strip())}
+
+    @app.get("/family")
+    def get_family(principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        return {"family": repository.get_family(principal.user_id)}
+
+    @app.post("/family/invite")
+    def invite_family(principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        invite = repository.create_family_invite(principal.user_id)
+        if not invite:
+            raise HTTPException(status_code=403, detail="Only a family owner can create invites")
+        return {"inviteCode": invite, "expires": "single-use"}
+
+    @app.post("/family/join")
+    def join_family(body: FamilyJoinRequest, principal: Principal = Depends(authenticate)) -> dict[str, Any]:
+        family = repository.join_family(body.inviteCode, principal.user_id)
+        if not family:
+            raise HTTPException(status_code=404, detail="Invite is invalid or already used")
+        return {"family": family}
 
     @app.get("/intel/number")
     def lookup_external_number(number: str = Query(min_length=7, max_length=24), principal: Principal = Depends(authenticate)) -> dict[str, Any]:

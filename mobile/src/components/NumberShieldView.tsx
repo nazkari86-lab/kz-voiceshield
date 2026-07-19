@@ -10,6 +10,7 @@ import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
 import { AiAssistButton } from './AiAssistButton'
 import { inspectPhoneIdentity } from '../utils/phoneIdentity'
 import { getNumberReputation, type NumberReputation } from '../utils/numberReputation'
+import { lookupNumber, type ExternalNumberResult } from '../services/externalIntel'
 
 const defaultConfig: PhoneProtectionConfig = {
   enabled: false,
@@ -66,6 +67,7 @@ export function NumberShieldView({
   const [relationship, setRelationship] = useState<PhoneRelationship>('unknown')
   const [familyProtected, setFamilyProtected] = useState(false)
   const [customRules, setCustomRules] = useState<PhoneCustomRule[]>([])
+  const [externalLookup, setExternalLookup] = useState<ExternalNumberResult | null>(null)
   const [ruleLabel, setRuleLabel] = useState('')
   const [rulePattern, setRulePattern] = useState('')
   const [ruleAction, setRuleAction] = useState<PhoneCustomRule['action']>('warn')
@@ -134,6 +136,16 @@ export function NumberShieldView({
     }
   }
 
+  const runExternalLookup = async () => {
+    if (!phoneIdentity.possible) { setStatus('Введите полный номер телефона перед онлайн-проверкой'); return }
+    try {
+      setExternalLookup(await lookupNumber(phoneIdentity.canonical))
+      setStatus('Онлайн-данные номера получены. Это не подтверждение личности звонящего.')
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Онлайн-проверка недоступна')
+    }
+  }
+
   const deleteCustomRule = async (id: string) => {
     try {
       await CallModule.deleteCustomRule(id)
@@ -165,8 +177,14 @@ export function NumberShieldView({
           <Action label="Block" tone="danger" onPress={() => { void run((value) => CallModule.setNumberDisposition(value, 'blocked'), 'Added to block list') }} />
           <Action label="Neutral" onPress={() => { void run((value) => CallModule.setNumberDisposition(value, 'neutral'), 'Local disposition removed') }} />
           <Action label="Report spam" tone="danger" onPress={() => { void run((value) => CallModule.reportNumber(value, 'user_reported_spam'), 'Local complaint recorded') }} />
+          <Action label="Online lookup" onPress={() => { void runExternalLookup() }} />
         </View>
       </View>
+      {externalLookup ? <View style={[styles.panel, styles.verifiedAlert]}>
+        <Text style={styles.verifiedTitle}>External provider: {externalLookup.provider}</Text>
+        <Text style={styles.scamReason}>{externalLookup.valid === null ? 'Validity unknown' : externalLookup.valid ? 'Number format accepted' : 'Number format rejected'} · {externalLookup.countryCode ?? 'country unknown'} · {externalLookup.lineType ?? 'line type unknown'}</Text>
+        <Text style={styles.scamSource}>{externalLookup.carrier ?? 'Carrier unavailable'} · Evidence only. Caller ID can still be spoofed.</Text>
+      </View> : null}
       {number.trim() ? <View style={styles.formatNotice}>
         <Text style={styles.formatTitle}>{phoneIdentity.kind === 'short-code' ? 'Short code' : phoneIdentity.valid ? 'Validated format' : 'Check number format'}</Text>
         <Text style={styles.formatCopy}>{phoneIdentity.display} · {phoneIdentity.note}</Text>

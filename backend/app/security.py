@@ -47,6 +47,9 @@ def authenticate(
     for token, principal in request.app.state.settings.api_tokens.items():
         if hmac.compare_digest(credentials.credentials, token):
             return principal
+    session = request.app.state.repository.get_session_principal(credentials.credentials)
+    if session:
+        return Principal(user_id=session["userId"], role="member")
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid bearer token")
 
 

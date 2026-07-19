@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+import hashlib
+import secrets
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -69,6 +71,47 @@ class Repository:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS accounts (
+                    user_id TEXT PRIMARY KEY,
+                    device_id TEXT NOT NULL UNIQUE,
+                    display_name TEXT NOT NULL,
+                    phone TEXT,
+                    phone_verified INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS sessions (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    revoked_at TEXT,
+                    FOREIGN KEY(user_id) REFERENCES accounts(user_id)
+                );
+                CREATE TABLE IF NOT EXISTS family_groups (
+                    group_id TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(owner_id) REFERENCES accounts(user_id)
+                );
+                CREATE TABLE IF NOT EXISTS family_members (
+                    group_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY(group_id, user_id),
+                    FOREIGN KEY(group_id) REFERENCES family_groups(group_id),
+                    FOREIGN KEY(user_id) REFERENCES accounts(user_id)
+                );
+                CREATE TABLE IF NOT EXISTS family_invites (
+                    invite_hash TEXT PRIMARY KEY,
+                    group_id TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    used_by TEXT,
+                    used_at TEXT,
+                    FOREIGN KEY(group_id) REFERENCES family_groups(group_id)
+                );
                 """
             )
 
@@ -86,6 +129,77 @@ class Repository:
         with self._lock:
             row = self._connection.execute("SELECT 1 AS ok").fetchone()
         return bool(row and row["ok"] == 1)
+
+    @staticmethod
+    def _hash_session(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    def create_account(self, device_id: str, display_name: str, phone: str | None = None) -> tuple[dict[str, Any], str]:
+        user_id = f"user_{secrets.token_hex(12)}"
+        token = secrets.token_urlsafe(32)
+        now = utc_now()
+        with self._lock, self._connection:
+            existing = self._connection.execute("SELECT user_id FROM accounts WHERE device_id = ?", (device_id,)).fetchone()
+            if existing:
+                user_id = str(existing["user_id"])
+                self._connection.execute("UPDATE accounts SET display_name = ?, phone = COALESCE(?, phone), updated_at = ? WHERE user_id = ?", (display_name, phone, now, user_id))
+            else:
+                self._connection.execute("INSERT INTO accounts(user_id, device_id, display_name, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)", (user_id, device_id, display_name, phone, now, now))
+            self._connection.execute("INSERT INTO sessions(token_hash, user_id, created_at) VALUES (?, ?, ?)", (self._hash_session(token), user_id, now))
+        return self.get_account(user_id) or {}, token
+
+    def get_session_principal(self, token: str) -> dict[str, str] | None:
+        with self._lock:
+            row = self._connection.execute("SELECT s.user_id, a.display_name FROM sessions s JOIN accounts a ON a.user_id = s.user_id WHERE s.token_hash = ? AND s.revoked_at IS NULL", (self._hash_session(token),)).fetchone()
+        if not row:
+            return None
+        return {"userId": str(row["user_id"]), "displayName": str(row["display_name"])}
+
+    def revoke_session(self, token: str) -> None:
+        with self._lock, self._connection:
+            self._connection.execute("UPDATE sessions SET revoked_at = ? WHERE token_hash = ?", (utc_now(), self._hash_session(token)))
+
+    def get_account(self, user_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute("SELECT user_id, device_id, display_name, phone, phone_verified, created_at, updated_at FROM accounts WHERE user_id = ?", (user_id,)).fetchone()
+        if not row:
+            return None
+        return {"userId": row["user_id"], "deviceId": row["device_id"], "displayName": row["display_name"], "phone": row["phone"], "phoneVerified": bool(row["phone_verified"]), "createdAt": row["created_at"], "updatedAt": row["updated_at"]}
+
+    def create_family_group(self, owner_id: str, name: str) -> dict[str, Any]:
+        group_id = f"family_{secrets.token_hex(8)}"
+        now = utc_now()
+        with self._lock, self._connection:
+            self._connection.execute("INSERT INTO family_groups(group_id, owner_id, name, created_at) VALUES (?, ?, ?, ?)", (group_id, owner_id, name, now))
+            self._connection.execute("INSERT INTO family_members(group_id, user_id, role, created_at) VALUES (?, ?, 'owner', ?)", (group_id, owner_id, now))
+        return {"groupId": group_id, "name": name, "role": "owner", "members": [{"userId": owner_id, "role": "owner"}]}
+
+    def get_family(self, user_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute("SELECT g.group_id, g.name, m.role FROM family_groups g JOIN family_members m ON m.group_id = g.group_id WHERE m.user_id = ?", (user_id,)).fetchone()
+            if not row:
+                return None
+            members = self._connection.execute("SELECT user_id, role FROM family_members WHERE group_id = ? ORDER BY created_at", (row["group_id"],)).fetchall()
+        return {"groupId": row["group_id"], "name": row["name"], "role": row["role"], "members": [{"userId": item["user_id"], "role": item["role"]} for item in members]}
+
+    def create_family_invite(self, owner_id: str) -> str | None:
+        family = self.get_family(owner_id)
+        if not family or family["role"] != "owner":
+            return None
+        invite = secrets.token_urlsafe(24)
+        with self._lock, self._connection:
+            self._connection.execute("INSERT INTO family_invites(invite_hash, group_id, created_by, created_at) VALUES (?, ?, ?, ?)", (self._hash_session(invite), family["groupId"], owner_id, utc_now()))
+        return invite
+
+    def join_family(self, invite: str, user_id: str) -> dict[str, Any] | None:
+        now = utc_now()
+        with self._lock, self._connection:
+            row = self._connection.execute("SELECT group_id FROM family_invites WHERE invite_hash = ? AND used_by IS NULL", (self._hash_session(invite),)).fetchone()
+            if not row:
+                return None
+            self._connection.execute("INSERT OR IGNORE INTO family_members(group_id, user_id, role, created_at) VALUES (?, ?, 'member', ?)", (row["group_id"], user_id, now))
+            self._connection.execute("UPDATE family_invites SET used_by = ?, used_at = ? WHERE invite_hash = ?", (user_id, now, self._hash_session(invite)))
+        return self.get_family(user_id)
 
     def audit(self, actor: str, action: str, detail: dict[str, Any], case_id: str | None = None) -> None:
         with self._lock, self._connection:

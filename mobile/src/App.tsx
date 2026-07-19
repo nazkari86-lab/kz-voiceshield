@@ -35,6 +35,7 @@ import { ScreenMotion } from './components/ScreenMotion'
 import { VoiceMessageView } from './components/VoiceMessageView'
 import { VoipCallView } from './components/VoipCallView'
 import { PrivacyHealthView } from './components/PrivacyHealthView'
+import { AccountView } from './components/AccountView'
 import { MotionPressable } from './components/MotionPressable'
 import { ShareIntentModule, shareIntentEvents } from './bridge/ShareIntentBridge'
 import { VoiceMessageModule, voiceMessageEvents } from './bridge/VoiceMessageBridge'
@@ -49,6 +50,7 @@ type Tab =
   | 'playbook' | 'family' | 'verify' | 'number' | 'tools' | 'voiceMsg'
   | 'model' | 'setup' | 'stats' | 'sms' | 'history' | 'llm'
   | 'demo' | 'voip' | 'health'
+  | 'account'
 
 const primaryTabs: Array<[Tab, string, string]> = [
   ['live', 'Shield', 'LIVE'],
@@ -61,6 +63,7 @@ const primaryTabs: Array<[Tab, string, string]> = [
 
 const toolTabs: Array<[Tab, string, string]> = [
   ['voip', 'Protected VoIP', 'Private app-to-app calls with a LiveKit audio room'],
+  ['account', 'Account & family', 'Device account and family protection'],
   ['demo', 'Protection walkthrough', 'Run the complete protection workflow with synthetic data'],
   ['review', 'Case review', 'Explain live risk, evidence and response steps'],
   ['evidence', 'Evidence & signals', 'Inspect matched signals and device context'],
@@ -102,6 +105,7 @@ const tabMeta: Record<Tab, { label: string; group: string }> = {
   setup: { label: 'Setup', group: 'Workspace' },
   voip: { label: 'Protected VoIP', group: 'Protect' },
   health: { label: 'Privacy & health', group: 'Workspace' },
+  account: { label: 'Account & family', group: 'Protect' },
 }
 
 const ONBOARDING_KEY = 'voiceshield.onboarding-done.v1'
@@ -253,6 +257,7 @@ function AppContent() {
       />}
       {tab === 'model' && <ModelView />}
       {tab === 'health' && <PrivacyHealthView modelReady={w.modelReady} privacyConsent={w.privacyConsent} modelStorage={w.modelStorage} callStatus={w.callStatus} />}
+      {tab === 'account' && <AccountView />}
       {tab === 'setup' && <SetupScreen modelReady={w.modelReady} modelProgress={w.modelProgress} modelSizePref={w.modelSizePref} recognitionLanguage={w.recognitionLanguage} autoDisconnectCritical={w.autoDisconnectCritical} enhancedCaptionFiltering={w.enhancedCaptionFiltering} modelStorage={w.modelStorage} privacyConsent={w.privacyConsent} storageError={w.storageError} callStatus={w.callStatus} caseCount={w.cases.length} onPrepareWhisper={() => { void w.prepareWhisper() }} onSetModelSize={w.updateModelSize} onSetRecognitionLanguage={w.updateRecognitionLanguage} onSetAutoDisconnectCritical={w.updateAutoDisconnectCritical} onSetEnhancedCaptionFiltering={w.updateEnhancedCaptionFiltering} onAcceptPrivacy={w.acceptPrivacy} onDeclinePrivacy={w.declinePrivacy} onDeleteAllData={w.deleteAllLocalData} />}
     </>
   )

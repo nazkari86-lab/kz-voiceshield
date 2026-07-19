@@ -74,3 +74,17 @@ class CrowdReport(BaseModel):
 
 class CrowdReportBatch(BaseModel):
     reports: list[CrowdReport] = Field(min_length=1, max_length=100)
+
+
+class AccountRegisterRequest(BaseModel):
+    deviceId: str = Field(min_length=8, max_length=160, pattern=r"^[A-Za-z0-9._:-]+$")
+    displayName: str = Field(min_length=1, max_length=80)
+    phone: str | None = Field(default=None, max_length=24)
+
+
+class FamilyCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class FamilyJoinRequest(BaseModel):
+    inviteCode: str = Field(min_length=16, max_length=160, pattern=r"^[A-Za-z0-9_-]+$")

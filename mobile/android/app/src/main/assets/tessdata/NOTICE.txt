@@ -1,0 +1,9 @@
+KZ VoiceShield offline Cyrillic OCR assets
+
+rus.traineddata and kaz.traineddata are sourced from the official Tesseract
+tessdata_fast repository:
+https://github.com/tesseract-ocr/tessdata_fast
+
+SHA-256:
+rus.traineddata  e16e5e036cce1d9ec2b00063cf8b54472625b9e14d893a169e2b0dedeb4df225
+kaz.traineddata  fcc01eed3815a42b9c6321c4c9d3606f39b166cbf95ade98b7d8d12063eae53d

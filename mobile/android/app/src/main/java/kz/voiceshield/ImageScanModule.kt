@@ -16,9 +16,11 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import java.util.concurrent.Executors
 
 class ImageScanModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
   private var pendingPromise: Promise? = null
+  private val scanExecutor = Executors.newSingleThreadExecutor()
   private val pickerListener: ActivityEventListener = object : BaseActivityEventListener() {
     override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
       if (requestCode != PICK_IMAGE_REQUEST) return
@@ -87,7 +89,18 @@ class ImageScanModule(private val context: ReactApplicationContext) : ReactConte
           result
         }
       }
-      .addOnSuccessListener { result -> promise.resolve(result) }
+      .addOnSuccessListener { result ->
+        scanExecutor.execute {
+          try {
+            val mlText = result.getString("text").orEmpty()
+            val cyrillicText = CyrillicOcr.recognize(context, uri)
+            result.putString("text", CyrillicOcr.chooseBest(mlText, cyrillicText))
+            promise.resolve(result)
+          } catch (error: Exception) {
+            promise.resolve(result)
+          }
+        }
+      }
       .addOnFailureListener { error -> promise.reject("IMAGE_SCAN_FAILED", "Could not scan this image", error) }
       .addOnCompleteListener {
         barcodeScanner.close()
@@ -97,6 +110,7 @@ class ImageScanModule(private val context: ReactApplicationContext) : ReactConte
 
   override fun invalidate() {
     context.removeActivityEventListener(pickerListener)
+    scanExecutor.shutdownNow()
     pendingPromise?.reject("IMAGE_SCAN_CANCELLED", "Image scan was cancelled")
     pendingPromise = null
     super.invalidate()

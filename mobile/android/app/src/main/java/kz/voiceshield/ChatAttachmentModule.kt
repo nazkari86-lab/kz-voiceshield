@@ -122,24 +122,24 @@ class ChatAttachmentModule(private val context: ReactApplicationContext) : React
   }
 
   private fun readImageText(uri: Uri, fileName: String, mimeType: String, promise: Promise) {
-    val image = try {
-      InputImage.fromFilePath(context, uri)
-    } catch (error: Exception) {
-      promise.reject("CHAT_ATTACHMENT_READ_FAILED", "Could not read this image", error)
-      return
-    }
-    val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-    recognizer.process(image)
-      .addOnSuccessListener { result ->
-        val text = result.text.trim()
+    readerExecutor.execute {
+      val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+      try {
+        val image = InputImage.fromFilePath(context, uri)
+        val mlText = Tasks.await(recognizer.process(image), 45, TimeUnit.SECONDS).text.trim()
+        val cyrillicText = CyrillicOcr.recognize(context, uri)
+        val text = CyrillicOcr.chooseBest(mlText, cyrillicText)
         if (text.isEmpty()) {
           promise.reject("CHAT_ATTACHMENT_EMPTY", "No readable text was found in this image")
         } else {
           promise.resolve(attachmentMap(fileName, mimeType, TextResult(text.take(MAX_TEXT_CHARS), text.length > MAX_TEXT_CHARS), "image", uri))
         }
+      } catch (error: Exception) {
+        promise.reject("CHAT_ATTACHMENT_READ_FAILED", "Could not read text from this image", error)
+      } finally {
+        recognizer.close()
       }
-      .addOnFailureListener { error -> promise.reject("CHAT_ATTACHMENT_READ_FAILED", "Could not read text from this image", error) }
-      .addOnCompleteListener { recognizer.close() }
+    }
   }
 
   private fun readPdfText(uri: Uri): TextResult {

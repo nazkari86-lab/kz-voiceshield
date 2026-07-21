@@ -10,6 +10,8 @@ import { whisperModels } from '../data/whisperModels'
 import { loadKnowledgeNotes, saveKnowledgeNote, type KnowledgeNote } from '../utils/knowledgeNotes'
 import { useI18n } from '../I18nContext'
 import { qualityLabManifest, qualityLabPolicy } from '../data/qualityLabManifest'
+import { SileroVADModule } from '../bridge/VADBridge'
+import { DeepfakeDetectorModule } from '../bridge/DeepfakeBridge'
 
 function KnowledgeNotesPanel({ graph }: { graph: KnowledgeGraph }) {
   const { lang } = useI18n()
@@ -64,6 +66,15 @@ export function ModelView() {
   const origins = Object.entries(snap.byOrigin ?? {})
   const langs = Object.entries(snap.byLanguage ?? {})
   const [graph, setGraph] = useState<KnowledgeGraph>(() => buildKnowledgeGraph())
+  const [voiceAuthStatus, setVoiceAuthStatus] = useState('Models are not initialized')
+
+  const initializeVoiceAuth = async () => {
+    const [vadReady, aasistReady] = await Promise.all([
+      SileroVADModule?.loadModel() ?? Promise.resolve(false),
+      DeepfakeDetectorModule?.loadModel() ?? Promise.resolve(false),
+    ])
+    setVoiceAuthStatus(`Silero VAD: ${vadReady ? 'ready' : 'unavailable'} · AASIST: ${aasistReady ? 'ready' : 'unavailable'}`)
+  }
 
   useEffect(() => {
     void (async () => {
@@ -123,6 +134,11 @@ export function ModelView() {
       <Card tone="medium">
         <Text style={styles.body}>Runs reproducible ASR and fraud-regression reports outside Live Shield. Candidate models cannot download themselves, enter the APK, or affect a call.</Text>
         <Text style={styles.policy}>Promotion: {qualityLabPolicy.promotionRule}</Text>
+        <Pressable onPress={() => { void initializeVoiceAuth() }} style={styles.labButton}>
+          <Text style={styles.labButtonText}>Initialize offline audio models</Text>
+        </Pressable>
+        <Text style={styles.voiceAuthStatus}>{voiceAuthStatus}</Text>
+        <Text style={styles.policy}>These models only score explicitly submitted frame copies. They do not control Live Shield, call termination, or transcript state.</Text>
         {qualityLabManifest.map((asset) => (
           <View key={asset.id} style={styles.labRow}>
             <View style={styles.packCopy}><Text style={styles.rowKey}>{asset.title}</Text><Text style={styles.packPurpose}>{asset.role} · {asset.detail}</Text></View>
@@ -218,6 +234,9 @@ const styles = StyleSheet.create({
   packPurpose: { color: colors.muted, fontSize: 11 },
   labRow: { flexDirection: 'row', gap: 10, paddingTop: 9 },
   policy: { color: colors.sub, fontSize: 11, lineHeight: 16, marginTop: 8 },
+  labButton: { alignSelf: 'flex-start', backgroundColor: colors.brand, borderRadius: 7, marginTop: 12, paddingHorizontal: 12, paddingVertical: 9 },
+  labButtonText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  voiceAuthStatus: { color: colors.brandDark, fontSize: 11, fontWeight: '700', marginTop: 8 },
   statusChip: { borderRadius: 6, borderWidth: 1, fontSize: 9, fontWeight: '900', paddingHorizontal: 7, paddingVertical: 5 },
   bundled: { backgroundColor: '#dcfce7', borderColor: '#86efac', color: '#166534' },
   downloadable: { backgroundColor: '#dbeafe', borderColor: '#93c5fd', color: '#1d4ed8' },

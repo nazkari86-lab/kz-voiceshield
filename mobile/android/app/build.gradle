@@ -91,6 +91,9 @@ dependencies {
     // On-device LLM inference (Gemma 3 1B IT INT4 via MediaPipe).
     // Gemma 3 support and explicit CPU/GPU backend selection require 0.10.27.
     implementation("com.google.mediapipe:tasks-genai:0.10.27")
+    // Optional offline AASIST evidence inference. It is not wired into the
+    // Live Shield decision path; model loading is explicit from JS.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     testImplementation("junit:junit:4.13.2")
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

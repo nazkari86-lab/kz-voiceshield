@@ -1,9 +1,10 @@
 import { NativeModules } from 'react-native'
 
 type DeepfakeDetectorModuleType = {
-  loadModel: (modelPath: string) => Promise<boolean>
+  loadModel: (modelPath?: string) => Promise<boolean>
   analyzeFrame: (samples: number[], sampleRate: number) => Promise<number>
   reset: () => Promise<void>
+  isModelLoaded: () => Promise<boolean>
 }
 
 export const DeepfakeDetectorModule: DeepfakeDetectorModuleType | null =

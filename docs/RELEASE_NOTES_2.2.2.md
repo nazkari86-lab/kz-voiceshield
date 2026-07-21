@@ -10,6 +10,9 @@
   pack from the downloaded dataset.
 - Kept AASIST as an offline evidence signal only. It does not change Live
   Shield risk, end calls, or replace the deterministic rules.
+- Bundled AASIST and a sherpa-compatible Silero VAD model behind explicit,
+  isolated native modules. Both accept copied frames only and expose readiness
+  and scores to the offline quality lab.
 - Removed an unused Number Shield import and restored the full mobile test
   suite.
 
@@ -26,6 +29,8 @@
 
 - Physical Xiaomi call-route, latency, memory, and thermal validation.
 - Production RU/KZ telephone calibration for ASR and synthetic-voice scores.
-- Android ONNX integration for AASIST and Silero VAD.
+- Physical Xiaomi validation of the Android ONNX modules, including latency,
+  memory, thermal behavior, and model-score calibration for RU/KZ telephone
+  audio.
 - Public multi-user deployment with managed PostgreSQL, durable queues, OIDC,
   HTTPS, and abuse moderation.

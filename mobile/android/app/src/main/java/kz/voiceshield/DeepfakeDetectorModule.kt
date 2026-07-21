@@ -9,7 +9,6 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.exp
@@ -57,7 +56,7 @@ class DeepfakeDetectorModule(private val context: ReactApplicationContext) : Rea
 
   @ReactMethod
   fun analyzeFrame(samplesArray: ReadableArray, sampleRate: Int, promise: Promise) {
-    val samples = FloatArray(samplesArray.size()) { samplesArray.getDouble(it).toFloat() }
+    val samples = FloatArray(samplesArray.size().coerceAtMost(MAX_FRAME_SAMPLES)) { samplesArray.getDouble(it).toFloat() }
     executor.execute {
       try {
         val result = synchronized(lock) {
@@ -83,6 +82,16 @@ class DeepfakeDetectorModule(private val context: ReactApplicationContext) : Rea
   @ReactMethod
   fun isModelLoaded(promise: Promise) {
     promise.resolve(synchronized(lock) { modelLoaded })
+  }
+
+  override fun invalidate() {
+    synchronized(lock) {
+      modelLoaded = false
+      session?.close()
+      session = null
+    }
+    executor.shutdownNow()
+    super.invalidate()
   }
 
   private fun scoreAasist(samples: FloatArray, sampleRate: Int): Float {
@@ -128,12 +137,7 @@ class DeepfakeDetectorModule(private val context: ReactApplicationContext) : Rea
   private fun resolveModelPath(requested: String?, assetName: String): String {
     val requestedFile = requested?.takeIf { it.isNotBlank() }?.let(::File)
     if (requestedFile?.isFile == true) return requestedFile.absolutePath
-    val target = File(File(context.filesDir, "models"), assetName)
-    if (!target.isFile || target.length() == 0L) {
-      target.parentFile?.mkdirs()
-      context.assets.open(assetName).use { input -> FileOutputStream(target).use { output -> input.copyTo(output) } }
-    }
-    return target.absolutePath
+    return VoiceModelAssets.copyVerified(context, assetName, assetName, AASIST_BYTES, AASIST_SHA256)
   }
 
   private fun heuristicDeepfake(samples: FloatArray, sampleRate: Int): Float {
@@ -165,5 +169,8 @@ class DeepfakeDetectorModule(private val context: ReactApplicationContext) : Rea
   companion object {
     private const val TARGET_SAMPLE_RATE = 16_000
     private const val WINDOW_SAMPLES = 64_600
+    private const val MAX_FRAME_SAMPLES = 1_000_000
+    private const val AASIST_BYTES = 1_615_195L
+    private const val AASIST_SHA256 = "130e536266b7c537f9a13029e1612a9f392fd1cc827783683b6d1c062a3db5e1"
   }
 }

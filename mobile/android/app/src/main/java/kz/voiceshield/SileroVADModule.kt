@@ -9,7 +9,6 @@ import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
 import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -56,7 +55,7 @@ class SileroVADModule(private val context: ReactApplicationContext) : ReactConte
 
   @ReactMethod
   fun processFrame(samplesArray: ReadableArray, sampleRate: Int, promise: Promise) {
-    val samples = FloatArray(samplesArray.size()) { samplesArray.getDouble(it).toFloat() }
+    val samples = FloatArray(samplesArray.size().coerceAtMost(MAX_FRAME_SAMPLES)) { samplesArray.getDouble(it).toFloat() }
     executor.execute {
       try {
         val score = synchronized(lock) {
@@ -82,15 +81,20 @@ class SileroVADModule(private val context: ReactApplicationContext) : ReactConte
     promise.resolve(synchronized(lock) { modelLoaded })
   }
 
+  override fun invalidate() {
+    synchronized(lock) {
+      modelLoaded = false
+      vad?.release()
+      vad = null
+    }
+    executor.shutdownNow()
+    super.invalidate()
+  }
+
   private fun resolveModelPath(requested: String?): String {
     val requestedFile = requested?.takeIf { it.isNotBlank() }?.let(::File)
     if (requestedFile?.isFile == true) return requestedFile.absolutePath
-    val target = File(File(context.filesDir, "models"), "silero_vad.onnx")
-    if (!target.isFile || target.length() == 0L) {
-      target.parentFile?.mkdirs()
-      context.assets.open("silero_vad.onnx").use { input -> FileOutputStream(target).use { output -> input.copyTo(output) } }
-    }
-    return target.absolutePath
+    return VoiceModelAssets.copyVerified(context, "silero_vad.onnx", "silero_vad.onnx", SILERO_BYTES, SILERO_SHA256)
   }
 
   private fun resample(input: FloatArray, from: Int, to: Int): FloatArray {
@@ -116,5 +120,10 @@ class SileroVADModule(private val context: ReactApplicationContext) : ReactConte
     return (energyScore * 0.7f + zcrScore * 0.3f).coerceIn(0f, 1f)
   }
 
-  companion object { private const val TARGET_SAMPLE_RATE = 16_000 }
+  companion object {
+    private const val TARGET_SAMPLE_RATE = 16_000
+    private const val MAX_FRAME_SAMPLES = 1_000_000
+    private const val SILERO_BYTES = 643_854L
+    private const val SILERO_SHA256 = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
+  }
 }

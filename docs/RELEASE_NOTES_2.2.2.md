@@ -13,6 +13,9 @@
 - Bundled AASIST and a sherpa-compatible Silero VAD model behind explicit,
   isolated native modules. Both accept copied frames only and expose readiness
   and scores to the offline quality lab.
+- Added SHA-256/size verification with atomic model activation and native
+  resource cleanup, so interrupted or corrupted model copies do not become
+  active and repeated React Native reloads do not retain inference sessions.
 - Removed an unused Number Shield import and restored the full mobile test
   suite.
 

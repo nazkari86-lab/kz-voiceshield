@@ -14,11 +14,15 @@ const DATA_CONSENT_PREFIX = 'voiceshield.cloud-data-consent.v1.'
 const LIVE_CONSENT_PREFIX = 'voiceshield.cloud-live-consent.v1.'
 const REQUEST_TIMEOUT_MS = 90_000
 const REQUEST_TIMEOUT_SECONDS = REQUEST_TIMEOUT_MS / 1_000
-export const CLOUD_OUTPUT_TOKEN_BUDGET = 2_400
-const MAX_CLOUD_CONTINUATIONS = 3
+// A large enough first response avoids the common truncation seen in case,
+// SMS and Number Shield explanations. Continuations remain a provider-safe
+// fallback because each provider has its own hard context/output limits.
+export const CLOUD_OUTPUT_TOKEN_BUDGET = 4_096
+const MAX_CLOUD_CONTINUATIONS = 6
 export const ACTIVE_CLOUD_SPEECH_MODEL_KEY = 'voiceshield.cloud-speech-model.v1'
 
 type JsonRecord = Record<string, unknown>
+export type CloudVisionImage = { mimeType: string; base64: string }
 
 const asRecord = (value: unknown): JsonRecord => value && typeof value === 'object' ? value as JsonRecord : {}
 const asArray = (value: unknown): unknown[] => Array.isArray(value) ? value : []
@@ -295,6 +299,7 @@ export async function generateCloudResponse(
   systemPrompt: string,
   userMessage: string,
   signal?: AbortSignal,
+  visionImages: CloudVisionImage[] = [],
 ): Promise<string> {
   const provider = cloudProviderById[config.providerId]
   if (!await hasProviderDataConsent(config.providerId)) {
@@ -303,17 +308,20 @@ export async function generateCloudResponse(
   const apiKey = await readProviderApiKey(config.providerId)
   const safeUserMessage = prepareCloudUserMessage(userMessage)
   const continuationInstruction = 'Continue exactly where your previous answer ended. Do not repeat it. Finish the requested answer completely.'
+  const safeImages = visionImages.filter((image) => /^image\/(jpeg|png|webp)$/u.test(image.mimeType) && image.base64.length <= 7_000_000).slice(0, 4)
   const buildRequest = (previousResponse = ''): { url: string; body: JsonRecord; extract: (payload: unknown) => string } => {
     if (provider.apiStyle === 'anthropic') {
+      const initialContent = [{ type: 'text', text: safeUserMessage }, ...safeImages.map((image) => ({ type: 'image', source: { type: 'base64', media_type: image.mimeType, data: image.base64 } }))]
       const messages = previousResponse
         ? [{ role: 'user', content: safeUserMessage }, { role: 'assistant', content: previousResponse }, { role: 'user', content: continuationInstruction }]
-        : [{ role: 'user', content: safeUserMessage }]
+        : [{ role: 'user', content: initialContent }]
       return { url: `${provider.baseUrl}/messages`, body: { model: config.modelId, max_tokens: CLOUD_OUTPUT_TOKEN_BUDGET, system: systemPrompt, messages }, extract: extractAnthropicText }
     }
     if (provider.apiStyle === 'gemini') {
+      const initialParts = [{ text: safeUserMessage }, ...safeImages.map((image) => ({ inline_data: { mime_type: image.mimeType, data: image.base64 } }))]
       const contents = previousResponse
         ? [{ role: 'user', parts: [{ text: safeUserMessage }] }, { role: 'model', parts: [{ text: previousResponse }] }, { role: 'user', parts: [{ text: continuationInstruction }] }]
-        : [{ role: 'user', parts: [{ text: safeUserMessage }] }]
+        : [{ role: 'user', parts: initialParts }]
       return {
         url: `${provider.baseUrl}/models/${encodeURIComponent(config.modelId)}:generateContent`,
         body: { systemInstruction: { parts: [{ text: systemPrompt }] }, contents, generationConfig: { maxOutputTokens: CLOUD_OUTPUT_TOKEN_BUDGET, temperature: 0.2 } },
@@ -321,9 +329,10 @@ export async function generateCloudResponse(
       }
     }
     const openAiReasoningModel = provider.id === 'openai' && /^(gpt-5|o[1345](?:-|$))/iu.test(config.modelId)
+    const initialContent = [{ type: 'text', text: safeUserMessage }, ...safeImages.map((image) => ({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.base64}` } }))]
     const messages = previousResponse
       ? [{ role: 'system', content: systemPrompt }, { role: 'user', content: safeUserMessage }, { role: 'assistant', content: previousResponse }, { role: 'user', content: continuationInstruction }]
-      : [{ role: 'system', content: systemPrompt }, { role: 'user', content: safeUserMessage }]
+      : [{ role: 'system', content: systemPrompt }, { role: 'user', content: initialContent }]
     return {
       url: `${provider.baseUrl}/chat/completions`,
       body: { model: config.modelId, messages, ...(openAiReasoningModel ? { max_completion_tokens: CLOUD_OUTPUT_TOKEN_BUDGET } : { max_tokens: CLOUD_OUTPUT_TOKEN_BUDGET, temperature: 0.2 }), stream: false },

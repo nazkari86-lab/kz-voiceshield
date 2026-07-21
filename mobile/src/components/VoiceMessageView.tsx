@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native'
 import { analyzeTranscript } from '@scoring'
 import { enhanceTranscript } from '../utils/transcriptEnhancer'
+import { assessAsrQuality } from '../utils/asrQuality'
 import { colors, riskColor, riskLabel } from '../theme'
 import { VoiceMessageModule } from '../bridge/VoiceMessageBridge'
+import type { VoiceMessageResult } from '../bridge/VoiceMessageBridge'
 import { MotionPressable } from './MotionPressable'
 import type { CloudSpeechModelConfig } from '../data/cloudAiProviders'
 import { getActiveCloudSpeechModel, hasProviderApiKey, transcribeCloudAudio } from '../services/cloudAiClient'
@@ -12,7 +14,7 @@ type Phase =
   | { kind: 'idle' }
   | { kind: 'picking' }
   | { kind: 'transcribing'; elapsed: number }
-  | { kind: 'result'; transcript: string; durationMs: number; sampleCount: number }
+  | { kind: 'result'; transcript: string; durationMs: number; sampleCount: number; audioQuality?: VoiceMessageResult['audioQuality'] }
   | { kind: 'error'; message: string }
 
 type Props = {
@@ -77,7 +79,7 @@ export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCa
       stopTimer()
       onClearSharedAudio()
       if (!result) { setPhase({ kind: 'idle' }); return }
-      setPhase({ kind: 'result', transcript: result.transcript, durationMs: result.durationMs, sampleCount: result.sampleCount })
+      setPhase({ kind: 'result', transcript: result.transcript, durationMs: result.durationMs, sampleCount: result.sampleCount, audioQuality: result.audioQuality })
     } catch (err) {
       stopTimer()
       const msg = err instanceof Error ? err.message : 'Could not transcribe this audio.'
@@ -111,6 +113,7 @@ export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCa
   }, [pendingSharedAudio, phase.kind, transcribe])
 
   const enhancement = phase.kind === 'result' ? enhanceTranscript(phase.transcript) : null
+  const asrQuality = phase.kind === 'result' ? assessAsrQuality(phase.transcript) : null
   const analysis = enhancement ? analyzeTranscript(enhancement.normalizedTranscript, {}) : null
   const isIdle = phase.kind === 'idle' || phase.kind === 'error'
   const isBusy = phase.kind === 'picking' || phase.kind === 'transcribing'
@@ -178,6 +181,21 @@ export function VoiceMessageView({ modelReady, pendingSharedAudio, onAnalyzeAsCa
           <View style={styles.divider} />
           <Text style={styles.transcriptLabel}>TRANSCRIPT</Text>
           <Text style={styles.transcript} selectable>{phase.transcript || '(no speech detected in this file)'}</Text>
+          {asrQuality && (
+            <View style={[styles.qualityBox, asrQuality.level === 'unusable' && styles.qualityBoxDanger]}>
+              <Text style={styles.qualityTitle}>ASR QUALITY · {asrQuality.level.toUpperCase()}</Text>
+              <Text style={styles.qualityText}>
+                {asrQuality.language === 'kk' ? 'Kazakh' : asrQuality.language === 'ru' ? 'Russian' : asrQuality.language === 'mixed' ? 'Mixed RU/KZ' : 'Language unclear'}
+                {asrQuality.flags.length > 0 ? ` · ${asrQuality.flags.join(', ')}` : ' · no quality flags'}
+              </Text>
+              {asrQuality.level !== 'good' && <Text style={styles.qualityText}>Review the raw audio before relying on the risk result. Low-quality speech is evidence-limited, not proof of fraud.</Text>}
+            </View>
+          )}
+          {phase.audioQuality && (
+            <Text style={styles.timing}>
+              Audio signal: {phase.audioQuality.level} · signal {Math.round(phase.audioQuality.signalRatio * 100)}% · clipping {Math.round(phase.audioQuality.clippingRatio * 100)}%
+            </Text>
+          )}
 
           <Text style={styles.timing}>
             Processed in {Math.round(phase.durationMs / 1_000)}s · {Math.round(phase.sampleCount / 16_000)}s of audio · on-device only
@@ -267,6 +285,10 @@ const styles = StyleSheet.create({
   transcriptLabel: { color: colors.sub, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, marginTop: 4 },
   transcript: { color: colors.ink, fontSize: 13, lineHeight: 20 },
   timing: { color: colors.sub, fontSize: 11 },
+  qualityBox: { backgroundColor: '#eff6ff', borderColor: '#bfdbfe', borderRadius: 8, borderWidth: 1, gap: 3, padding: 9 },
+  qualityBoxDanger: { backgroundColor: '#fff7ed', borderColor: '#fdba74' },
+  qualityTitle: { color: '#1e40af', fontSize: 10, fontWeight: '900', letterSpacing: 0.7 },
+  qualityText: { color: colors.sub, fontSize: 11, lineHeight: 16 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 4 },
   primary: { backgroundColor: colors.brand, borderRadius: 8, flex: 1, paddingHorizontal: 14, paddingVertical: 11 },
   primaryText: { color: '#fff', fontWeight: '900', textAlign: 'center' },

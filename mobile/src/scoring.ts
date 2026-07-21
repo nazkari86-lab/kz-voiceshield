@@ -1,3 +1,6 @@
+import { extractFraudSignals, type FraudSignalFusion } from './utils/fraudSignalFusion'
+import { classifyAuxiliarySignals, type AuxiliaryClassifierResult } from './utils/auxiliaryClassifiers'
+
 export type Severity = 'critical' | 'high' | 'medium' | 'low'
 export type CaseLabel = 'unreviewed' | 'true_positive' | 'false_positive' | 'needs_review'
 export type CaseStatus = 'new' | 'reviewing' | 'escalated' | 'closed'
@@ -92,6 +95,8 @@ export type Analysis = {
   intents: DetectedIntent[]
   evidenceFamilies: EvidenceFamilyResult[]
   protectiveContextApplied: boolean
+  semanticSignals?: FraudSignalFusion
+  auxiliaryClassifiers?: AuxiliaryClassifierResult[]
 }
 
 export type WorkflowFlags = {
@@ -1046,6 +1051,7 @@ export const createWorkflowState = (analysis: Analysis, createdAt = new Date().t
 
 export const analyzeTranscript = (text: string, context: RiskContext = {}): Analysis => {
   const normalized = normalizeText(text)
+  const semanticSignals = extractFraudSignals(text)
   const wordCount = normalized ? normalized.split(' ').length : 0
   const initialEvidence = threatRules
     .map((rule) => ({ ...rule, matches: matchTerms(text, rule.terms), score: 0 }))
@@ -1111,7 +1117,13 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
     .filter((item) => item.id === 'caller_reputation_high' || item.id === 'caller_verification_failed')
     .reduce((maximum, item) => Math.max(maximum, item.weight), 0)
   const contextScore = evidence.length > 0 ? contextSignals.reduce((sum, item) => sum + item.weight, 0) : 0
-  const rawConversationScore = evidence.reduce((sum, item) => sum + item.score, 0) + comboBonus + contextScore
+  // Add only a small independent semantic lift. Existing rules remain the
+  // primary signal, while paraphrases with several distinct attack intents
+  // are no longer scored as completely harmless.
+  const semanticBoost = evidence.length === 0
+    ? semanticSignals.semanticScoreDelta
+    : Math.round(semanticSignals.semanticScoreDelta * 0.25)
+  const rawConversationScore = evidence.reduce((sum, item) => sum + item.score, 0) + comboBonus + contextScore + semanticBoost
   // Protective context reduces score contribution for ambiguous banking phrases only
   const protectiveDiscount = protectiveContextApplied ? 0.75 : 1
   const conversationScore = Math.round(rawConversationScore * shortTextPenaltyScore * protectiveDiscount)
@@ -1191,11 +1203,14 @@ export const analyzeTranscript = (text: string, context: RiskContext = {}): Anal
       return { id, label: def.label, strength: Math.round(strength * 100) / 100, ruleIds: matched.map((e) => e.id) }
     })
     .filter((f): f is EvidenceFamilyResult => f !== null)
+  const auxiliaryClassifiers = classifyAuxiliarySignals(text, evidence, contextSignals.map((signal) => signal.id))
 
   return {
     caseId: createCaseId(text), confidence, contextSignals, escalationReasons, evidence, matchedTerms,
     nextAction, responseChecklist, risk, scheme, schemeLabel: schemeLabels[scheme], score, stageCoverage, verdict, wordCount,
     fraudProbability, harmSeverity, schemeConfidence, captureCompleteness, intents, evidenceFamilies, protectiveContextApplied,
+    semanticSignals,
+    auxiliaryClassifiers,
   }
 }
 

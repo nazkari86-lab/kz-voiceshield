@@ -27,6 +27,8 @@ class TranscriptAnalysisResponse(BaseModel):
     disagreement: MlDisagreement
     redactedTranscript: str
     language: str
+    transcriptQuality: Literal["good", "degraded", "unusable"] = "good"
+    transcriptQualityFlags: list[str] = Field(default_factory=list)
 
 
 class TranscriptRequest(BaseModel):
@@ -57,6 +59,8 @@ class AudioJobResponse(BaseModel):
     status: JobStatus
     transcript: str | None = None
     transcriptConfidence: int | None = Field(default=None, ge=0, le=100)
+    transcriptQuality: Literal["good", "degraded", "unusable"] | None = None
+    transcriptQualityFlags: list[str] = Field(default_factory=list)
     ml: MlAssessment | None = None
     error: str | None = None
 

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import type { Analysis } from '@scoring'
 import { colors, riskColor } from '../theme'
@@ -9,6 +9,8 @@ import type { CallbackResult } from '../utils/callbackDetector'
 import type { TranscriptEnhancement } from '../utils/transcriptEnhancer'
 import type { OnDeviceAiRuntime } from '../hooks/useOnDeviceAiRuntime'
 import { AiAssistButton } from './AiAssistButton'
+import { requestFraudShadowReview } from '../services/fraudAnalysisClient'
+import type { HybridRiskReview } from '../utils/fraudSignalFusion'
 
 type Props = {
   analysis: Analysis
@@ -28,7 +30,17 @@ type Props = {
 }
 
 export function ReviewView({ analysis, enhancement, highSignals, pressureAnalysis, semanticMatches, callbackInfo, repeatBonus, llmAutoAnalysis, captureCompleteness, onOpenEvidence, onOpenTimeline, onOpenChain, transcript = '', ai }: Props) {
+  const [shadowReview, setShadowReview] = useState<HybridRiskReview | null>(null)
   const cashOut = analysis.evidence.some((item) => item.stage === 'Cash-out')
+  const semanticSignals = analysis.semanticSignals
+  useEffect(() => {
+    let active = true
+    setShadowReview(null)
+    void requestFraudShadowReview(transcript, analysis).then((result) => {
+      if (active) setShadowReview(result)
+    })
+    return () => { active = false }
+  }, [analysis.caseId, analysis.score, transcript])
   return (
     <View>
       <Card tone={analysis.risk}>
@@ -100,6 +112,44 @@ export function ReviewView({ analysis, enhancement, highSignals, pressureAnalysi
               <Text style={styles.intentProb}>{Math.round(intent.probability * 100)}%</Text>
             </View>
           ))}
+        </Card>
+      )}
+
+      {semanticSignals && semanticSignals.quality !== 'none' && (
+        <Card>
+          <SectionTitle>Semantic attack map</SectionTitle>
+          <Text style={styles.bullet}>Independent signals: {semanticSignals.independentSignalCount}</Text>
+          <Text style={styles.bullet}>Stages: {semanticSignals.stages.map((stage) => stage.id).join(' → ') || 'not established'}</Text>
+          {semanticSignals.entities.length > 0 && <Text style={styles.bullet}>Entities: {semanticSignals.entities.join(', ')}</Text>}
+          <Text style={styles.muted}>Derived score view: {semanticSignals.semanticScoreDelta > 0 ? `+${semanticSignals.semanticScoreDelta}` : 'no additional lift'} · rules remain authoritative.</Text>
+        </Card>
+      )}
+
+      {analysis.auxiliaryClassifiers && (
+        <Card>
+          <SectionTitle>Additional classifiers</SectionTitle>
+          {analysis.auxiliaryClassifiers.map((classifier) => (
+            <View key={classifier.id} style={styles.classifierRow}>
+              <View style={styles.classifierMain}>
+                <Text style={styles.classifierLabel}>{classifier.label}</Text>
+                <Text style={styles.muted}>{classifier.rules[0]}</Text>
+              </View>
+              <Text style={styles.classifierScore}>{classifier.score === null ? 'N/A' : `${classifier.score}/100`}</Text>
+            </View>
+          ))}
+          <Text style={styles.muted}>Synthetic-voice score appears only after a calibrated audio anti-spoof model supplies audio evidence. Text rules never pretend to identify an AI voice.</Text>
+        </Card>
+      )}
+
+      {shadowReview && (
+        <Card>
+          <SectionTitle>ML shadow review</SectionTitle>
+          <View style={styles.shadowRow}>
+            <Text style={styles.bullet}>Rules: {shadowReview.rulesScore}/100</Text>
+            <Text style={styles.bullet}>ML: {shadowReview.mlScore === null ? 'unavailable' : `${shadowReview.mlScore}/100`}</Text>
+            <Text style={styles.disagreement}>{shadowReview.disagreement.replaceAll('_', ' ')}</Text>
+          </View>
+          <Text style={styles.muted}>ML is compared for calibration and disagreement review; it does not override the safety decision.</Text>
         </Card>
       )}
 
@@ -257,4 +307,10 @@ const styles = StyleSheet.create({
   intentBar: { backgroundColor: colors.chipBg, borderRadius: 3, flex: 1, height: 6, overflow: 'hidden' },
   intentFill: { backgroundColor: colors.brand, borderRadius: 3, height: 6 },
   intentProb: { color: colors.sub, fontSize: 11, width: 34, textAlign: 'right' },
+  shadowRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  disagreement: { color: '#9a3412', fontSize: 12, fontWeight: '800', textTransform: 'capitalize' },
+  classifierRow: { alignItems: 'center', flexDirection: 'row', gap: 10, marginBottom: 8 },
+  classifierMain: { flex: 1 },
+  classifierLabel: { color: colors.ink, fontSize: 13, fontWeight: '800' },
+  classifierScore: { color: colors.brandDark, fontSize: 13, fontWeight: '900' },
 })

@@ -15,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
 
 class AudioCaptureModule(private val context: ReactApplicationContext) : ReactContextBaseJavaModule(context) {
@@ -22,6 +23,8 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
   private var recorder: AudioRecord? = null
   private var job: Job? = null
   private val preprocessor = AudioPreprocessor()
+  private val captureActive = AtomicBoolean(false)
+  private val lifecycleLock = Any()
 
   override fun getName(): String = "AudioCaptureModule"
 
@@ -30,7 +33,8 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
 
   @ReactMethod
   fun startCapture(promise: Promise) {
-    try {
+    synchronized(lifecycleLock) {
+      try {
       if (recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
         promise.resolve(null)
         return
@@ -50,21 +54,40 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
         promise.reject("AUDIO_PERMISSION_OR_BUSY", "Microphone permission is missing or the microphone is busy")
         return
       }
+      captureActive.set(true)
       val started = Arguments.createMap()
       started.putString("source", source)
       AppRegistry.sendEvent("VS_AUDIO_CAPTURE_STARTED", started)
       emitRouteStatus()
       job = scope.launch {
         val buffer = ShortArray(1600)
-        while (recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+        var lastQualityAt = 0L
+        while (captureActive.get() && recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
           val read = recorder?.read(buffer, 0, buffer.size) ?: 0
           if (read > 0) {
             // Do not run model inference on the AudioRecord thread. WhisperModule
             // owns a bounded worker queue and will drop stale chunks under load.
-            AppRegistry.whisperModule?.pushAudio(preprocessor.process(buffer.copyOf(read)))
+            val processed = preprocessor.process(buffer.copyOf(read))
+            if (preprocessor.lastSpeechLike) AppRegistry.whisperModule?.pushAudio(processed)
             val payload = Arguments.createMap()
             payload.putDouble("level", buffer.take(read).maxOf { abs(it.toInt()) } / 32768.0)
             AppRegistry.sendEvent("VS_AUDIO_LEVEL", payload)
+            val now = System.currentTimeMillis()
+            if (now - lastQualityAt >= 1_000L) {
+              lastQualityAt = now
+              val quality = Arguments.createMap()
+              quality.putDouble("rms", preprocessor.lastRms.toDouble())
+              quality.putDouble("peak", preprocessor.lastPeak.toDouble())
+              quality.putDouble("signalRatio", preprocessor.lastSignalRatio.toDouble())
+              quality.putDouble("clippingRatio", preprocessor.lastClippingRatio.toDouble())
+              quality.putBoolean("speechLike", preprocessor.lastSpeechLike)
+              quality.putString("level", when {
+                preprocessor.lastRms < 0.008f -> "quiet"
+                preprocessor.lastClippingRatio > 0.02f -> "clipped"
+                else -> "usable"
+              })
+              AppRegistry.sendEvent("VS_AUDIO_QUALITY", quality)
+            }
           } else if (read < 0) {
             val payload = Arguments.createMap()
             payload.putString("message", "Android microphone read failed (code $read). Stop protection and start it again.")
@@ -77,10 +100,12 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
         }
       }
       promise.resolve(null)
-    } catch (error: Throwable) {
-      recorder?.release()
-      recorder = null
-      promise.reject("AUDIO_START_FAILED", error)
+      } catch (error: Throwable) {
+        captureActive.set(false)
+        recorder?.release()
+        recorder = null
+        promise.reject("AUDIO_START_FAILED", error)
+      }
     }
   }
 
@@ -97,15 +122,18 @@ class AudioCaptureModule(private val context: ReactApplicationContext) : ReactCo
   }
 
   private fun stopInternal() {
-    job?.cancel()
-    job = null
-    try {
-      recorder?.stop()
-    } catch (_: Throwable) {
+    synchronized(lifecycleLock) {
+      captureActive.set(false)
+      job?.cancel()
+      job = null
+      try {
+        recorder?.stop()
+      } catch (_: Throwable) {
+      }
+      recorder?.release()
+      recorder = null
+      preprocessor.reset()
     }
-    recorder?.release()
-    recorder = null
-    preprocessor.reset()
   }
 
   private fun startRecorder(minBuffer: Int): String? {

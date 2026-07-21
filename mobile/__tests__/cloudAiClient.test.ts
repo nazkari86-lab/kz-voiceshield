@@ -153,6 +153,26 @@ describe('cloud AI client', () => {
     expect(prepareCloudUserMessage('код 1234')).toContain('[REDACTED]')
   })
 
+  it('sends explicitly approved images using the provider vision format', async () => {
+    mockSecureValues.set(providerKeyStorageKey('openai'), 'openai-secret')
+    mockSecureValues.set(providerDataConsentStorageKey('openai'), 'accepted')
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: 'visual result' } }] }))
+
+    await generateCloudResponse(
+      { providerId: 'openai', modelId: 'gpt-4o-mini', modelName: 'Vision test' },
+      'system',
+      'Проверь изображение',
+      undefined,
+      [{ mimeType: 'image/jpeg', base64: 'ZmFrZQ==' }],
+    )
+
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)
+    expect(body.messages[1].content).toEqual([
+      { type: 'text', text: 'Проверь изображение' },
+      { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,ZmFrZQ==' } },
+    ])
+  })
+
   it('continues a cloud answer when the provider reports an output length limit', async () => {
     mockSecureValues.set(providerKeyStorageKey('openai'), 'openai-secret')
     mockSecureValues.set(providerDataConsentStorageKey('openai'), 'accepted')

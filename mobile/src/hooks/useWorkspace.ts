@@ -360,6 +360,14 @@ export function useWorkspace() {
     const audioErrorSub = audioEvents.addListener('VS_AUDIO_CAPTURE_ERROR', (event: { message?: string }) => {
       if (event.message) setCaptureError(event.message)
     })
+    const audioQualitySub = audioEvents.addListener('VS_AUDIO_QUALITY', (event: { level?: string; speechLike?: boolean; clippingRatio?: number }) => {
+      if (!isListeningRef.current || sourceRef.current !== 'Whisper') return
+      if (event.level === 'quiet' || event.speechLike === false) {
+        setCaptureNotice('No reliable speech signal is reaching the microphone. Turn on speakerphone, raise call volume, and keep the phone microphone unobstructed.')
+      } else if (event.level === 'clipped' || (event.clippingRatio ?? 0) > 0.02) {
+        setCaptureNotice('The microphone signal is clipping. Lower call volume slightly and keep the phone 20–40 cm from the speaker.')
+      }
+    })
     const decodeStalledSub = whisperEvents.addListener('VS_WHISPER_DECODE_STALLED', (event: { message?: string }) => {
       if (!isListeningRef.current) return
       void AudioCaptureModule.stopCapture().catch(() => undefined)
@@ -398,6 +406,7 @@ export function useWorkspace() {
     return () => {
       levelSub.remove()
       audioErrorSub.remove()
+      audioQualitySub.remove()
       decodeStalledSub.remove()
       audioStartedSub.remove()
       audioRouteSub.remove()

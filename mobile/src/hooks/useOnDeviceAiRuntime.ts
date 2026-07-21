@@ -32,6 +32,7 @@ export type AiGenerationRequest = {
   gemmaPrompt: string
   localSystemPrompt: string
   localUserMessage: string
+  visionImages?: Array<{ mimeType: string; base64: string }>
   onToken?: (token: string) => void
 }
 
@@ -375,6 +376,7 @@ export function useOnDeviceAiRuntime() {
           request.localSystemPrompt,
           request.localUserMessage,
           controller.signal,
+          request.visionImages,
         )
         request.onToken?.(response)
         return response

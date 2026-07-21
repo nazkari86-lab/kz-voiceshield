@@ -35,7 +35,7 @@ FEATURES: tuple[dict[str, Any], ...] = (
 )
 
 RELEASES: tuple[dict[str, str], ...] = (
-    {"version": "2.2.2", "title": "Quality and benchmark alignment release", "summary": "Синхронизирует версию приложения, добавляет воспроизводимый ASVspoof/AASIST benchmark и сохраняет экспериментальный deepfake-сигнал вне Live Shield decisions."},
+    {"version": "2.2.3", "title": "Hybrid classifier and transcript reliability release", "summary": "Добавляет semantic fusion, auxiliary classifiers, ML shadow review и более надёжную обработку длинных AI-ответов без изменения Live Shield audio lifecycle."},
     {"version": "2.2.1", "title": "Training voice and assistant quality release", "summary": "Добавляет Microsoft Edge TTS без ключа, ветвящиеся тренировки, голосовые ответы и локальные evidence-пакеты без доступа к Live Shield audio pipeline."},
     {"version": "2.0.8", "title": "Caption-source hardening", "summary": "Фильтрует текст панели уведомлений и чужих приложений, чтобы не создавать ложный Live Caption transcript."},
     {"version": "2.0.2", "title": "Verified baseline", "summary": "Сохраненная пользователем Xiaomi baseline для сравнения и отката."},
@@ -70,7 +70,7 @@ def _app_knowledge(arguments: dict[str, Any]) -> dict[str, Any]:
     query = _text(arguments, "query").lower()
     features = [item for item in FEATURES if not query or query in f"{item['id']} {item['title']} {item['summary']}".lower()]
     releases = [item for item in RELEASES if not query or query in f"{item['version']} {item['title']} {item['summary']}".lower()]
-    return {"app": "KZ VoiceShield", "version": "2.2.2", "features": features, "releases": releases}
+    return {"app": "KZ VoiceShield", "version": "2.2.3", "features": features, "releases": releases}
 
 
 def _redact(arguments: dict[str, Any]) -> dict[str, Any]:

@@ -4,6 +4,13 @@ export type VoiceMessageResult = {
   transcript: string
   durationMs: number
   sampleCount: number
+  audioQuality?: {
+    level: 'usable' | 'quiet' | 'clipped' | 'unusable'
+    rms: number
+    peak: number
+    clippingRatio: number
+    signalRatio: number
+  }
 }
 
 type VoiceMessageNativeModule = {

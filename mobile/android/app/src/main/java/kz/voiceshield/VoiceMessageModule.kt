@@ -182,6 +182,7 @@ class VoiceMessageModule(private val context: ReactApplicationContext) : ReactCo
         result.putString("transcript", transcript.trim())
         result.putDouble("durationMs", (System.currentTimeMillis() - startMs).toDouble())
         result.putInt("sampleCount", pcm.size)
+        result.putMap("audioQuality", audioQuality(pcm))
         promise.resolve(result)
       } catch (e: Exception) {
         promise.reject("TRANSCRIPTION_FAILED", e.message ?: "Unknown error during transcription", e)
@@ -209,6 +210,41 @@ class VoiceMessageModule(private val context: ReactApplicationContext) : ReactCo
 
     @Volatile var pendingAudioUri: Uri? = null
     @Volatile private var pendingModelLanguage: String = "ru"
+
+    private fun audioQuality(pcm: ShortArray) = Arguments.createMap().apply {
+      if (pcm.isEmpty()) {
+        putString("level", "unusable")
+        putDouble("rms", 0.0)
+        putDouble("peak", 0.0)
+        putDouble("clippingRatio", 0.0)
+        putDouble("signalRatio", 0.0)
+        return@apply
+      }
+      var sumSquares = 0.0
+      var peak = 0.0
+      var clipped = 0
+      var signal = 0
+      pcm.forEach { sample ->
+        val normalized = kotlin.math.abs(sample.toDouble() / Short.MAX_VALUE.toDouble())
+        sumSquares += normalized * normalized
+        peak = maxOf(peak, normalized)
+        if (normalized >= 0.98) clipped += 1
+        if (normalized >= 0.012) signal += 1
+      }
+      val rms = kotlin.math.sqrt(sumSquares / pcm.size)
+      val clippingRatio = clipped.toDouble() / pcm.size
+      val signalRatio = signal.toDouble() / pcm.size
+      val level = when {
+        signalRatio < 0.01 || rms < 0.008 -> "quiet"
+        clippingRatio > 0.02 -> "clipped"
+        else -> "usable"
+      }
+      putString("level", level)
+      putDouble("rms", rms)
+      putDouble("peak", peak)
+      putDouble("clippingRatio", clippingRatio)
+      putDouble("signalRatio", signalRatio)
+    }
 
   fun decodeAudioToPcm16(uri: Uri, context: Context): ShortArray {
       val extractor = MediaExtractor()

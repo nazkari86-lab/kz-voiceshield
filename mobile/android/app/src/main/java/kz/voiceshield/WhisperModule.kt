@@ -14,6 +14,8 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -29,7 +31,9 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   private var audioWorkerJob: Job
   private var lastTranscript = ""
   private val decodeInFlight = AtomicBoolean(false)
+  private val streamActive = AtomicBoolean(false)
   private val decodeSequence = AtomicLong(0)
+  private val modelMutex = Mutex()
 
   init {
     AppRegistry.whisperModule = this
@@ -39,8 +43,12 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     audioWorkerJob = scope.launch {
       for (chunk in audioQueue) {
         try {
-          whisper?.process(chunk)
-          fastConformer?.process(chunk)
+          if (!streamActive.get()) continue
+          modelMutex.withLock {
+            if (!streamActive.get()) return@withLock
+            whisper?.process(chunk)
+            fastConformer?.process(chunk)
+          }
         } catch (_: Throwable) {
           // A bad model/chunk must not kill the capture worker permanently.
         }
@@ -61,16 +69,22 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     }
     scope.launch {
       try {
-        whisper?.close()
-        fastConformer?.close()
-        whisper = null
-        fastConformer = null
-        if (modelPath.endsWith(".onnx", ignoreCase = true)) {
-          fastConformer = FastConformerContext(modelPath, context)
-        } else {
-          whisper = WhisperContext(modelPath, language)
+        streamActive.set(false)
+        streamJob?.cancel()
+        streamJob = null
+        drainAudioQueue()
+        modelMutex.withLock {
+          whisper?.close()
+          fastConformer?.close()
+          whisper = null
+          fastConformer = null
+          if (modelPath.endsWith(".onnx", ignoreCase = true)) {
+            fastConformer = FastConformerContext(modelPath, context)
+          } else {
+            whisper = WhisperContext(modelPath, language)
+          }
+          lastTranscript = ""
         }
-        lastTranscript = ""
         promise.resolve(true)
       } catch (e: UnsatisfiedLinkError) {
         // whisper.so not bundled or ABI mismatch
@@ -82,7 +96,7 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
   }
 
   fun pushAudio(chunk: ShortArray) {
-    if (chunk.isNotEmpty()) audioQueue.trySend(chunk)
+    if (chunk.isNotEmpty() && streamActive.get()) audioQueue.trySend(chunk)
   }
 
   @ReactMethod
@@ -99,6 +113,7 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
       promise.resolve(null)
       return
     }
+    streamActive.set(true)
     streamJob = scope.launch {
       while (true) {
         delay(3000)
@@ -116,7 +131,7 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
             }
           }
           val text = try {
-            (whisper?.transcribe() ?: fastConformer?.transcribe().orEmpty()).trim()
+            modelMutex.withLock { (whisper?.transcribe() ?: fastConformer?.transcribe().orEmpty()).trim() }
           } catch (_: Throwable) {
             ""
           } finally {
@@ -135,7 +150,13 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     promise.resolve(null)
   }
 
-  @ReactMethod fun stopStreaming(promise: Promise) { streamJob?.cancel(); streamJob = null; promise.resolve(null) }
+  @ReactMethod fun stopStreaming(promise: Promise) {
+    streamActive.set(false)
+    streamJob?.cancel()
+    streamJob = null
+    drainAudioQueue()
+    promise.resolve(null)
+  }
   @ReactMethod fun isInitialized(promise: Promise) { promise.resolve(whisper != null || fastConformer != null) }
   @ReactMethod fun resetBuffer(promise: Promise) {
     // Do not reset or replace a native context while a synchronous decode is active.
@@ -145,17 +166,23 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
       return
     }
     scope.launch {
+      streamActive.set(false)
       streamJob?.cancel()
       streamJob = null
-      whisper?.reset()
-      fastConformer?.reset()
-      lastTranscript = ""
+      drainAudioQueue()
+      modelMutex.withLock {
+        whisper?.reset()
+        fastConformer?.reset()
+        lastTranscript = ""
+      }
       promise.resolve(null)
     }
   }
   @ReactMethod fun getBufferSize(promise: Promise) { promise.resolve(whisper?.bufferSize() ?: fastConformer?.bufferSize() ?: 0) }
 
   override fun invalidate() {
+    streamActive.set(false)
+    drainAudioQueue()
     audioQueue.close()
     audioWorkerJob.cancel()
     streamJob?.cancel()
@@ -167,6 +194,10 @@ class WhisperModule(private val context: ReactApplicationContext) : ReactContext
     AppRegistry.whisperModule = null
     scope.cancel()
     super.invalidate()
+  }
+
+  private fun drainAudioQueue() {
+    while (audioQueue.tryReceive().isSuccess) { /* discard stale session audio */ }
   }
 
   private companion object {

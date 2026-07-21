@@ -12,6 +12,7 @@ export type ChatAttachment = {
 type ChatAttachmentNativeModule = {
   pickReadableAttachment(): Promise<ChatAttachment>
   consumePendingSharedAttachment(): Promise<ChatAttachment | null>
+  readAttachmentImageBase64(uri: string): Promise<{ mimeType: string; base64: string }>
 }
 
 export const ChatAttachmentModule = NativeModules.ChatAttachmentModule as ChatAttachmentNativeModule | undefined

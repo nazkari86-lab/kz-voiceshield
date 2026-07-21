@@ -27,6 +27,7 @@ from .models import AccountRegisterRequest, AudioJobResponse, CasePayload, Crowd
 from .repository import CaseVersionConflict, Repository
 from .security import PayloadCipher, authenticate, require_roles
 from .transcription import Transcriber, transcriber_from_env
+from .transcript_quality import assess_transcript_quality, detect_transcript_language
 from .privacy import detect_language, redact_text
 from .mcp_gateway import handle_mcp
 from .training_tts import TrainingTtsService, TrainingTtsSettings, TrainingTtsUnavailable
@@ -79,7 +80,7 @@ def create_app(
         yield
         repository.close()
 
-    app = FastAPI(title="KZ VoiceShield API", version="2.2.2", lifespan=lifespan)
+    app = FastAPI(title="KZ VoiceShield API", version="2.2.3", lifespan=lifespan)
     app.state.settings = resolved_settings
     app.state.repository = repository
     app.state.model_service = resolved_model
@@ -413,6 +414,7 @@ def create_app(
                 assessment = None
         safe_transcript = redact_text(body.transcript)
         language = detect_language(body.transcript)
+        quality, quality_flags = assess_transcript_quality(body.transcript)
         repository.audit(
             principal.user_id,
             "transcript_analyzed",
@@ -433,6 +435,8 @@ def create_app(
             "disagreement": disagreement,
             "redactedTranscript": safe_transcript,
             "language": language,
+            "transcriptQuality": quality,
+            "transcriptQualityFlags": quality_flags,
         }
 
     @app.post("/training/tts")
@@ -501,11 +505,14 @@ def create_app(
             transcript, confidence = resolved_transcriber.transcribe(
                 audio_bytes, suffix
             )
+            quality, quality_flags = assess_transcript_quality(transcript, confidence)
             result: dict[str, Any] = {
                 "transcript": transcript,
                 "redactedTranscript": redact_text(transcript),
-                "language": detect_language(transcript),
+                "language": detect_transcript_language(transcript),
                 "transcriptConfidence": confidence,
+                "transcriptQuality": quality,
+                "transcriptQualityFlags": quality_flags,
             }
             if resolved_model.available:
                 result["ml"] = resolved_model.assess(transcript)

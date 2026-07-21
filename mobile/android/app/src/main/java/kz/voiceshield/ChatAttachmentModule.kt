@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.database.Cursor
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -23,6 +24,7 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.ByteArrayOutputStream
 import java.io.StringReader
 import java.nio.charset.StandardCharsets
+import android.util.Base64
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipInputStream
@@ -88,6 +90,41 @@ class ChatAttachmentModule(private val context: ReactApplicationContext) : React
       return
     }
     readAttachment(shared.uri, shared.flags, promise)
+  }
+
+  /** Returns a bounded, recompressed image only for an explicitly approved cloud request. */
+  @ReactMethod
+  fun readAttachmentImageBase64(uriString: String, promise: Promise) {
+    val uri = try { Uri.parse(uriString) } catch (_: Exception) {
+      promise.reject("CHAT_ATTACHMENT_INVALID_URI", "The image URI is invalid")
+      return
+    }
+    readerExecutor.execute {
+      var bitmap: Bitmap? = null
+      var scaled: Bitmap? = null
+      try {
+        bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+          ?: throw IllegalStateException("Could not decode the selected image")
+        val maxDimension = maxOf(bitmap.width, bitmap.height)
+        scaled = if (maxDimension > MAX_VISION_DIMENSION) {
+          val ratio = MAX_VISION_DIMENSION.toFloat() / maxDimension.toFloat()
+          Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt().coerceAtLeast(1), (bitmap.height * ratio).toInt().coerceAtLeast(1), true)
+        } else bitmap
+        val output = ByteArrayOutputStream()
+        if (!scaled!!.compress(Bitmap.CompressFormat.JPEG, 85, output) || output.size() > MAX_VISION_BYTES) {
+          throw IllegalStateException("The image is too large for a safe cloud request")
+        }
+        val map = Arguments.createMap()
+        map.putString("mimeType", "image/jpeg")
+        map.putString("base64", Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP))
+        promise.resolve(map)
+      } catch (error: Exception) {
+        promise.reject("CHAT_ATTACHMENT_IMAGE_READ_FAILED", "Could not prepare the image for cloud AI", error)
+      } finally {
+        if (scaled !== bitmap) scaled?.recycle()
+        bitmap?.recycle()
+      }
+    }
   }
 
   private fun readAttachment(uri: Uri, resultFlags: Int, promise: Promise) {
@@ -294,6 +331,8 @@ class ChatAttachmentModule(private val context: ReactApplicationContext) : React
     const val MAX_PDF_PAGES = 8
     const val MAX_ARCHIVE_FILES = 8
     const val MAX_ARCHIVE_FILE_CHARS = 24_000
+    const val MAX_VISION_DIMENSION = 1_600
+    const val MAX_VISION_BYTES = 5 * 1024 * 1024
     const val DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     private var pendingSharedAttachment: PendingSharedAttachment? = null
 

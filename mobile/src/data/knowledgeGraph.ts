@@ -49,7 +49,7 @@ const featureCatalog: KnowledgeNode[] = [
 ]
 
 const releaseCatalog: KnowledgeNode[] = [
-  { id: 'release:v2.2.2', type: 'release', title: 'v2.2.2 quality and benchmark alignment', summary: 'Синхронизирует версию приложения, добавляет воспроизводимый ASVspoof/AASIST benchmark и сохраняет экспериментальный deepfake-сигнал вне Live Shield decisions.', tags: ['release', 'benchmark', 'asvspoof', 'safety'], version: '2.2.2', status: 'active' },
+  { id: 'release:v2.2.3', type: 'release', title: 'v2.2.3 hybrid classifier and transcript reliability', summary: 'Добавляет semantic fusion, auxiliary classifiers, ML shadow review и continuation для длинных облачных AI-ответов без изменения Live Shield audio lifecycle.', tags: ['release', 'ml', 'deepfake', 'robocall', 'safety'], version: '2.2.3', status: 'active' },
   { id: 'release:v2.2.1', type: 'release', title: 'v2.2.1 training voice quality', summary: 'Добавляет Microsoft Edge TTS без ключа, каталог Microsoft и ElevenLabs, ветвящиеся RU/KZ-тренировки, голосовые ответы, адаптивную статистику и локальные evidence-пакеты. Live Shield audio pipeline не менялся.', tags: ['release', 'training', 'edge-tts', 'quality'], version: '2.2.1', status: 'active' },
   { id: 'release:v2.2.0', type: 'release', title: 'v2.2.0 unified assistant controls', summary: 'Добавляет MCP-инструменты с пользовательскими режимами разрешений, синхронизирует справку о функциях и версии, усиливает CI-проверки mobile и исправляет SMS Scanner UI.', tags: ['release', 'mcp', 'permissions', 'quality'], version: '2.2.0', status: 'available' },
   { id: 'release:v2.0.8', type: 'release', title: 'v2.0.8 caption-source hardening', summary: 'Исправляет ложные Live Caption transcript-события из панели уведомлений, TikTok, собственного уведомления VoiceShield и другого System UI текста. Если настоящий caption недоступен, приложение показывает degraded capture notice вместо ложного риска. Native audio pipeline не менялся.', tags: ['release', 'caption', 'accessibility', 'xiaomi'], version: '2.0.8', status: 'active' },
@@ -102,7 +102,7 @@ export function buildKnowledgeGraph(storage: ModelStorageInfo | null = null, run
 
   const edges: KnowledgeEdge[] = ([
     ...featureCatalog.map((feature) => ['app:voiceshield', feature.id, 'provides'] as [string, string, string]),
-    ['app:voiceshield', 'release:v2.2.2', 'current release'], ['release:v2.2.2', 'release:v2.2.1', 'succeeds'], ['release:v2.2.1', 'release:v2.2.0', 'succeeds'],
+    ['app:voiceshield', 'release:v2.2.3', 'current release'], ['release:v2.2.3', 'release:v2.2.2', 'succeeds'], ['release:v2.2.2', 'release:v2.2.1', 'succeeds'], ['release:v2.2.1', 'release:v2.2.0', 'succeeds'],
     ['release:v2.0.8', 'release:v2.0.7', 'succeeds'], ['release:v2.0.7', 'release:v2.0.6', 'succeeds'], ['release:v2.0.6', 'release:v2.0.5', 'succeeds'], ['release:v2.0.5', 'release:v2.0.4', 'succeeds'], ['release:v2.0.4', 'release:v2.0.3', 'succeeds'], ['release:v2.0.3', 'release:v2.0.2', 'succeeds'], ['release:v2.0.2', 'release:v2.0.0', 'succeeds'],
     ['feature:live-shield', 'feature:transcript-correction', 'feeds'], ['feature:live-shield', 'feature:ml-shadow', 'compares'], ['feature:post-call-review', 'feature:cases', 'can create'],
     ['feature:live-shield', 'model:fastconformer', 'uses'], ['feature:transcript-correction', 'model:qolda-q4', 'can use'],
@@ -136,7 +136,10 @@ export function relatedKnowledge(graph: KnowledgeGraph, nodeId: string): Knowled
   return graph.nodes.filter((node) => ids.includes(node.id))
 }
 
-export function buildAssistantKnowledgeContext(graph: KnowledgeGraph, maxNodes = 32): string {
+// The assistant needs the complete feature/release catalog to answer questions
+// about version differences. Callers can still pass a lower bound for a small
+// prompt, while the product default no longer silently drops older releases.
+export function buildAssistantKnowledgeContext(graph: KnowledgeGraph, maxNodes = 64): string {
   const prioritized = [...graph.nodes].sort((left, right) => {
     const rank = (node: KnowledgeNode) => node.type === 'app' ? 0 : node.type === 'release' ? 1 : node.type === 'feature' ? 2 : node.type === 'advice' ? 3 : 4
     return rank(left) - rank(right)

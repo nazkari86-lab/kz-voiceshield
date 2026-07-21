@@ -377,7 +377,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
     const attachments = chatAttachments
     if ((!question && attachments.length === 0) || generating || ai.generating || !modelReady) return
     if (engine === 'cloud' && attachments.length > 0 && !cloudAttachmentConsent) {
-      setAttachmentError('Подтвердите передачу обезличенного текста вложений в облачный AI.')
+      setAttachmentError('Подтвердите передачу обезличенного текста и выбранных изображений в облачный AI.')
       return
     }
     const estimatedCloudTokens = estimateTokens([question, transcript, ...attachments.map((attachment) => attachment.text)].join('\n')) + CLOUD_OUTPUT_TOKEN_BUDGET
@@ -421,11 +421,17 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
       ].filter(Boolean).join('\n\n')
       const userMessage = buildUserMessage(`${contextualQuestion}\n\n`, transcript)
       const fullPrompt = buildPrompt(SYSTEM_PROMPT, `${contextualQuestion}\n\n`, transcript)
+      const visionImages = engine === 'cloud'
+        ? await Promise.all(chatAttachments.filter((attachment) => attachment.kind === 'image' && attachment.uri).slice(0, 4).map(async (attachment) => {
+          try { return await ChatAttachmentModule?.readAttachmentImageBase64(attachment.uri as string) } catch { return null }
+        })).then((items) => items.filter((item): item is { mimeType: string; base64: string } => Boolean(item)))
+        : undefined
       const full = await ai.generate({
         owner: 'assistant',
         gemmaPrompt: fullPrompt,
         localSystemPrompt: SYSTEM_PROMPT,
         localUserMessage: userMessage,
+        visionImages,
         onToken: (token) => {
           currentTokensRef.current += token
           setMessages(prev => {
@@ -802,7 +808,7 @@ export function LLMAssistantView({ transcript, languageContext = '', modelBasePa
       {engine === 'cloud' && chatAttachments.length > 0 && (
         <TouchableOpacity style={[styles.privacyPanel, cloudAttachmentConsent && styles.privacyPanelAccepted]} onPress={() => setCloudAttachmentConsent((current) => !current)}>
           <Text style={styles.privacyTitle}>{cloudAttachmentConsent ? 'Облачная передача подтверждена' : 'Подтвердите передачу вложений в облачный AI'}</Text>
-          <Text style={styles.privacyText}>Передаются только извлечённый текст и локально обезличенные данные. Обнаружено: {cloudPrivacySummary}</Text>
+          <Text style={styles.privacyText}>Передаются извлечённый текст и сжатые изображения, которые вы явно выбрали. Номера и коды в тексте обезличиваются локально. Обнаружено: {cloudPrivacySummary}</Text>
         </TouchableOpacity>
       )}
       {attachmentError && <Text style={styles.attachmentError}>{attachmentError}</Text>}

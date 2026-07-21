@@ -1,7 +1,7 @@
 {
   "name": "kz-voiceshield",
   "private": true,
-  "version": "2.2.1",
+  "version": "2.2.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "lint": "oxlint --ignore-pattern 'tools/**'",
     "preview": "vite preview",
     "test": "vitest run",
+    "check:version": "node scripts/check-version-consistency.mjs",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "test:e2e": "playwright test"

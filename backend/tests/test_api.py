@@ -77,7 +77,7 @@ def test_health_is_public_and_auth_is_required(api):
     client, _ = api
     assert client.get("/health").json() == {
         "ok": True,
-            "version": "2.2.1",
+            "version": "2.2.2",
         "apiVersion": "v1",
         "mlAvailable": True,
     }
@@ -85,7 +85,7 @@ def test_health_is_public_and_auth_is_required(api):
     assert readiness.status_code == 200
     assert readiness.json() == {
         "ok": True,
-            "version": "2.2.1",
+            "version": "2.2.2",
         "apiVersion": "v1",
         "database": "ok",
         "mlAvailable": True,
@@ -161,7 +161,7 @@ def test_crowd_reports_require_auth_and_dedupe_without_raw_text(api):
         "score": 92,
         "source": "local_sms",
         "createdAt": "2026-07-19T00:00:00Z",
-        "appVersion": "2.2.1",
+        "appVersion": "2.2.2",
     }
     assert client.post("/reputation/reports", json={"reports": [report]}).status_code == 401
     first = client.post("/reputation/reports", headers=auth("analyst-token"), json={"reports": [report]})

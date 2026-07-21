@@ -79,7 +79,7 @@ def create_app(
         yield
         repository.close()
 
-    app = FastAPI(title="KZ VoiceShield API", version="2.2.1", lifespan=lifespan)
+    app = FastAPI(title="KZ VoiceShield API", version="2.2.2", lifespan=lifespan)
     app.state.settings = resolved_settings
     app.state.repository = repository
     app.state.model_service = resolved_model
